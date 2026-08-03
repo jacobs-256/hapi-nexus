@@ -1,5 +1,7 @@
 # Installation
 
+**Language:** English | [简体中文](../../zh-CN/guide/installation.md)
+
 Install the HAPI CLI and set up the hub.
 
 ## Prerequisites
@@ -62,13 +64,15 @@ HAPI has three components:
 
 - **CLI**: Start a session with `hapi`. The CLI wraps your AI agent and syncs with the hub.
 - **Hub**: Run `hapi hub`. Stores sessions, handles permissions, enables remote access.
-- **Runner**: Run `hapi runner start`. Lets you spawn sessions from phone/web without keeping a terminal open.
+- **Runner**: Run `hapi runner start --workspace-root /path/to/projects`. Lets you spawn sessions from Web/PWA without keeping a terminal open.
 
 ### Typical workflows
 
 **Local only**: `hapi hub` → `hapi` → work in terminal
 
-**Remote access**: `hapi hub --relay` → `hapi runner start` → control from phone/web
+**Remote access**: `hapi hub --relay` -> `hapi runner start --workspace-root /path/to/projects` -> control from Web/PWA
+
+Browser/PWA users sign in with local username/password accounts. The first-start administrator is `admin` / `admin`; change it after first login or set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first hub start.
 
 ## Install the CLI
 
@@ -155,8 +159,11 @@ The hub listens on `http://localhost:3006` by default.
 On first run, HAPI:
 
 1. Creates `~/.hapi/`
-2. Generates a secure access token
+2. Generates a secure `CLI_API_TOKEN`
 3. Prints the token and saves it to `~/.hapi/settings.json`
+4. Creates a local Web administrator with username `admin` and password `admin`
+
+Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Account**.
 
 <details>
 <summary>Config files</summary>
@@ -176,6 +183,8 @@ On first run, HAPI:
 | Variable | Default | settings.json | Description |
 |----------|---------|---------------|-------------|
 | `CLI_API_TOKEN` | Auto-generated | `cliApiToken` | Shared secret for authentication |
+| `HAPI_ADMIN_USERNAME` | `admin` | - | Username for the first local Web administrator |
+| `HAPI_ADMIN_PASSWORD` | `admin` | - | Password for the first local Web administrator |
 | `HAPI_API_URL` | `http://localhost:3006` | `apiUrl` | Hub URL for CLI connections |
 | `HAPI_EXTRA_HEADERS_JSON` | - | `extraHeaders` | JSON object of extra outbound headers for CLI → hub HTTP/WebSocket requests |
 | `HAPI_LISTEN_HOST` | `127.0.0.1` | `listenHost` | Hub HTTP bind address |
@@ -342,6 +351,8 @@ hapi hub
 
 Then message your bot with `/start`, open the app, and enter your `CLI_API_TOKEN`.
 
+Normal browser/PWA login does not use `CLI_API_TOKEN`; use the local username/password account instead.
+
 **Troubleshooting:**
 
 - If binding fails, verify `HAPI_PUBLIC_URL` is accessible from the internet
@@ -352,7 +363,7 @@ Then message your bot with `/start`, open the app, and enter your `CLI_API_TOKEN
 Run a background service for remote session spawning:
 
 ```bash
-hapi runner start
+hapi runner start --workspace-root /path/to/projects
 hapi runner status
 hapi runner logs
 hapi runner stop
@@ -364,13 +375,21 @@ With the runner running:
 - You can spawn sessions remotely from the web app
 - Sessions persist even when the terminal is closed
 
+`/path/to/projects` is a directory on the runner machine. It should contain the repositories you want to browse or start sessions in. For multiple allowed directories, repeat the flag on the same runner:
+
+```bash
+hapi runner start --workspace-root /path/a --workspace-root /path/b
+```
+
+Remote users do not need a local copy of the source code. They connect to the hub and use projects shared from the runner machine.
+
 <details>
 <summary>Alternative: pm2</summary>
 
 If you prefer pm2 for process management:
 
 ```bash
-pm2 start "hapi runner start-sync" --name hapi-runner
+pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 pm2 save
 ```
 </details>
@@ -389,7 +408,7 @@ Simple one-liner for quick background runs:
 nohup hapi hub --relay > ~/.hapi/logs/hub.log 2>&1 &
 
 # Runner
-nohup hapi runner start-sync > ~/.hapi/logs/runner.log 2>&1 &
+nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
 ```
 
 View logs:
@@ -418,7 +437,7 @@ npm install -g pm2
 
 # Start hub and runner
 pm2 start "hapi hub --relay" --name hapi-hub
-pm2 start "hapi runner start-sync" --name hapi-runner
+pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 
 # View status and logs
 pm2 status
@@ -477,6 +496,8 @@ Create plist files for automatic startup on macOS.
         <string>/usr/local/bin/hapi</string>
         <string>runner</string>
         <string>start-sync</string>
+        <string>--workspace-root</string>
+        <string>/path/to/projects</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -541,7 +562,7 @@ After=network.target hapi-hub.service
 [Service]
 Type=simple
 KillMode=process
-ExecStart=/usr/local/bin/hapi runner start-sync
+ExecStart=/usr/local/bin/hapi runner start-sync --workspace-root /path/to/projects
 Restart=always
 RestartSec=5
 
@@ -592,7 +613,8 @@ See [Voice Assistant](./voice-assistant.md) for usage details.
 
 ### Security notes
 
-- Keep tokens secret and rotate if needed
+- Change the default `admin` / `admin` credentials immediately after first sign-in
+- Keep CLI and personal access tokens secret and rotate if needed
 - Use HTTPS for public access
 - Restrict CORS origins in production
 

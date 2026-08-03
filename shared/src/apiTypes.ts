@@ -5,12 +5,16 @@ import {
     DecryptedMessageSchema,
     MachineSchema,
     PermissionModeSchema,
+    ProjectRoleSchema,
     SessionSchema
 } from './schemas'
 import { AgentFlavorSchema } from './modes'
 import type {
     DecryptedMessage,
     Machine,
+    Project,
+    ProjectMember,
+    ProjectWorkspace,
     Session
 } from './schemas'
 import type { SessionSummary } from './sessionSummary'
@@ -68,8 +72,12 @@ export type AuthResponse = {
     user: {
         id: number
         username?: string
+        displayName?: string | null
         firstName?: string
         lastName?: string
+        platform?: string
+        role?: UserRole
+        accessToken?: string | null
     }
 }
 
@@ -93,6 +101,131 @@ export type MessagesResponse = {
 }
 
 export type MachinesResponse = { machines: Machine[] }
+
+export type ProjectWithDetails = Project & {
+    role: z.infer<typeof ProjectRoleSchema>
+    members: ProjectMember[]
+    workspaces: ProjectWorkspace[]
+}
+
+export type ProjectsResponse = { projects: ProjectWithDetails[] }
+export type ProjectResponse = { project: ProjectWithDetails }
+
+export const UserRoleSchema = z.enum(['admin', 'user'])
+export type UserRole = z.infer<typeof UserRoleSchema>
+
+export type EnterpriseUser = {
+    id: number
+    platform: string
+    platformUserId: string
+    namespace: string
+    username: string | null
+    displayName: string | null
+    role: UserRole
+    disabledAt: number | null
+    createdAt: number
+    updatedAt: number | null
+    accessToken?: string | null
+}
+
+export type AccountResponse = { user: EnterpriseUser }
+export type UsersResponse = { users: EnterpriseUser[] }
+export type UserResponse = { user: EnterpriseUser }
+export type RegenerateUserTokenResponse = { user: EnterpriseUser; accessToken: string }
+
+export const CreateUserRequestSchema = z.object({
+    username: z.string().trim().min(1).max(128),
+    password: z.string().min(8).max(1024),
+    displayName: z.string().trim().min(1).max(128).nullable().optional(),
+    role: UserRoleSchema.default('user')
+})
+
+export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>
+
+export const UpdateUserRequestSchema = z.object({
+    displayName: z.string().trim().min(1).max(128).nullable().optional(),
+    role: UserRoleSchema.optional(),
+    disabled: z.boolean().optional()
+}).refine((data) => (
+    data.displayName !== undefined || data.role !== undefined || data.disabled !== undefined
+), { message: 'At least one field is required' })
+
+export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>
+
+export const ResetUserPasswordRequestSchema = z.object({
+    password: z.string().min(8).max(1024)
+})
+
+export type ResetUserPasswordRequest = z.infer<typeof ResetUserPasswordRequestSchema>
+
+export const ChangeOwnPasswordRequestSchema = z.object({
+    currentPassword: z.string().min(1).max(1024),
+    newPassword: z.string().min(8).max(1024)
+})
+
+export type ChangeOwnPasswordRequest = z.infer<typeof ChangeOwnPasswordRequestSchema>
+
+export const ChangeOwnUsernameRequestSchema = z.object({
+    username: z.string().trim().min(1).max(128)
+})
+
+export type ChangeOwnUsernameRequest = z.infer<typeof ChangeOwnUsernameRequestSchema>
+
+export const CreateProjectRequestSchema = z.object({
+    name: z.string().trim().min(1).max(255),
+    repoUrl: z.string().trim().min(1).nullable().optional(),
+    machineId: z.string().trim().min(1).optional(),
+    rootPath: z.string().trim().min(1).optional()
+}).refine(
+    (data) => (data.machineId === undefined) === (data.rootPath === undefined),
+    { message: 'machineId and rootPath must be provided together', path: ['rootPath'] }
+)
+
+export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>
+
+export const UpdateProjectRequestSchema = z.object({
+    name: z.string().trim().min(1).max(255)
+})
+
+export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>
+
+export const ProjectMemberUpsertRequestSchema = z.object({
+    userId: z.number().int().positive(),
+    role: ProjectRoleSchema
+})
+
+export type ProjectMemberUpsertRequest = z.infer<typeof ProjectMemberUpsertRequestSchema>
+
+export const ProjectWorkspaceCreateRequestSchema = z.object({
+    machineId: z.string().trim().min(1),
+    rootPath: z.string().trim().min(1)
+})
+
+export type ProjectWorkspaceCreateRequest = z.infer<typeof ProjectWorkspaceCreateRequestSchema>
+
+export const ProjectInviteCreateRequestSchema = z.object({
+    role: ProjectRoleSchema,
+    expiresInHours: z.number().int().min(1).max(24 * 30).optional()
+})
+
+export type ProjectInviteCreateRequest = z.infer<typeof ProjectInviteCreateRequestSchema>
+
+export type ProjectInviteCreateResponse = {
+    invite: {
+        id: string
+        projectId: string
+        role: z.infer<typeof ProjectRoleSchema>
+        expiresAt: number
+        createdAt: number
+    }
+    token: string
+}
+
+export type ProjectInviteAcceptResponse = {
+    ok: true
+    projectId: string
+    role: z.infer<typeof ProjectRoleSchema>
+}
 
 export type SpawnResponse =
     | { type: 'success'; sessionId: string }
@@ -442,6 +575,7 @@ export type QueuedStateResponse = {
 }
 
 export const SpawnSessionRequestSchema = z.object({
+    projectId: z.string().trim().min(1).optional(),
     directory: z.string().min(1),
     agent: AgentFlavorSchema.optional(),
     model: z.string().optional(),
@@ -471,7 +605,12 @@ export type MachinePathsExistsRequest = z.infer<typeof MachinePathsExistsRequest
 
 export const AuthRequestSchema = z.union([
     z.object({ initData: z.string() }),
-    z.object({ accessToken: z.string() })
+    z.object({ accessToken: z.string() }),
+    z.object({
+        username: z.string().trim().min(1).max(128),
+        password: z.string().min(1).max(1024),
+        namespace: z.string().trim().min(1).max(128).optional()
+    })
 ])
 
 export type AuthRequest = z.infer<typeof AuthRequestSchema>

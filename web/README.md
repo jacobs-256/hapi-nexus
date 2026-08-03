@@ -9,13 +9,16 @@ React Mini App / PWA for monitoring and controlling hapi sessions.
 - Permission approval and denial workflows.
 - Permission mode and model selection.
 - Machine list and remote session spawn.
+- Private hub account login, account token view, and admin user management.
+- Project picker, project settings, member invites, and shared workspace selection.
 - File browser and git status/diff views.
 - PWA install prompt and offline banner.
 
 ## Runtime behavior
 
 - When opened inside Telegram, auth uses Telegram WebApp init data.
-- When opened in a normal browser, you can log in with `CLI_API_TOKEN:<namespace>` (or `CLI_API_TOKEN` for the default namespace).
+- When opened in a normal browser, login uses local username/password accounts only.
+- First-start default browser credentials are `admin` / `admin`; change them from `/settings/account`.
 - The login screen includes a top-right hub picker; if unset, the app uses the same origin it was loaded from.
 - Live updates come from the hub via SSE.
 
@@ -37,7 +40,15 @@ See `src/router.tsx` for route definitions.
 - `/settings/voice` - Everyday voice assistant preferences.
 - `/settings/voice/voices` - Full-page voice picker.
 - `/settings/voice/advanced` - Voice persona, tuning, and diagnostics.
+- `/settings/account` - Current user profile, namespace, role, and personal access token.
+- `/settings/users` - Admin user management for local username/password accounts.
+- `/settings/projects` - Project sharing, members, invites, and workspaces.
+- `/settings/machines` - Machine display names.
+- `/settings/storage` - Storage usage.
 - `/settings/about` - Application links and version information.
+- `/invite/$token` - Accept a project invite.
+
+The full settings area is documented in `docs/en/guide/settings.md`.
 
 ## Features
 
@@ -91,18 +102,28 @@ See `src/router.tsx` for route definitions.
 Modular session creation:
 
 - Machine selector
+- Project selector with shared workspace matching
 - Directory input with recent paths
 - Agent type selector
 - Model selector
 - Permission mode toggle (YOLO mode)
+
+### Project settings (`src/routes/settings/projects.tsx`)
+
+- Create and rename projects.
+- Attach owned runner workspaces.
+- Manage existing members by user ID.
+- Create reusable invite links.
 
 ## Authentication
 
 See `src/hooks/useAuth.ts` and `src/hooks/useAuthSource.ts`.
 
 - Telegram Mini App: Uses initData from WebApp SDK.
-- Browser: Uses CLI_API_TOKEN from login prompt.
-- JWT tokens with auto-refresh.
+- Browser: Uses local username/password, then stores the returned Web session JWT under `hapi_web_session::<baseUrl>`.
+- Browser login intentionally ignores URL `?token=` parameters and old `hapi_access_token::<baseUrl>` values.
+- Personal access tokens are shown in Account settings for companion/CLI-style flows, but are not browser login credentials.
+- JWT tokens are short-lived and validated through `/api/me` when restored.
 
 ## Data fetching
 

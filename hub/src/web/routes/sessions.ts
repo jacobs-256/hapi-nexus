@@ -73,7 +73,10 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const getPendingCount = (s: Session) => s.agentState?.requests ? Object.keys(s.agentState.requests).length : 0
 
         const namespace = c.get('namespace')
-        const sessionRecords = engine.getSessionsByNamespace(namespace)
+        const userId = c.get('userId')
+        const sessionRecords = (typeof userId === 'number'
+            ? engine.getSessionsForUser(namespace, userId)
+            : engine.getSessionsByNamespace(namespace))
             .sort((a, b) => {
                 // Active sessions first
                 if (a.active !== b.active) {
@@ -172,7 +175,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -215,7 +218,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -251,7 +254,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -289,7 +292,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -317,7 +320,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -338,7 +341,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -362,7 +365,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -410,7 +413,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -425,7 +428,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -466,7 +469,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -500,7 +503,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -542,7 +545,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -578,7 +581,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -612,7 +615,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -648,7 +651,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -678,7 +681,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -731,7 +734,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -810,7 +813,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -897,7 +900,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -989,7 +992,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1025,7 +1028,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }

@@ -5,6 +5,7 @@ import type { VisibilityTracker } from '../visibility/visibilityTracker'
 export type SSESubscription = {
     id: string
     namespace: string
+    userId: number | null
     all: boolean
     sessionId: string | null
     machineId: string | null
@@ -15,11 +16,14 @@ type SSEConnection = SSESubscription & {
     sendHeartbeat: () => void | Promise<void>
 }
 
+type UserEventFilter = (userId: number, namespace: string, event: SyncEvent) => boolean
+
 export class SSEManager {
     private readonly connections: Map<string, SSEConnection> = new Map()
     private heartbeatTimer: NodeJS.Timeout | null = null
     private readonly heartbeatMs: number
     private readonly visibilityTracker: VisibilityTracker
+    private userEventFilter: UserEventFilter | null = null
 
     constructor(heartbeatMs = 30_000, visibilityTracker: VisibilityTracker) {
         this.heartbeatMs = heartbeatMs
@@ -29,6 +33,7 @@ export class SSEManager {
     subscribe(options: {
         id: string
         namespace: string
+        userId?: number | null
         all?: boolean
         sessionId?: string | null
         machineId?: string | null
@@ -39,6 +44,7 @@ export class SSEManager {
         const subscription: SSEConnection = {
             id: options.id,
             namespace: options.namespace,
+            userId: options.userId ?? null,
             all: Boolean(options.all),
             sessionId: options.sessionId ?? null,
             machineId: options.machineId ?? null,
@@ -56,10 +62,15 @@ export class SSEManager {
         return {
             id: subscription.id,
             namespace: subscription.namespace,
+            userId: subscription.userId,
             all: subscription.all,
             sessionId: subscription.sessionId,
             machineId: subscription.machineId
         }
+    }
+
+    setUserEventFilter(filter: UserEventFilter | null): void {
+        this.userEventFilter = filter
     }
 
     unsubscribe(id: string): void {
@@ -77,6 +88,9 @@ export class SSEManager {
                 continue
             }
             if (!this.visibilityTracker.isVisibleConnection(connection.id)) {
+                continue
+            }
+            if (connection.userId !== null && this.userEventFilter && !this.userEventFilter(connection.userId, namespace, event)) {
                 continue
             }
 
@@ -153,6 +167,10 @@ export class SSEManager {
             if (!eventNamespace || eventNamespace !== connection.namespace) {
                 return false
             }
+        }
+
+        if (connection.userId !== null && this.userEventFilter && !this.userEventFilter(connection.userId, connection.namespace, event)) {
+            return false
         }
 
         if (event.type === 'message-received' || event.type === 'scheduled-matured') {

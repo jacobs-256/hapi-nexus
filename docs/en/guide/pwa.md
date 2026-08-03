@@ -1,5 +1,7 @@
 # Progressive Web App (PWA)
 
+**Language:** English | [简体中文](../../zh-CN/guide/pwa.md)
+
 HAPI's web interface is a fully-featured PWA that can be installed on your phone for a native app-like experience.
 
 ## What is PWA?
@@ -163,7 +165,8 @@ You can install HAPI on multiple devices:
 
 - All devices use the same server
 - Sessions sync across devices
-- Same access token works everywhere
+- Sign in on each device with your username and password
+- Your personal access token is available in Account settings for companion/CLI-style flows
 
 ## Troubleshooting
 

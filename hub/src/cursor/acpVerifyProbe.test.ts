@@ -27,6 +27,17 @@ describe('AcpVerifyProbe — agent-acp-active lock acquisition (Codex #34 P2 v2)
         return join(home, 'locks', 'agent-acp-active')
     }
 
+    async function waitForProbeExit(probe: AcpVerifyProbe, timeoutMs: number = 10_000): Promise<number | null> {
+        const startedAt = Date.now()
+        while (Date.now() - startedAt < timeoutMs) {
+            if (probe['proc'] && probe['proc'].exitCode !== null) {
+                return probe['proc'].exitCode
+            }
+            await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        return -1
+    }
+
     it('acquires the lock atomically when no holder exists (and releases on stop)', async () => {
         const probe = new AcpVerifyProbe({
             agentBinary: '/usr/bin/env', // any executable; we'll stop() before sending RPC
@@ -152,16 +163,7 @@ describe('AcpVerifyProbe — agent-acp-active lock acquisition (Codex #34 P2 v2)
                 env: { HOME: fakeOverrideHome, PATH: '/usr/bin:/bin' }
             })
             probe.start()
-            const exited = await new Promise<{ code: number | null }>((resolve) => {
-                const interval = setInterval(() => {
-                    if (probe['proc'] && probe['proc'].exitCode !== null) {
-                        clearInterval(interval)
-                        resolve({ code: probe['proc'].exitCode })
-                    }
-                }, 10)
-                setTimeout(() => { clearInterval(interval); resolve({ code: -1 }) }, 2000)
-            })
-            expect(exited.code).toBe(99)
+            expect(await waitForProbeExit(probe)).toBe(99)
             await probe.stop()
         } finally {
             // intentionally leave stubHome in place for case B
@@ -176,16 +178,7 @@ describe('AcpVerifyProbe — agent-acp-active lock acquisition (Codex #34 P2 v2)
                 env: { HOME: fakeOverrideHome, PATH: '/usr/bin:/bin' }
             })
             probe.start()
-            const exited = await new Promise<{ code: number | null }>((resolve) => {
-                const interval = setInterval(() => {
-                    if (probe['proc'] && probe['proc'].exitCode !== null) {
-                        clearInterval(interval)
-                        resolve({ code: probe['proc'].exitCode })
-                    }
-                }, 10)
-                setTimeout(() => { clearInterval(interval); resolve({ code: -1 }) }, 2000)
-            })
-            expect(exited.code).toBe(99)
+            expect(await waitForProbeExit(probe)).toBe(99)
             await probe.stop()
         } finally {
             if (originalHome === undefined) delete process.env.HOME
@@ -218,16 +211,7 @@ describe('AcpVerifyProbe — agent-acp-active lock acquisition (Codex #34 P2 v2)
                 env: { PATH: priorityBin } // explicit PATH wins; fallback bins appended
             })
             probe.start()
-            const exited = await new Promise<{ code: number | null }>((resolve) => {
-                const interval = setInterval(() => {
-                    if (probe['proc'] && probe['proc'].exitCode !== null) {
-                        clearInterval(interval)
-                        resolve({ code: probe['proc'].exitCode })
-                    }
-                }, 10)
-                setTimeout(() => { clearInterval(interval); resolve({ code: -1 }) }, 2000)
-            })
-            expect(exited.code).toBe(11) // priority wins, not 22 (fallback)
+            expect(await waitForProbeExit(probe)).toBe(11) // priority wins, not 22 (fallback)
             await probe.stop()
         } finally {
             try { rmSync(priorityHome, { recursive: true, force: true }) } catch {}
@@ -258,15 +242,7 @@ describe('AcpVerifyProbe — agent-acp-active lock acquisition (Codex #34 P2 v2)
                 env: { PATH: '/usr/bin' }
             })
             probe.start()
-            await new Promise<void>((resolve) => {
-                const interval = setInterval(() => {
-                    if (probe['proc'] && probe['proc'].exitCode !== null) {
-                        clearInterval(interval)
-                        resolve()
-                    }
-                }, 10)
-                setTimeout(() => { clearInterval(interval); resolve() }, 2000)
-            })
+            await waitForProbeExit(probe)
             await probe.stop()
             const pathFile = join(stubBin, 'agent.path')
             const seenPath = existsSync(pathFile)

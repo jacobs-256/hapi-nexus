@@ -7,6 +7,8 @@ function createSession(overrides: Partial<Session> = {}): Session {
     return {
         id: 'session-1',
         namespace: 'default',
+        projectId: null,
+        createdByUserId: null,
         seq: 1,
         createdAt: 0,
         updatedAt: 0,

@@ -10,6 +10,7 @@ import { useCodexModels } from '@/hooks/queries/useCodexModels'
 import { useCursorModelsForMachine } from '@/hooks/queries/useCursorModelsForMachine'
 import { useOpencodeModelsForCwd } from '@/hooks/queries/useOpencodeModelsForCwd'
 import { useGrokModelsForCwd } from '@/hooks/queries/useGrokModelsForCwd'
+import { useProjects } from '@/hooks/queries/useProjects'
 import { useSessions } from '@/hooks/queries/useSessions'
 import { useActiveSuggestions, type Suggestion } from '@/hooks/useActiveSuggestions'
 import { useDirectorySuggestions } from '@/hooks/useDirectorySuggestions'
@@ -46,6 +47,7 @@ import { FastModeSelector } from './FastModeSelector'
 import { MachineSelector } from './MachineSelector'
 import { ModelSelector } from './ModelSelector'
 import { OpencodeModelSelector } from './OpencodeModelSelector'
+import { isEditableProject, projectMatchesDirectory, projectMatchesMachine, ProjectSelector } from './ProjectSelector'
 import { LaunchEffortSelector } from './LaunchEffortSelector'
 import { shouldEnableOpencodeModelDiscovery } from './opencodeModelsGate'
 import { buildGrokEffortOptions, buildGrokModelOptions, shouldEnableGrokModelDiscovery } from './grokModels'
@@ -79,15 +81,18 @@ export function NewSession(props: {
     onChooseFolder?: (args: { machineId: string | null; directory: string }) => void
     initialDirectory?: string
     initialMachineId?: string
+    currentUserId?: number | null
 }) {
     const { haptic } = usePlatform()
     const { t } = useTranslation()
     const { addToast } = useToast()
     const { spawnSession, isPending, error: spawnError } = useSpawnSession(props.api)
     const { sessions, refetch: refetchSessions } = useSessions(props.api)
+    const { projects, isLoading: projectsLoading, error: projectsError } = useProjects(props.api)
     const { getRecentPaths, addRecentPath, getLastUsedMachineId, setLastUsedMachineId } = useRecentPaths()
 
     const [machineId, setMachineId] = useState<string | null>(props.initialMachineId ?? null)
+    const [projectId, setProjectId] = useState<string | null>(null)
     const [directory, setDirectory] = useState(props.initialDirectory ?? '')
     const [suppressSuggestions, setSuppressSuggestions] = useState(false)
     const [isDirectoryFocused, setIsDirectoryFocused] = useState(false)
@@ -458,6 +463,61 @@ export function NewSession(props: {
 
     const trimmedDirectory = directory.trim()
     const deferredDirectory = useDeferredValue(trimmedDirectory)
+    const editableProjects = useMemo(
+        () => projects.filter(isEditableProject),
+        [projects]
+    )
+    const matchingEditableProjects = useMemo(
+        () => editableProjects.filter((project) =>
+            trimmedDirectory
+                ? projectMatchesDirectory(project, selectedMachine, trimmedDirectory)
+                : projectMatchesMachine(project, selectedMachine)
+        ),
+        [editableProjects, selectedMachine, trimmedDirectory]
+    )
+    const isSelectedMachineOwner = Boolean(
+        props.currentUserId
+        && selectedMachine?.ownerUserId !== null
+        && selectedMachine?.ownerUserId === props.currentUserId
+    )
+
+    useEffect(() => {
+        if (editableProjects.length === 0) {
+            if (projectId !== null) {
+                setProjectId(null)
+            }
+            return
+        }
+
+        const current = editableProjects.find((project) => project.id === projectId)
+        if (current) {
+            if (isSelectedMachineOwner) {
+                return
+            }
+            if (!trimmedDirectory && projectMatchesMachine(current, selectedMachine)) {
+                return
+            }
+            if (trimmedDirectory && projectMatchesDirectory(current, selectedMachine, trimmedDirectory)) {
+                return
+            }
+        }
+
+        const next = matchingEditableProjects[0] ?? (isSelectedMachineOwner ? editableProjects[0] : null)
+        if (next && next.id !== projectId) {
+            setProjectId(next.id)
+            return
+        }
+        if (!next && projectId !== null) {
+            setProjectId(null)
+        }
+    }, [
+        editableProjects,
+        isSelectedMachineOwner,
+        matchingEditableProjects,
+        projectId,
+        selectedMachine,
+        trimmedDirectory
+    ])
     const allPaths = useDirectorySuggestions(machineId, sessions, recentPaths)
 
     const pathsToCheck = useMemo(
@@ -768,6 +828,7 @@ export function NewSession(props: {
         try {
             const result = await props.api.syncCodexSession({
                 sessionIds,
+                projectId,
                 cwd: trimmedDirectory || null,
                 machineId: codexImportMachineId ?? machineId
             })
@@ -838,6 +899,7 @@ export function NewSession(props: {
         isLoadingCodexImportSessions,
         machineId,
         normalizeCodexScriptError,
+        projectId,
         props.api,
         refetchSessions,
         t,
@@ -1104,6 +1166,7 @@ export function NewSession(props: {
                 setIsImportingCodexSession(true)
                 const result = await props.api.syncCodexSession({
                     sessionIds: [selectedCodexImportSession.id],
+                    projectId,
                     cwd: selectedCodexImportSession.cwd ?? trimmedDirectory,
                     machineId: codexImportMachineId ?? machineId,
                     model: resolvedModel ?? null,
@@ -1140,6 +1203,7 @@ export function NewSession(props: {
 
             const result = await spawnSession({
                 machineId,
+                projectId: projectId ?? undefined,
                 directory: trimmedDirectory,
                 agent,
                 model: resolvedModel,
@@ -1201,8 +1265,11 @@ export function NewSession(props: {
         && codexModelsState.isLoading
     const canCreate = Boolean(
         machineId
+        && projectId
         && trimmedDirectory
         && !isFormDisabled
+        && !projectsLoading
+        && !projectsError
         && !missingWorktreeDirectory
         && !isLaunchPreferenceValidationPending
         && !fastModeSelectionPending
@@ -1216,6 +1283,17 @@ export function NewSession(props: {
                 isLoading={props.isLoading}
                 isDisabled={isFormDisabled}
                 onChange={handleMachineChange}
+            />
+            <ProjectSelector
+                projects={projects}
+                machine={selectedMachine}
+                directory={trimmedDirectory}
+                currentUserId={props.currentUserId}
+                projectId={projectId}
+                isLoading={projectsLoading}
+                isDisabled={isFormDisabled}
+                error={projectsError}
+                onChange={setProjectId}
             />
             {runnerSpawnError ? (
                 <div className="px-3 py-2 text-xs text-red-600">

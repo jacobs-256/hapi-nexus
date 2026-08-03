@@ -1,5 +1,7 @@
 # Mermaid lightbox dogfood (Playwright)
 
+**Language:** English | [简体中文](../../zh-CN/tooling/mermaid-lightbox-dogfood.md)
+
 Two Playwright targets:
 
 | Target | What it exercises | Command |
@@ -41,7 +43,7 @@ Hard-refresh the browser after web changes.
 HAPI_LIVE=1 HAPI_URL=http://127.0.0.1:3006 npm run test:mermaid-lightbox:live
 ```
 
-Requires `~/.hapi/settings.json` `cliApiToken` (or `HAPI_ACCESS_TOKEN`).
+Requires an access token accepted by `/api/auth`: `~/.hapi/settings.json` `cliApiToken` by default, or `HAPI_ACCESS_TOKEN` set to a CLI/personal access token for the target hub.
 
 **Pass criteria:** dialog opens, SVG in **shadow root** (`[data-mermaid-lightbox]`), expands vs inline, sequence has multiple actors/lines.
 

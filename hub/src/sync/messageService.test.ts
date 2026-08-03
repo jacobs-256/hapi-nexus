@@ -32,6 +32,8 @@ function toProtocolSession(session: ReturnType<typeof makeSession>): Session {
     return {
         id: session.id,
         namespace: session.namespace,
+        projectId: session.projectId,
+        createdByUserId: session.createdByUserId,
         seq: session.seq,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,

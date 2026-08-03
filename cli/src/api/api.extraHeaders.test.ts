@@ -122,6 +122,8 @@ describe('API extra headers integration', () => {
         new ApiSessionClient('cli-token', {
             id: 'session-1',
             namespace: 'default',
+            projectId: null,
+            createdByUserId: null,
             seq: 1,
             createdAt: now,
             updatedAt: now,

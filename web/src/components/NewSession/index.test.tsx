@@ -37,6 +37,31 @@ vi.mock('@/hooks/mutations/useSpawnSession', () => ({
 vi.mock('@/hooks/queries/useSessions', () => ({
     useSessions: () => ({ sessions: [] })
 }))
+vi.mock('@/hooks/queries/useProjects', () => ({
+    useProjects: () => ({
+        projects: [{
+            id: 'project-1',
+            namespace: 'default',
+            name: 'Default Project',
+            repoUrl: null,
+            createdByUserId: 1,
+            createdAt: 0,
+            archivedAt: null,
+            role: 'editor',
+            members: [],
+            workspaces: [{
+                id: 'workspace-1',
+                projectId: 'project-1',
+                machineId: 'machine-1',
+                rootPath: 'C:\\',
+                createdByUserId: 1,
+                createdAt: 0
+            }]
+        }],
+        isLoading: false,
+        error: null
+    })
+}))
 vi.mock('@/hooks/useRecentPaths', () => ({
     useRecentPaths: () => ({
         getRecentPaths: () => [],

@@ -116,7 +116,7 @@ export default function SettingsMachinesPage() {
     const { machines } = useMachines(api, true)
 
     return (
-        <SettingsPageContent description={t('settings.machines.description')}>
+        <SettingsPageContent title={t('settings.machines.title')} description={t('settings.machines.description')}>
             <SettingsSection title={t('settings.machines.section')}>
                 {machines.length === 0 ? (
                     <div className="px-3 py-3 text-sm text-[var(--app-hint)]">{t('settings.machines.empty')}</div>

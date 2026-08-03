@@ -1,33 +1,35 @@
-# Why HAPI?
+# 为什么选择 HAPI？
 
-[Happy](https://github.com/slopus/happy) is an excellent project. So why build HAPI?
+**语言：** [English](../../en/guide/why-hapi.md) | 简体中文
 
-**The short answer**: Happy uses a centralized server that stores your encrypted data. HAPI is decentralized — each user runs their own hub, and the relay server only forwards encrypted traffic without storing anything. These different goals lead to fundamentally different architectures.
+[Happy](https://github.com/slopus/happy) 是一个优秀项目。为什么还要构建 HAPI？
+
+**简短回答**：Happy 使用中心化服务器保存你的加密数据。HAPI 是去中心化的，每个私有部署运行自己的 hub，relay server 只转发加密流量，不保存任何数据。目标不同，架构也根本不同。
 
 ## TL;DR
 
-| Aspect | Happy | HAPI |
+| 方面 | Happy | HAPI |
 |--------|-------|------|
-| **Architecture** | Centralized (cloud server stores encrypted data) | Decentralized (each user runs own hub) |
-| **Users** | Multi-user on shared server | Any number (each runs own hub) |
-| **Data** | Encrypted on server (server cannot read) | Stays on your machine |
-| **Encryption** | Application-layer E2EE (client encrypts before sending) | WireGuard + TLS via relay; or none needed if self-hosted |
-| **Deployment** | Multiple services (PostgreSQL, Redis, app server) | Single binary |
-| **Complexity** | High (E2EE, key management, scaling) | Low (one command) |
+| **架构** | 中心化（云服务器保存加密数据） | 去中心化私有 hub |
+| **用户** | 共享服务器上的多用户 | 每个部署一个私有多用户 hub |
+| **数据** | 在服务器上加密保存（服务器不可读） | 留在你的机器上 |
+| **加密** | 应用层 E2EE（客户端发送前加密） | Relay 模式使用 WireGuard + TLS；自托管时不额外需要 |
+| **部署** | 多个服务（PostgreSQL、Redis、应用服务器） | 单个二进制 |
+| **复杂度** | 高（E2EE、密钥管理、扩展） | 低（一条命令） |
 
-**Choose HAPI if**: You want data sovereignty, self-hosting, and minimal setup.
+**选择 HAPI 如果**：你需要数据主权、自托管和最小部署复杂度。
 
-**Choose Happy if**: You need a managed cloud service with multi-user collaboration.
+**选择 Happy 如果**：你需要托管云服务，而不是自己运维私有 hub。
 
-## Architecture Comparison
+## 架构对比
 
-### Happy: Centralized Cloud
+### Happy：中心化云
 
-Happy's centralized design requires:
+Happy 的中心化设计需要：
 
-- **Application-layer E2EE** — Clients encrypt before sending; the server stores encrypted blobs it cannot read
-- **Distributed database + cache** — PostgreSQL + Redis for multi-user scaling
-- **Complex deployment** — Docker, multiple services, config files
+- **应用层 E2EE** - 客户端发送前加密；服务器保存不可读的加密 blob
+- **分布式数据库 + 缓存** - PostgreSQL + Redis 支撑多用户扩展
+- **复杂部署** - Docker、多服务、多个配置文件
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -50,20 +52,20 @@ Happy's centralized design requires:
                                              └───────────────────┘
 ```
 
-The server stores encrypted data — it never sees plaintext, but it does hold your data.
+服务器保存加密数据。它看不到明文，但确实持有你的数据。
 
-### HAPI: Decentralized
+### HAPI：去中心化
 
-Each user runs their own hub. HAPI offers two modes of remote access:
+每个部署运行自己的 hub。这个 hub 可以托管本地用户名/密码用户、管理员和共享项目，同时数据仍留在你控制的基础设施中。HAPI 提供两种远程访问方式：
 
-- **Self-hosted** (own server / Cloudflare Tunnel / Tailscale) — You control the full network path, no E2EE needed
-- **Public relay** (`hapi hub --relay`) — E2E encrypted via tunwg (WireGuard + TLS); the relay only forwards opaque packets
-- **Single embedded database** — SQLite, no external services
-- **One-command deployment** — Single binary, zero config
+- **自托管**（自己的服务器 / Cloudflare Tunnel / Tailscale）- 你控制完整网络路径，不需要额外 E2EE
+- **公共 relay**（`hapi hub --relay`）- 通过 tunwg（WireGuard + TLS）端到端加密；relay 只转发不透明数据包
+- **单个嵌入式数据库** - SQLite，无外部服务
+- **一条命令部署** - 单个二进制，零配置
 
-#### Mode 1: Self-Hosted (own server or tunnel)
+#### 模式 1：自托管（自己的服务器或隧道）
 
-You control the entire path. No encryption beyond standard HTTPS is needed.
+你控制完整路径。标准 HTTPS 之外不需要额外加密。
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -91,9 +93,9 @@ You control the entire path. No encryption beyond standard HTTPS is needed.
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-#### Mode 2: Public Relay (E2E encrypted)
+#### 模式 2：公共 Relay（端到端加密）
 
-The relay server only forwards encrypted packets — it cannot read your data.
+Relay 服务器只转发加密数据包，无法读取你的数据。
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -128,20 +130,20 @@ The relay server only forwards encrypted packets — it cannot read your data.
                     └─────────────────┘
 ```
 
-## Key Differences
+## 关键差异
 
-### Data Location
+### 数据位置
 
-| Aspect | Happy | HAPI |
+| 方面 | Happy | HAPI |
 |--------|-------|------|
-| **Where data lives** | Cloud server (encrypted blobs) | Your own machine |
-| **Who stores it** | Central server holds encrypted data | Only your hub, locally |
-| **Data at rest** | Encrypted (server cannot read) | Plaintext (protected by OS) |
-| **Server's role** | Stores encrypted data + syncs devices | Relay only forwards (or no server at all if self-hosted) |
+| **数据在哪里** | 云服务器（加密 blob） | 你自己的机器 |
+| **谁保存数据** | 中心服务器保存加密数据 | 只有你的 hub，本地保存 |
+| **静态数据** | 加密（服务器不可读） | 明文（由操作系统保护） |
+| **服务器角色** | 保存加密数据 + 同步设备 | 只转发 relay（自托管时可没有外部服务器） |
 
-### Deployment Model
+### 部署模型
 
-**Happy** requires orchestrating multiple components:
+**Happy** 需要编排多个组件：
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -156,7 +158,7 @@ The relay server only forwards encrypted packets — it cannot read your data.
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-**HAPI** bundles everything:
+**HAPI** 把所有东西打包在一起：
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -170,18 +172,18 @@ The relay server only forwards encrypted packets — it cannot read your data.
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### Security Approach
+### 安全方式
 
-| Aspect | Happy | HAPI (self-hosted) | HAPI (relay) |
+| 方面 | Happy | HAPI（自托管） | HAPI（relay） |
 |--------|-------|-------------------|--------------|
-| **Problem** | Data on untrusted server | Remote access to local hub | Remote access via third-party relay |
-| **Solution** | Application-layer E2EE | HTTPS (you control the path) | WireGuard + TLS (tunwg) |
-| **Key management** | Client holds keys; server never sees plaintext | Not needed | Handled by tunwg automatically |
-| **Data at rest** | Encrypted on server | Plaintext on your machine | Plaintext on your machine |
+| **问题** | 数据在不可信服务器上 | 远程访问本地 hub | 通过第三方 relay 远程访问 |
+| **方案** | 应用层 E2EE | HTTPS（你控制路径） | WireGuard + TLS（tunwg） |
+| **密钥管理** | 客户端持有密钥，服务器看不到明文 | 不需要 | 由 tunwg 自动处理 |
+| **静态数据** | 在服务器上加密 | 在你的机器上明文 | 在你的机器上明文 |
 
-## Why Different Architectures?
+## 为什么架构不同？
 
-### Happy: Centralized
+### Happy：中心化
 
 ```
 Goal: Multi-user cloud platform
@@ -196,18 +198,18 @@ Goal: Multi-user cloud platform
                    └──► Must sync encrypted state across devices
 ```
 
-**Result**: Sophisticated infrastructure with zero-knowledge server
+**结果**：拥有零知识服务器的复杂基础设施。
 
-### HAPI: Decentralized
+### HAPI：去中心化
 
 ```
-Goal: Self-hosted tool — each user runs their own hub
+Goal: Self-hosted private deployment
          │
          ├──► Data never leaves your machine
          │         └──► No application-layer E2EE needed
          │
-         ├──► Each user has their own hub
-         │         └──► No horizontal scaling needed; unlimited users in aggregate
+         ├──► Each deployment has its own hub
+         │         └──► Local users and projects share one private SQLite-backed deployment
          │
          ├──► Self-hosted access (own server/tunnel)
          │         └──► You control the full path — HTTPS sufficient
@@ -216,26 +218,26 @@ Goal: Self-hosted tool — each user runs their own hub
                    └──► WireGuard + TLS (tunwg) — relay forwards only
 ```
 
-**Result**: Simple, portable, one-command deployment
+**结果**：简单、可移植、一条命令部署。
 
-## Summary
+## 总结
 
-| Dimension | Happy | HAPI |
+| 维度 | Happy | HAPI |
 |-----------|-------|------|
-| **Architecture** | Centralized cloud server | Decentralized (each user runs own hub) |
-| **Server's role** | Stores encrypted data | Relay only forwards (or none if self-hosted) |
-| **Data location** | Server (encrypted, zero-knowledge) | Local (plaintext, your machine) |
-| **Deployment** | Multiple services (PostgreSQL, Redis, Node.js) | Single binary (embedded SQLite) |
-| **Encryption** | Application-layer E2EE (client-side) | WireGuard + TLS (relay) or HTTPS (self-hosted) |
-| **Scaling** | Horizontal (multi-user on shared server) | Per-user (each runs own hub) |
-| **Target user** | Managed cloud service users | Self-hosters who want data sovereignty |
+| **架构** | 中心化云服务器 | 去中心化私有 hub |
+| **服务器角色** | 保存加密数据 | 只转发 relay（自托管时可没有） |
+| **数据位置** | 服务器（加密，零知识） | 本地（明文，你的机器） |
+| **部署** | 多服务（PostgreSQL、Redis、Node.js） | 单二进制（嵌入式 SQLite） |
+| **加密** | 应用层 E2EE（客户端侧） | Relay 使用 WireGuard + TLS；自托管使用 HTTPS |
+| **扩展** | 横向扩展（共享服务器多用户） | 按部署扩展（私有 hub + 本地用户/项目） |
+| **目标用户** | 托管云服务用户 | 想要数据主权的自托管用户和团队 |
 
-## Conclusion
+## 结论
 
-The architectural differences stem from a centralized vs decentralized design:
+架构差异来自中心化与去中心化设计：
 
-- **Happy**: Centralized cloud server that stores your encrypted data. The server never sees plaintext (zero-knowledge), but it does hold your data. This requires application-layer E2EE, key management, and distributed infrastructure (PostgreSQL, Redis, scaling).
+- **Happy**：中心化云服务器保存你的加密数据。服务器看不到明文（zero-knowledge），但持有你的数据。这需要应用层 E2EE、密钥管理和分布式基础设施（PostgreSQL、Redis、扩展）。
 
-- **HAPI**: Decentralized — each user runs their own hub. Your data stays on your machine. For remote access, you can self-host (own server or tunnel — no E2EE needed since you control the path) or use the public relay (WireGuard + TLS via tunwg — the relay only forwards encrypted packets it cannot read). This achieves one-command deployment with zero external dependencies.
+- **HAPI**：去中心化私有 hub。你的数据留在自己的机器或私有服务器上，即使多个本地用户通过项目协作也是如此。远程访问时，你可以自托管（自己的服务器或隧道；因为你控制路径，所以不需要 E2EE），也可以使用公共 relay（WireGuard + TLS via tunwg；relay 只转发不可读的加密包）。这实现了一条命令部署且零外部依赖。
 
-The core tradeoff: Happy solves the "untrusted server" problem with sophisticated encryption. HAPI avoids the problem entirely by keeping your data on your own machine.
+核心权衡：Happy 用复杂加密解决“不可信服务器”问题；HAPI 通过让数据留在你自己的机器上，直接避开这个问题。

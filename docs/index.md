@@ -8,6 +8,6 @@ import { onMounted } from 'vue'
 import { withBase } from 'vitepress'
 
 onMounted(() => {
-  window.location.replace(withBase('/guide/quick-start'))
+  window.location.replace(withBase('/en/guide/quick-start'))
 })
 </script>

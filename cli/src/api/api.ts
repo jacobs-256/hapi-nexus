@@ -100,6 +100,8 @@ export class ApiClient {
         return {
             id: raw.id,
             namespace: raw.namespace,
+            projectId: raw.projectId,
+            createdByUserId: raw.createdByUserId,
             seq: raw.seq,
             createdAt: raw.createdAt,
             updatedAt: raw.updatedAt,
@@ -150,6 +152,8 @@ export class ApiClient {
         return {
             id: raw.id,
             namespace: raw.namespace,
+            projectId: raw.projectId,
+            createdByUserId: raw.createdByUserId,
             seq: raw.seq,
             createdAt: raw.createdAt,
             updatedAt: raw.updatedAt,
@@ -214,6 +218,8 @@ export class ApiClient {
         return {
             id: raw.id,
             namespace: raw.namespace,
+            ownerUserId: raw.ownerUserId,
+            teamId: raw.teamId,
             seq: raw.seq,
             createdAt: raw.createdAt,
             updatedAt: raw.updatedAt,

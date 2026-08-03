@@ -1,5 +1,7 @@
 # Voice Assistant
 
+**Language:** English | [简体中文](../../zh-CN/guide/voice-assistant.md)
+
 Control your AI coding agent with voice using the built-in voice assistant powered by ElevenLabs Conversational AI.
 
 ## Overview

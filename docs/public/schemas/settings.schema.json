@@ -7,7 +7,7 @@
   "properties": {
     "cliApiToken": {
       "type": "string",
-      "description": "Shared secret for CLI authentication. Auto-generated if not set. ENV: CLI_API_TOKEN"
+      "description": "Shared secret for CLI, runner, owner access, and Telegram binding. Auto-generated if not set. ENV: CLI_API_TOKEN"
     },
     "apiUrl": {
       "type": "string",

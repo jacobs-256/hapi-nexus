@@ -1,5 +1,7 @@
 # Grok Build
 
+**Language:** English | [简体中文](../../zh-CN/guide/grok.md)
+
 HAPI can run the official Grok Build CLI locally and control the same coding session remotely from the Web/PWA.
 
 ## Install

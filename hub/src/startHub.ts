@@ -6,6 +6,7 @@ import type { NotificationChannel } from './notifications/notificationTypes'
 import { HappyBot } from './telegram/bot'
 import { startWebServer } from './web/server'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
+import { ensureInitialLocalAdmin } from './config/initialAdmin'
 import { createSocketServer } from './socket/server'
 import { SSEManager } from './sse/sseManager'
 import { getOrCreateVapidKeys } from './config/vapidKeys'
@@ -168,6 +169,32 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
     }
 
     const store = new Store(config.dbPath)
+    const initialAdmin = await ensureInitialLocalAdmin(store)
+    if (initialAdmin.status === 'created') {
+        console.log('')
+        console.log('='.repeat(70))
+        console.log('')
+        console.log('  INITIAL ADMIN CREATED')
+        console.log('')
+        console.log(`  Namespace: ${initialAdmin.namespace}`)
+        console.log(`  Username:  ${initialAdmin.username}`)
+        if (initialAdmin.passwordSource === 'environment') {
+            console.log('  Password:  loaded from HAPI_ADMIN_PASSWORD')
+        } else {
+            console.log(`  Password:  ${initialAdmin.password}`)
+        }
+        console.log('')
+        console.log('='.repeat(70))
+        console.log('')
+    } else if (initialAdmin.status === 'conflict') {
+        console.warn(
+            `[Hub] Initial admin not created: local user "${initialAdmin.username}" already exists in namespace "${initialAdmin.namespace}" but is not an active admin.`
+        )
+    } else if (initialAdmin.status === 'invalid-password') {
+        console.warn(
+            `[Hub] Initial admin not created: HAPI_ADMIN_PASSWORD for "${initialAdmin.username}" must not be empty.`
+        )
+    }
     const jwtSecret = await getOrCreateJwtSecret()
     const vapidKeys = await getOrCreateVapidKeys(config.dataDir)
     const vapidSubject = process.env.VAPID_SUBJECT ?? 'mailto:admin@hapi.run'
@@ -198,6 +225,9 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
     })
 
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager)
+    sseManager.setUserEventFilter((userId, namespace, event) =>
+        syncEngine?.canUserReceiveEvent(userId, namespace, event) ?? false
+    )
 
     const fcmConfig = resolveFcmConfig()
 

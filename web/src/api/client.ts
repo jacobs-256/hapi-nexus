@@ -40,9 +40,18 @@ import type {
     MachinePathsExistsResponse,
     OpencodeModelsResponse,
     OpencodeReasoningEffortResponse,
+    AccountResponse,
+    ProjectInviteAcceptResponse,
+    ProjectInviteCreateResponse,
+    ProjectResponse,
+    ProjectsResponse,
     QueuedStateResponse,
+    RegenerateUserTokenResponse,
     ReopenSessionResponse,
     SqliteStorageUsageResponse,
+    UserResponse,
+    UserRole,
+    UsersResponse,
     UploadFileResponse
 } from '@hapi/protocol/apiTypes'
 import type { AgentFlavor } from '@hapi/protocol'
@@ -156,7 +165,7 @@ export class ApiClient {
         return await res.json() as T
     }
 
-    async authenticate(auth: { initData: string } | { accessToken: string }): Promise<AuthResponse> {
+    async authenticate(auth: { initData: string } | { username: string; password: string; namespace?: string }): Promise<AuthResponse> {
         const res = await fetch(this.buildUrl('/api/auth'), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -171,6 +180,70 @@ export class ApiClient {
         }
 
         return await res.json() as AuthResponse
+    }
+
+    async getAccount(): Promise<AccountResponse> {
+        return await this.request<AccountResponse>('/api/me')
+    }
+
+    async regenerateOwnAccessToken(): Promise<RegenerateUserTokenResponse> {
+        return await this.request<RegenerateUserTokenResponse>('/api/me/token/regenerate', {
+            method: 'POST'
+        })
+    }
+
+    async changeOwnPassword(currentPassword: string, newPassword: string): Promise<UserResponse> {
+        return await this.request<UserResponse>('/api/me/password', {
+            method: 'POST',
+            body: JSON.stringify({ currentPassword, newPassword })
+        })
+    }
+
+    async changeOwnUsername(username: string): Promise<UserResponse> {
+        return await this.request<UserResponse>('/api/me/username', {
+            method: 'PATCH',
+            body: JSON.stringify({ username })
+        })
+    }
+
+    async getUsers(): Promise<UsersResponse> {
+        return await this.request<UsersResponse>('/api/users')
+    }
+
+    async createUser(payload: {
+        username: string
+        password: string
+        displayName?: string | null
+        role?: UserRole
+    }): Promise<UserResponse> {
+        return await this.request<UserResponse>('/api/users', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async updateUser(userId: number, payload: {
+        displayName?: string | null
+        role?: UserRole
+        disabled?: boolean
+    }): Promise<UserResponse> {
+        return await this.request<UserResponse>(`/api/users/${encodeURIComponent(String(userId))}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async resetUserPassword(userId: number, password: string): Promise<UserResponse> {
+        return await this.request<UserResponse>(`/api/users/${encodeURIComponent(String(userId))}/password`, {
+            method: 'POST',
+            body: JSON.stringify({ password })
+        })
+    }
+
+    async regenerateUserAccessToken(userId: number): Promise<RegenerateUserTokenResponse> {
+        return await this.request<RegenerateUserTokenResponse>(`/api/users/${encodeURIComponent(String(userId))}/token/regenerate`, {
+            method: 'POST'
+        })
     }
 
     async bind(auth: { initData: string; accessToken: string }): Promise<AuthResponse> {
@@ -192,6 +265,79 @@ export class ApiClient {
 
     async getSessions(): Promise<SessionsResponse> {
         return await this.request<SessionsResponse>('/api/sessions')
+    }
+
+    async getProjects(): Promise<ProjectsResponse> {
+        return await this.request<ProjectsResponse>('/api/projects')
+    }
+
+    async createProject(payload: {
+        name: string
+        repoUrl?: string | null
+        machineId?: string
+        rootPath?: string
+    }): Promise<ProjectResponse> {
+        return await this.request<ProjectResponse>('/api/projects', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async updateProject(projectId: string, payload: { name: string }): Promise<ProjectResponse> {
+        return await this.request<ProjectResponse>(`/api/projects/${encodeURIComponent(projectId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async addProjectMember(
+        projectId: string,
+        payload: { userId: number; role: 'owner' | 'admin' | 'editor' | 'viewer' }
+    ): Promise<{ member: import('@hapi/protocol/types').ProjectMember }> {
+        return await this.request(`/api/projects/${encodeURIComponent(projectId)}/members`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async removeProjectMember(projectId: string, userId: number): Promise<void> {
+        await this.request(`/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(String(userId))}`, {
+            method: 'DELETE'
+        })
+    }
+
+    async addProjectWorkspace(
+        projectId: string,
+        payload: { machineId: string; rootPath: string }
+    ): Promise<{ workspace: import('@hapi/protocol/types').ProjectWorkspace }> {
+        return await this.request(`/api/projects/${encodeURIComponent(projectId)}/workspaces`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async removeProjectWorkspace(projectId: string, workspaceId: string): Promise<void> {
+        await this.request(
+            `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}`,
+            { method: 'DELETE' }
+        )
+    }
+
+    async createProjectInvite(
+        projectId: string,
+        payload: { role: 'owner' | 'admin' | 'editor' | 'viewer'; expiresInHours?: number }
+    ): Promise<ProjectInviteCreateResponse> {
+        return await this.request<ProjectInviteCreateResponse>(`/api/projects/${encodeURIComponent(projectId)}/invites`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async acceptProjectInvite(token: string): Promise<ProjectInviteAcceptResponse> {
+        return await this.request<ProjectInviteAcceptResponse>(
+            `/api/project-invites/${encodeURIComponent(token)}/accept`,
+            { method: 'POST' }
+        )
     }
 
     async getPushVapidPublicKey(): Promise<PushVapidPublicKeyResponse> {
@@ -655,6 +801,7 @@ export class ApiClient {
     async spawnSession(
         machineId: string,
         directory: string,
+        projectId?: string,
         agent?: AgentFlavor,
         model?: string,
         modelReasoningEffort?: string,
@@ -669,6 +816,7 @@ export class ApiClient {
         return await this.request<SpawnResponse>(`/api/machines/${encodeURIComponent(machineId)}/spawn`, {
             method: 'POST',
             body: JSON.stringify({
+                projectId,
                 directory,
                 agent,
                 model,

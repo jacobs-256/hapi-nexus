@@ -13,6 +13,7 @@ import { useSyncingState } from '@/hooks/useSyncingState'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useVisibilityReporter } from '@/hooks/useVisibilityReporter'
+import { useAppearance, useTheme } from '@/hooks/useTheme'
 import { queryKeys } from '@/lib/query-keys'
 import { AppContextProvider } from '@/lib/app-context'
 import { clearMessageWindow, syncTailMessages } from '@/lib/message-window-store'
@@ -30,10 +31,11 @@ import { SyncingBanner } from '@/components/SyncingBanner'
 import { ReconnectingBanner } from '@/components/ReconnectingBanner'
 import { VoiceErrorBanner } from '@/components/VoiceErrorBanner'
 import { LoadingState } from '@/components/LoadingState'
+import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ToastContainer } from '@/components/ToastContainer'
 import { PwaUpdateProvider } from '@/lib/pwa-update-context'
 import { ToastProvider, useToast } from '@/lib/toast-context'
-import type { SyncEvent } from '@/types/api'
+import type { AuthResponse, SyncEvent } from '@/types/api'
 
 type ToastEvent = Extract<SyncEvent, { type: 'toast' }>
 
@@ -45,6 +47,116 @@ function withPwaBanner(content: ReactNode) {
             <PwaUpdateBanner />
             {content}
         </>
+    )
+}
+
+function IconCode(props: { size?: number }) {
+    const size = props.size ?? 12
+    return (
+        <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
+        </svg>
+    )
+}
+
+function IconSun() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+    )
+}
+
+function IconMoon() {
+    return (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+    )
+}
+
+function TrafficLights() {
+    return (
+        <>
+            {['#ff5f56', '#ffbd2e', '#27c93f'].map((color) => (
+                <span key={color} className="h-[11px] w-[11px] rounded-full" style={{ background: color }} />
+            ))}
+        </>
+    )
+}
+
+function getUserLabel(user: AuthResponse['user'], fallback: string): string {
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
+    return user.displayName?.trim() || fullName || user.username?.trim() || fallback
+}
+
+function AppTitleBar(props: { user: AuthResponse['user'] }) {
+    const { t } = useTranslation()
+    const { colorScheme } = useTheme()
+    const { setAppearance } = useAppearance()
+    const isDark = colorScheme === 'dark' || colorScheme === 'oled'
+    const userLabel = getUserLabel(props.user, t('app.user.fallback'))
+    const userInitial = Array.from(userLabel)[0]?.toUpperCase() ?? 'A'
+    const nextThemeLabel = isDark ? t('login.theme.light') : t('login.theme.dark')
+
+    return (
+        <div className="relative flex h-11 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--toolbar)] pl-4 pr-3 text-[var(--foreground)] sm:pl-20 sm:pr-4">
+            <div className="absolute left-3.5 hidden gap-[7px] sm:flex">
+                <TrafficLights />
+            </div>
+
+            <div className="flex min-w-0 items-center gap-1.5">
+                <div
+                    className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-white"
+                    style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                >
+                    <IconCode />
+                </div>
+                <span className="truncate text-[13px] font-semibold tracking-[-0.2px]">HAPI</span>
+                <span className="hidden font-mono text-[11px] text-[var(--muted-foreground)] sm:inline">
+                    - {t('app.title.context')}
+                </span>
+            </div>
+
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                <LanguageSwitcher variant="toolbar" />
+                <button
+                    type="button"
+                    onClick={() => setAppearance(isDark ? 'light' : 'dark')}
+                    className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border)] bg-[var(--card)] px-0 font-mono text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] sm:w-auto sm:px-2.5"
+                    title={nextThemeLabel}
+                    aria-label={nextThemeLabel}
+                >
+                    {isDark ? <IconSun /> : <IconMoon />}
+                    <span className="hidden sm:inline">
+                        {isDark ? t('settings.display.appearance.light') : t('settings.display.appearance.dark')}
+                    </span>
+                </button>
+                <div
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                    style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                    title={userLabel}
+                >
+                    {userInitial}
+                </div>
+            </div>
+        </div>
+    )
+}
+
+function AppStatusBar() {
+    const { t } = useTranslation()
+
+    return (
+        <div className="flex h-[22px] shrink-0 items-center gap-4 bg-[var(--primary)] px-3 font-mono text-[10.5px] text-white/90">
+            <span className="opacity-80">{t('app.status.product')}</span>
+            <span className="hidden sm:inline">◉ {t('app.status.language')}</span>
+            <span className="hidden sm:inline">{t('app.status.encoding')}</span>
+            <span className="ml-auto">{t('app.status.connected')}</span>
+            <span className="h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+        </div>
     )
 }
 
@@ -61,8 +173,8 @@ export function App() {
 function AppInner() {
     const { t } = useTranslation()
     const { serverUrl, baseUrl, setServerUrl, clearServerUrl } = useServerUrl()
-    const { authSource, isLoading: isAuthSourceLoading, setAccessToken } = useAuthSource(baseUrl)
-    const { token, api, isLoading: isAuthLoading, error: authError, needsBinding, bind } = useAuth(authSource, baseUrl)
+    const { authSource, isLoading: isAuthSourceLoading, setWebSession, clearAuth } = useAuthSource(baseUrl)
+    const { token, user, api, isLoading: isAuthLoading, error: authError, needsBinding, bind } = useAuth(authSource, baseUrl)
     const goBack = useAppGoBack()
     const pathname = useLocation({ select: (location) => location.pathname })
     const matchRoute = useMatchRoute()
@@ -380,7 +492,7 @@ function AppInner() {
     if (!authSource) {
         return withPwaBanner(
             <LoginPrompt
-                onLogin={setAccessToken}
+                onLogin={setWebSession}
                 baseUrl={baseUrl}
                 serverUrl={serverUrl}
                 setServerUrl={setServerUrl}
@@ -415,12 +527,12 @@ function AppInner() {
     }
 
     // Auth error
-    if (authError || !token || !api) {
-        // If using access token and auth failed, show login again
-        if (authSource.type === 'accessToken') {
+    if (authError || !token || !api || !user) {
+        // If using a browser Web session and auth failed, show login again.
+        if (authSource.type === 'webSession') {
             return withPwaBanner(
                 <LoginPrompt
-                    onLogin={setAccessToken}
+                    onLogin={setWebSession}
                     baseUrl={baseUrl}
                     serverUrl={serverUrl}
                     setServerUrl={setServerUrl}
@@ -446,7 +558,7 @@ function AppInner() {
     }
 
     return (
-        <AppContextProvider value={{ api, token, baseUrl }}>
+        <AppContextProvider value={{ api, token, baseUrl, user, clearAuth }}>
             <VoiceProvider>
                 <PwaUpdateBannerWithStatusOffset
                     isSyncing={isSyncing}
@@ -462,8 +574,12 @@ function AppInner() {
                     isHubConnected={globalSubscriptionId !== null}
                     isReconnecting={showReconnectingBanner}
                 />
-                <div className="h-full min-h-0 flex flex-col">
-                    <Outlet />
+                <div className="flex h-full min-h-0 flex-col bg-[var(--background)] text-[var(--foreground)]">
+                    {!isTelegramApp() ? <AppTitleBar user={user} /> : null}
+                    <div className="min-h-0 flex-1">
+                        <Outlet />
+                    </div>
+                    {!isTelegramApp() ? <AppStatusBar /> : null}
                 </div>
                 <ToastContainer />
                 <InstallPrompt />

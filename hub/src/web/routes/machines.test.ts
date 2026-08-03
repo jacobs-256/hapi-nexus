@@ -8,6 +8,8 @@ function createMachine(overrides?: Partial<Machine>): Machine {
     return {
         id: 'machine-1',
         namespace: 'default',
+        ownerUserId: null,
+        teamId: null,
         seq: 1,
         createdAt: 1,
         updatedAt: 1,

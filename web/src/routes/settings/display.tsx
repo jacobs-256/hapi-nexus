@@ -137,7 +137,7 @@ export default function SettingsDisplayPage() {
     const { showActiveSessionsOnly, setShowActiveSessionsOnly } = useShowActiveSessionsOnly()
 
     return (
-        <SettingsPageContent description={t('settings.display.description')}>
+        <SettingsPageContent title={t('settings.display.title')} description={t('settings.display.description')}>
             <SettingsSection title={t('settings.display.appearance')}>
                 <SettingsChoiceGroup
                     label={t('settings.display.appearanceMode')}

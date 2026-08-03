@@ -1,25 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap');
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 @config "../tailwind.config.ts";
 
 :root {
-    --app-bg: var(--tg-theme-bg-color, #ffffff);
-    --app-fg: var(--tg-theme-text-color, #111827);
-    --app-hint: var(--tg-theme-hint-color, #6b7280);
-    --app-link: var(--tg-theme-link-color, #111827);
-    --app-button: var(--tg-theme-button-color, #111827);
-    --app-button-text: var(--tg-theme-button-text-color, #ffffff);
-    --app-banner-bg: var(--tg-theme-button-color, #111827);
-    --app-banner-text: var(--tg-theme-button-text-color, #ffffff);
-    --app-secondary-bg: var(--tg-theme-secondary-bg-color, #f3f4f6);
+    --background: #f5f5f4;
+    --foreground: #1c1c1e;
+    --card: #ffffff;
+    --card-foreground: #1c1c1e;
+    --primary: #0a84ff;
+    --primary-foreground: #ffffff;
+    --secondary: #e5e5ea;
+    --secondary-foreground: #3a3a3c;
+    --muted: #f2f2f7;
+    --muted-foreground: #8e8e93;
+    --accent: #30d158;
+    --accent-foreground: #ffffff;
+    --border: rgba(0, 0, 0, 0.08);
+    --ring: rgba(10, 132, 255, 0.4);
+    --radius: 8px;
+    --sidebar: #ebebeb;
+    --sidebar-foreground: #1c1c1e;
+    --toolbar: #f0f0f0;
+    --terminal-bg: #1e1e1e;
+    --terminal-fg: #d4d4d4;
+    --diff-add: rgba(48, 209, 88, 0.12);
+    --diff-remove: rgba(255, 69, 58, 0.12);
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
 
-    --app-dialog-bg: #ffffff;
-    --app-chat-user-bg: #f2f4f6;
+    --app-bg: var(--background);
+    --app-fg: var(--foreground);
+    --app-hint: var(--muted-foreground);
+    --app-link: var(--primary);
+    --app-button: var(--primary);
+    --app-button-text: var(--primary-foreground);
+    --app-banner-bg: var(--primary);
+    --app-banner-text: var(--primary-foreground);
+    --app-secondary-bg: var(--secondary);
+
+    --app-dialog-bg: var(--card);
+    --app-chat-user-bg: var(--muted);
     --app-chat-user-surface-bg: var(--app-chat-user-bg);
-    --app-chat-user-fg: #24292f;
+    --app-chat-user-fg: var(--foreground);
     --app-chat-user-chip-bg: #DBEAFE;
     --app-chat-user-chip-fg: #1447E6;
-    --app-tool-card-bg: #f2f4f6;
+    --app-tool-card-bg: var(--muted);
     --app-tool-group-bg: var(--app-tool-card-bg);
     --app-tool-card-hover-bg: #e9edf2;
     --app-tool-card-accent: #7b8491;
@@ -45,10 +72,10 @@
     --app-scrollbar-thumb-hover: rgba(107, 114, 128, 0.5);
 
     /* Theme-aware colors (light mode defaults) */
-    --app-border: rgba(15, 23, 42, 0.08);
-    --app-divider: rgba(15, 23, 42, 0.08);
-    --app-subtle-bg: rgba(15, 23, 42, 0.04);
-    --app-code-bg: #f5f6f7;
+    --app-border: var(--border);
+    --app-divider: var(--border);
+    --app-subtle-bg: var(--muted);
+    --app-code-bg: var(--muted);
     --app-inline-code-bg: #ebecef;
 
     /* Diff colors (light) - from hapi-app */
@@ -82,19 +109,40 @@
 }
 
 [data-theme="dark"] {
-    /* Primary colors - override fallbacks for non-Telegram browsers */
-    --app-bg: var(--tg-theme-bg-color, #1c1c1e);
-    --app-fg: var(--tg-theme-text-color, #ffffff);
-    --app-hint: var(--tg-theme-hint-color, #8e8e93);
-    --app-link: var(--tg-theme-link-color, #ffffff);
-    --app-button: var(--tg-theme-button-color, #ffffff);
-    --app-button-text: var(--tg-theme-button-text-color, #111827);
-    --app-banner-bg: var(--tg-theme-button-color, #3A3A3C);
-    --app-banner-text: var(--tg-theme-button-text-color, #ffffff);
-    --app-secondary-bg: var(--tg-theme-secondary-bg-color, #2C2C2E);
+    --background: #1c1c1e;
+    --foreground: #f5f5f7;
+    --card: #2c2c2e;
+    --card-foreground: #f5f5f7;
+    --primary: #0a84ff;
+    --primary-foreground: #ffffff;
+    --secondary: #3a3a3c;
+    --secondary-foreground: #ebebf5;
+    --muted: #2c2c2e;
+    --muted-foreground: #8e8e93;
+    --accent: #30d158;
+    --accent-foreground: #ffffff;
+    --border: rgba(255, 255, 255, 0.08);
+    --ring: rgba(10, 132, 255, 0.5);
+    --sidebar: #111113;
+    --sidebar-foreground: #f5f5f7;
+    --toolbar: #252527;
+    --terminal-bg: #0d0d0f;
+    --terminal-fg: #cccccc;
+    --diff-add: rgba(48, 209, 88, 0.15);
+    --diff-remove: rgba(255, 69, 58, 0.15);
 
-    --app-dialog-bg: #202226;
-    --app-chat-user-bg: #2b2f34;
+    --app-bg: var(--background);
+    --app-fg: var(--foreground);
+    --app-hint: var(--muted-foreground);
+    --app-link: var(--primary);
+    --app-button: var(--primary);
+    --app-button-text: var(--primary-foreground);
+    --app-banner-bg: var(--primary);
+    --app-banner-text: var(--primary-foreground);
+    --app-secondary-bg: var(--secondary);
+
+    --app-dialog-bg: var(--card);
+    --app-chat-user-bg: var(--muted);
     --app-chat-user-surface-bg: var(--app-chat-user-bg);
     --app-chat-user-fg: #f5f7fa;
     --app-chat-user-chip-bg: rgba(37, 99, 235, 0.22);
@@ -124,10 +172,10 @@
     --app-scrollbar-thumb: rgba(196, 203, 214, 0.28);
     --app-scrollbar-thumb-hover: rgba(196, 203, 214, 0.42);
 
-    --app-border: rgba(255, 255, 255, 0.08);
-    --app-divider: rgba(255, 255, 255, 0.08);
-    --app-subtle-bg: rgba(255, 255, 255, 0.05);
-    --app-code-bg: #2a2f35;
+    --app-border: var(--border);
+    --app-divider: var(--border);
+    --app-subtle-bg: var(--secondary);
+    --app-code-bg: var(--muted);
     --app-inline-code-bg: #383e47;
 
     /* Diff colors (dark) - from hapi-app */
@@ -161,6 +209,28 @@
      * --tg-theme-* here, otherwise Telegram's gray backgrounds would defeat the
      * point of OLED black. Elevation comes from borders, not gray fills.
      */
+    --background: #000000;
+    --foreground: #f5f5f7;
+    --card: #0c0c0e;
+    --card-foreground: #f5f5f7;
+    --primary: #0a84ff;
+    --primary-foreground: #ffffff;
+    --secondary: #141414;
+    --secondary-foreground: #f5f5f7;
+    --muted: #0c0c0e;
+    --muted-foreground: #8e8e93;
+    --accent: #30d158;
+    --accent-foreground: #ffffff;
+    --border: rgba(255, 255, 255, 0.12);
+    --ring: rgba(10, 132, 255, 0.5);
+    --sidebar: #000000;
+    --sidebar-foreground: #f5f5f7;
+    --toolbar: #0c0c0e;
+    --terminal-bg: #000000;
+    --terminal-fg: #cccccc;
+    --diff-add: rgba(48, 209, 88, 0.15);
+    --diff-remove: rgba(255, 69, 58, 0.15);
+
     --app-bg: #000000;
     --app-fg: #f5f5f7;
     --app-hint: #8e8e93;
@@ -302,8 +372,15 @@ html:not([data-telegram-app="true"]) body {
 
 body {
     font-size: 1rem;
+    font-family: var(--font-sans);
     background: var(--app-bg);
     color: var(--app-fg);
+    transition: background 0.2s, color 0.2s;
+    -webkit-font-smoothing: antialiased;
+}
+
+.font-mono {
+    font-family: var(--font-mono);
 }
 
 #root {
@@ -318,9 +395,14 @@ body {
 }
 
 @media (hover: hover) and (pointer: fine) {
-    .session-list-item:hover,
+    .session-list-item:not([aria-current="page"]):hover,
     .session-list-new-button:hover {
         background-color: var(--app-subtle-bg);
+    }
+
+    .session-list-item[aria-current="page"],
+    .session-list-item[aria-current="page"]:hover {
+        background-color: var(--primary);
     }
 }
 

@@ -113,8 +113,8 @@ describe('SessionList directory action', () => {
         )
 
         const projectHeader = screen.getByTitle('/home/ubuntu')
-        expect(projectHeader).toHaveClass('bg-[var(--app-bg)]')
-        expect(projectHeader).toHaveClass('hover:bg-[var(--app-secondary-bg)]')
+        expect(projectHeader).toHaveClass('bg-[var(--sidebar)]')
+        expect(projectHeader).toHaveClass('hover:bg-[var(--secondary)]')
         expect(projectHeader).not.toHaveClass('hover:bg-[var(--app-subtle-bg)]')
 
         const listContent = projectHeader.parentElement?.parentElement

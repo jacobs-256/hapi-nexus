@@ -7,6 +7,7 @@ import { queryKeys } from '@/lib/query-keys'
 type SpawnInput = {
     machineId: string
     directory: string
+    projectId?: string
     agent?: AgentFlavor
     model?: string
     effort?: string
@@ -34,6 +35,7 @@ export function useSpawnSession(api: ApiClient | null): {
             return await api.spawnSession(
                 input.machineId,
                 input.directory,
+                input.projectId,
                 input.agent,
                 input.model,
                 input.modelReasoningEffort,

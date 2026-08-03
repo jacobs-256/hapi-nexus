@@ -1,5 +1,7 @@
 # How it Works
 
+**Language:** English | [简体中文](../../zh-CN/guide/how-it-works.md)
+
 HAPI consists of three interconnected components that work together to provide remote AI agent control.
 
 ## Architecture Overview
@@ -61,7 +63,7 @@ hapi codex       # Start OpenAI Codex session
 hapi cursor      # Start Cursor Agent session
 hapi grok        # Start Grok Build session
 hapi opencode    # Start OpenCode session
-hapi runner start # Run background service for remote session spawning
+hapi runner start --workspace-root /path/to/projects # Run background service for remote session spawning
 ```
 
 ### HAPI Hub
@@ -72,6 +74,8 @@ The hub is the central service that connects everything:
 - **Socket.IO** - Real-time bidirectional communication with CLI
 - **SSE (Server-Sent Events)** - Live updates pushed to web clients
 - **SQLite Database** - Persistent storage for sessions and messages
+- **Local Accounts** - Username/password browser login, admin user management, and per-user access tokens
+- **Project ACLs** - User/project/workspace access checks before sessions, machines, files, and events are exposed
 - **Telegram Bot** - Notifications and Mini App integration
 
 ### Web App
@@ -83,6 +87,8 @@ A React-based PWA that provides the mobile interface:
 - **Permission Management** - Approve or deny tool access
 - **File Browser** - Browse project files and view git diffs
 - **Remote Spawn** - Start new sessions on any connected machine
+- **Projects** - Share selected runner workspaces and project sessions with other users
+- **Enterprise Settings** - Manage account credentials, users, projects, machines, storage, and appearance
 
 ## Data Flow
 
@@ -104,7 +110,7 @@ A React-based PWA that provides the mobile interface:
 5. Web clients receive SSE update
          │
          ▼
-6. Session appears in mobile app
+6. Session appears in the Web/PWA clients
 ```
 
 ### Permission Request Flow
@@ -119,7 +125,7 @@ A React-based PWA that provides the mobile interface:
 3. Hub stores request and notifies via SSE + Telegram
          │
          ▼
-4. User receives notification on phone
+4. User receives notification on Web/PWA, Telegram, or native companion
          │
          ▼
 5. User approves/denies in web app or Telegram
@@ -134,7 +140,7 @@ A React-based PWA that provides the mobile interface:
 ### Message Flow
 
 ```
-User (Phone)                 Hub                     CLI
+User (Web/PWA)               Hub                     CLI
      │                         │                       │
      │──── Send message ──────►│                       │
      │                         │─── Socket.IO emit ───►│
@@ -205,7 +211,7 @@ Switch to remote mode when you need to step away:
 ```
 
 **Local → Remote:**
-- Receive a message from phone/web
+- Receive a message from Web/PWA
 - Session automatically switches to remote mode
 - Terminal shows "Remote mode - waiting for input"
 
@@ -216,7 +222,7 @@ Switch to remote mode when you need to step away:
 
 ### Use Cases
 
-1. **Remote Control While Away** - Start a session at your desk, continue from your phone during commute or coffee break
+1. **Remote Control While Away** - Start a session at your desk, continue from your phone or browser during commute or coffee break
 
 2. **Permission Approval** - AI requests file access, you get notified on phone, approve with one tap, session continues
 

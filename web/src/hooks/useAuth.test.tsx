@@ -20,6 +20,9 @@ const h = vi.hoisted(() => {
             authCount += 1
             return { token: `token-${authCount}`, user: { id: 'u1' } }
         }
+        async getAccount(): Promise<{ user: { id: string; username: string } }> {
+            return { user: { id: 'u1', username: 'admin' } }
+        }
     }
     class MockApiError extends Error {
         status: number
@@ -37,6 +40,7 @@ vi.mock('@/api/client', () => ({ ApiClient: h.MockApiClient, ApiError: h.MockApi
 
 // Imported after the mock is registered (vi.mock is hoisted).
 import { useAuth } from '@/hooks/useAuth'
+import type { AuthSource } from '@/hooks/useAuth'
 
 type ApiWithOptions = {
     id: number
@@ -47,7 +51,7 @@ describe('useAuth — api identity stability across token refresh (issue #927)',
     it('keeps the same ApiClient instance when the token refreshes', async () => {
         // Stable authSource reference, exactly like the real caller (useAuthSource holds it in
         // useState). This isolates the bug under test: a *token* refresh, not a source change.
-        const authSource = { type: 'accessToken' as const, token: 'seed' }
+        const authSource = { type: 'telegram' as const, initData: 'telegram-seed' }
         const { result } = renderHook(() => useAuth(authSource, 'http://hub.test'))
 
         // Initial authenticate resolves and sets the first token.
@@ -75,5 +79,37 @@ describe('useAuth — api identity stability across token refresh (issue #927)',
         // NOT re-run / remount. On current code `api` is rebuilt because `token` is a useMemo
         // dep, which drives the Voice-remount spam + per-image refetch storm. This fails today.
         expect(result.current.api).toBe(api1 as unknown as typeof result.current.api)
+    })
+
+    it('clears token state when the auth source is removed', async () => {
+        const authSource = { type: 'telegram' as const, initData: 'telegram-seed' }
+        const { result, rerender } = renderHook(
+            ({ source }: { source: AuthSource | null }) => useAuth(source, 'http://hub.test'),
+            { initialProps: { source: authSource as AuthSource | null } }
+        )
+
+        await waitFor(() => expect(result.current.api).not.toBeNull())
+
+        rerender({ source: null })
+
+        await waitFor(() => expect(result.current.token).toBeNull())
+        expect(result.current.user).toBeNull()
+        expect(result.current.api).toBeNull()
+        expect(result.current.error).toBeNull()
+        expect(result.current.needsBinding).toBe(false)
+    })
+
+    it('uses stored Web JWT sessions without access-token authentication', async () => {
+        const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/g, '')
+        const authSource = { type: 'webSession' as const, token: `header.${payload}.sig` }
+        const { result } = renderHook(() => useAuth(authSource, 'http://hub.test'))
+
+        await waitFor(() => expect(result.current.api).not.toBeNull())
+
+        expect(result.current.user).toEqual({ id: 'u1', username: 'admin' })
+        expect(result.current.token).toBe(authSource.token)
     })
 })

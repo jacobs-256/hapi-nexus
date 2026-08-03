@@ -1,5 +1,7 @@
 # Cursor Agent
 
+**Language:** English | [简体中文](../../zh-CN/guide/cursor.md)
+
 HAPI supports [Cursor Agent CLI](https://cursor.com/docs/cli/using) for running Cursor's AI coding agent with remote control via web and phone.
 
 ## Prerequisites

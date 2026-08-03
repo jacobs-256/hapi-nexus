@@ -12,6 +12,8 @@ function makeExport(
         session: {
             id: 'session-abcdef123456',
             namespace: 'default',
+            projectId: null,
+            createdByUserId: null,
             seq: 1,
             createdAt: Date.UTC(2026, 5, 5, 10, 0, 0),
             updatedAt: Date.UTC(2026, 5, 5, 11, 0, 0),

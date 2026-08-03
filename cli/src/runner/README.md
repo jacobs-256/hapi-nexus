@@ -1,6 +1,6 @@
 # HAPI CLI Runner: Control Flow and Lifecycle
 
-The runner is a persistent background process that manages HAPI sessions, enables remote control from the mobile app, and handles auto-updates when the CLI version changes.
+The runner is a persistent background process that manages HAPI sessions, enables remote control from the Web/PWA/Telegram clients, and handles auto-updates when the CLI version changes.
 
 ## 1. Runner Lifecycle
 
@@ -21,7 +21,7 @@ Control Flow:
    - Direct-connect setup: `authAndSetupMachineIfNeeded()` ensures `CLI_API_TOKEN` is set and `machineId` exists
    - State persistence: writes PID, version, HTTP port, mtime to runner.state.json
    - HTTP server: starts Fastify on random port for local CLI control (list, stop, spawn)
-   - WebSocket: establishes persistent connection to backend via `ApiMachineClient`
+   - WebSocket: establishes persistent connection to the hub via `ApiMachineClient`
    - RPC registration: exposes `spawn-happy-session`, `stop-session`, `stop-runner` handlers
    - Heartbeat loop: every 60s (or `HAPI_RUNNER_HEARTBEAT_INTERVAL`) checks for version updates, prunes dead sessions, verifies PID ownership
 5. Awaits shutdown promise which resolves when:
@@ -31,7 +31,7 @@ Control Flow:
    - Uncaught exception occurs - source: `exception`
 6. On shutdown, `cleanupAndShutdown()` performs:
    - Clears heartbeat interval
-   - Updates runner state to "shutting-down" on backend with shutdown source
+   - Updates runner state to "shutting-down" on the hub with shutdown source
    - Disconnects WebSocket
    - Stops HTTP server
    - Deletes runner.state.json
@@ -69,7 +69,7 @@ Control Flow:
 2. Attempts graceful shutdown via HTTP POST to `/stop`
 3. Runner receives request, triggers shutdown with source `hapi-cli`
 4. `cleanupAndShutdown()` executes:
-   - Updates backend status to "shutting-down"
+   - Updates hub status to "shutting-down"
    - Closes WebSocket connection
    - Stops HTTP server
    - Deletes runner.state.json
@@ -99,8 +99,8 @@ When spawning a session with a token:
 
 ### Runner-Spawned Sessions (Remote)
 
-Initiated by mobile app via backend RPC:
-1. Backend forwards RPC `spawn-happy-session` to runner via WebSocket
+Initiated by Web/PWA/Telegram clients via hub RPC:
+1. The hub forwards RPC `spawn-happy-session` to runner via WebSocket
 2. `ApiMachineClient` invokes `spawnSession()` handler
 3. `spawnSession()`:
    - Validates/creates directory (with approval flow)
@@ -109,10 +109,10 @@ Initiated by mobile app via backend RPC:
    - Adds to `pidToTrackedSession` map
    - Sets up 15-second awaiter for session webhook
 4. New HAPI process:
-   - Creates session with backend, receives `happySessionId`
+   - Creates session with the hub, receives `happySessionId`
    - Calls `notifyRunnerSessionStarted()` to POST to runner's `/session-started`
 5. Runner updates tracking with `happySessionId`, resolves awaiter
-6. RPC returns session info to mobile app
+6. RPC returns session info to the requesting client
 
 ### Terminal-Spawned Sessions
 

@@ -87,10 +87,10 @@ function OutlineIcon(props: { className?: string }) {
 }
 
 function headerToggleClass(active: boolean): string {
-    return `flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+    return `flex h-8 w-8 items-center justify-center rounded-[7px] transition-colors ${
         active
             ? 'bg-[var(--app-button)] text-[var(--app-button-text)] hover:opacity-90'
-            : 'text-[var(--app-hint)] hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)]'
+            : 'text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]'
     }`
 }
 
@@ -258,13 +258,13 @@ export function SessionHeader(props: {
 
     return (
         <>
-            <div className="bg-[var(--app-bg)] pt-[env(safe-area-inset-top)]">
-                <div className="mx-auto w-full max-w-content flex items-center gap-2 p-3">
+            <div className="border-b border-[var(--border)] bg-[var(--card)] pt-[env(safe-area-inset-top)]">
+                <div className="mx-auto flex h-11 w-full max-w-content items-center gap-2 px-3">
                     {/* Back button */}
                     <button
                         type="button"
                         onClick={props.onBack}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                     >
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -283,10 +283,10 @@ export function SessionHeader(props: {
 
                     {/* Session info - two lines: title and path */}
                     <div className="min-w-0 flex-1">
-                        <div className="truncate font-semibold">
+                        <div className="truncate text-sm font-semibold tracking-[-0.2px] text-[var(--foreground)]">
                             {title}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--app-hint)]">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--muted-foreground)]">
                             <span className="inline-flex items-center gap-1">
                                 <AgentFlavorIcon flavor={session.metadata?.flavor} className="h-3.5 w-3.5 shrink-0 -translate-y-px" />
                                 {session.metadata?.flavor?.trim() || 'unknown'}
@@ -356,7 +356,7 @@ export function SessionHeader(props: {
                         aria-haspopup="menu"
                         aria-expanded={menuOpen}
                         aria-controls={menuOpen ? menuId : undefined}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                         title={t('session.more')}
                     >
                         <MoreVerticalIcon />

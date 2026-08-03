@@ -320,6 +320,8 @@ function createMachine(id: string, workspaceRoots: string[], namespace = 'defaul
     return {
         id,
         namespace,
+        ownerUserId: null,
+        teamId: null,
         seq: 0,
         createdAt: 0,
         updatedAt: 0,

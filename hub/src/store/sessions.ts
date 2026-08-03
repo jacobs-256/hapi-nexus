@@ -134,6 +134,8 @@ type DbSessionRow = {
     id: string
     tag: string | null
     namespace: string
+    project_id: string | null
+    created_by_user_id: number | null
     machine_id: string | null
     created_at: number
     updated_at: number
@@ -159,6 +161,8 @@ function toStoredSession(row: DbSessionRow): StoredSession {
         id: row.id,
         tag: row.tag,
         namespace: row.namespace,
+        projectId: row.project_id ?? null,
+        createdByUserId: row.created_by_user_id ?? null,
         machineId: row.machine_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -189,7 +193,8 @@ export function getOrCreateSession(
     model?: string,
     effort?: string,
     modelReasoningEffort?: string,
-    requestedId?: string
+    requestedId?: string,
+    options?: { projectId?: string | null; createdByUserId?: number | null }
 ): StoredSession {
     const existing = db.prepare(
         'SELECT * FROM sessions WHERE tag = ? AND namespace = ? ORDER BY created_at DESC LIMIT 1'
@@ -199,7 +204,23 @@ export function getOrCreateSession(
         if (requestedId && existing.id !== requestedId) {
             throw new SessionIdentityConflictError('Session tag is already bound to a different id')
         }
-        return toStoredSession(existing)
+        const stored = toStoredSession(existing)
+        if ((stored.projectId === null && options?.projectId) || (stored.createdByUserId === null && options?.createdByUserId)) {
+            db.prepare(`
+                UPDATE sessions
+                SET project_id = COALESCE(project_id, @project_id),
+                    created_by_user_id = COALESCE(created_by_user_id, @created_by_user_id)
+                WHERE id = @id
+                  AND namespace = @namespace
+            `).run({
+                id: stored.id,
+                namespace,
+                project_id: options?.projectId ?? null,
+                created_by_user_id: options?.createdByUserId ?? null
+            })
+            return getSession(db, stored.id) ?? stored
+        }
+        return stored
     }
 
     const now = Date.now()
@@ -220,7 +241,7 @@ export function getOrCreateSession(
 
     db.prepare(`
         INSERT INTO sessions (
-            id, tag, namespace, machine_id, created_at, updated_at,
+            id, tag, namespace, project_id, created_by_user_id, machine_id, created_at, updated_at,
             metadata, metadata_version,
             agent_state, agent_state_version,
             model,
@@ -229,7 +250,7 @@ export function getOrCreateSession(
             todos, todos_updated_at,
             active, active_at, seq
         ) VALUES (
-            @id, @tag, @namespace, NULL, @created_at, @updated_at,
+            @id, @tag, @namespace, @project_id, @created_by_user_id, NULL, @created_at, @updated_at,
             @metadata, 1,
             @agent_state, 1,
             @model,
@@ -242,6 +263,8 @@ export function getOrCreateSession(
         id,
         tag,
         namespace,
+        project_id: options?.projectId ?? null,
+        created_by_user_id: options?.createdByUserId ?? null,
         created_at: now,
         updated_at: now,
         // Never persist NULL — CLI SessionSchema requires numeric activeAt.
@@ -259,6 +282,28 @@ export function getOrCreateSession(
         throw new Error('Failed to create session')
     }
     return row
+}
+
+export function assignSessionProject(
+    db: Database,
+    id: string,
+    namespace: string,
+    projectId: string,
+    createdByUserId: number
+): StoredSession | null {
+    db.prepare(`
+        UPDATE sessions
+        SET project_id = @project_id,
+            created_by_user_id = COALESCE(created_by_user_id, @created_by_user_id)
+        WHERE id = @id
+          AND namespace = @namespace
+    `).run({
+        id,
+        namespace,
+        project_id: projectId,
+        created_by_user_id: createdByUserId
+    })
+    return getSession(db, id)
 }
 
 export class SessionIdentityConflictError extends Error {

@@ -7,7 +7,7 @@ import type { SyncEngine } from '../../sync/syncEngine'
 import type { VisibilityState } from '../../visibility/visibilityTracker'
 import type { VisibilityTracker } from '../../visibility/visibilityTracker'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireSession } from './guards'
+import { requireMachine, requireSession } from './guards'
 
 function parseOptionalId(value: string | undefined): string | null {
     if (!value) {
@@ -52,6 +52,7 @@ export function createEventsRoutes(
         const subscriptionId = randomUUID()
         const visibility = parseVisibility(query.visibility)
         const namespace = c.get('namespace')
+        const userId = c.get('userId')
         let resolvedSessionId = sessionId
 
         if (sessionId || machineId) {
@@ -67,13 +68,8 @@ export function createEventsRoutes(
                 resolvedSessionId = sessionResult.sessionId
             }
             if (machineId) {
-                const machine = engine.getMachine(machineId)
-                if (!machine) {
-                    return c.json({ error: 'Machine not found' }, 404)
-                }
-                if (machine.namespace !== namespace) {
-                    return c.json({ error: 'Machine access denied' }, 403)
-                }
+                const machine = requireMachine(c, engine, machineId)
+                if (machine instanceof Response) return machine
             }
         }
 
@@ -81,6 +77,7 @@ export function createEventsRoutes(
             manager.subscribe({
                 id: subscriptionId,
                 namespace,
+                userId,
                 all,
                 sessionId: resolvedSessionId,
                 machineId,

@@ -1,5 +1,6 @@
 import { useTranslation } from '@/lib/use-translation'
 import { SettingsNav } from '@/components/settings/SettingsNav'
+import { SettingsPageContent } from '@/components/settings/SettingsPrimitives'
 import SettingsDisplayPage from './display'
 
 export default function SettingsHubPage() {
@@ -7,8 +8,9 @@ export default function SettingsHubPage() {
     return (
         <>
             <div className="lg:hidden">
-                <div className="px-3 pb-2 pt-4 text-sm text-[var(--app-hint)]">{t('settings.hub.description')}</div>
-                <SettingsNav mobile />
+                <SettingsPageContent title={t('settings.title')} description={t('settings.hub.description')}>
+                    <SettingsNav mobile />
+                </SettingsPageContent>
             </div>
             <div className="hidden lg:block">
                 <SettingsDisplayPage />

@@ -45,11 +45,13 @@ export function createBindRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
         if (existingUser && existingUser.namespace !== namespace) {
             return c.json({ error: 'already_bound' }, 409)
         }
-        store.users.addUser('telegram', telegramUserId, namespace)
+        const storedUser = store.users.addUser('telegram', telegramUserId, namespace)
 
-        const userId = await getOrCreateOwnerId()
+        const ownerUserId = await getOrCreateOwnerId()
+        const defaultProject = store.projects.ensureDefaults(namespace, ownerUserId)
+        store.projects.addProjectMember(defaultProject.id, storedUser.id, 'owner')
 
-        const token = await new SignJWT({ uid: userId, ns: namespace })
+        const token = await new SignJWT({ uid: storedUser.id, ns: namespace })
             .setProtectedHeader({ alg: 'HS256' })
             .setIssuedAt()
             .setExpirationTime('4h')
@@ -58,10 +60,14 @@ export function createBindRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
         return c.json({
             token,
             user: {
-                id: userId,
+                id: storedUser.id,
                 username: result.user.username,
+                displayName: storedUser.displayName,
                 firstName: result.user.first_name,
-                lastName: result.user.last_name
+                lastName: result.user.last_name,
+                platform: storedUser.platform,
+                role: storedUser.role,
+                accessToken: storedUser.accessToken
             }
         })
     })

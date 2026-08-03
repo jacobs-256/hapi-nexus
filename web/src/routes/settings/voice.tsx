@@ -22,7 +22,7 @@ export default function SettingsVoicePage() {
     }
 
     return (
-        <SettingsPageContent description={t('settings.voice.description')}>
+        <SettingsPageContent title={t('settings.voice.title')} description={t('settings.voice.description')}>
             <SettingsSection title={t('settings.voice.connection.title')} description={t('settings.voice.group.hint')}>
                 {voice.configuredBackends.length > 1 && voice.backend ? (
                     <SettingsChoiceGroup

@@ -4,6 +4,7 @@ import type { SyncEngine } from '../../sync/syncEngine'
 import { createConfiguration } from '../../configuration'
 import { createCliRoutes } from './cli'
 import { SessionIdentityConflictError } from '../../store/sessions'
+import type { StoredProject } from '../../store'
 
 function createApp(engine: Partial<SyncEngine>) {
     const app = new Hono()
@@ -14,6 +15,19 @@ function createApp(engine: Partial<SyncEngine>) {
 function authHeaders() {
     return {
         authorization: 'Bearer test-token'
+    }
+}
+
+function defaultProject(): StoredProject {
+    return {
+        id: 'default-project',
+        namespace: 'default',
+        teamId: 'default-team',
+        name: 'Default Project',
+        repoUrl: null,
+        createdByUserId: 1,
+        createdAt: 1,
+        archivedAt: null
     }
 }
 
@@ -123,6 +137,7 @@ describe('cli lazy session creation', () => {
         const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
         const getOrCreateSession = mock(() => ({ id: sessionId }))
         const app = createApp({
+            ensureNamespaceDefaults: defaultProject,
             getMachine: () => null,
             getOrCreateMachine,
             getOrCreateSession
@@ -151,7 +166,8 @@ describe('cli lazy session creation', () => {
             'machine-1',
             { host: 'localhost' },
             null,
-            'default'
+            'default',
+            { ownerUserId: expect.any(Number), teamId: 'default-team' }
         )
         expect(getOrCreateSession).toHaveBeenCalledWith(
             'lazy-tag',
@@ -161,7 +177,8 @@ describe('cli lazy session creation', () => {
             undefined,
             undefined,
             undefined,
-            sessionId
+            sessionId,
+            { projectId: 'default-project', createdByUserId: expect.any(Number) }
         )
     })
 
@@ -169,6 +186,7 @@ describe('cli lazy session creation', () => {
         const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
         const getOrCreateSession = mock(() => ({ id: sessionId }))
         const app = createApp({
+            ensureNamespaceDefaults: defaultProject,
             getMachine: () => ({ id: 'machine-1', namespace: 'other' }),
             getOrCreateMachine,
             getOrCreateSession
@@ -195,6 +213,7 @@ describe('cli lazy session creation', () => {
 
     it('returns 409 for a requested identity conflict', async () => {
         const app = createApp({
+            ensureNamespaceDefaults: defaultProject,
             getOrCreateSession: () => {
                 throw new SessionIdentityConflictError('Session tag is already bound to a different id')
             }

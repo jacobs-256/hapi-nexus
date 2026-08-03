@@ -37,7 +37,8 @@ describe('LoginPrompt', () => {
             />
         )
 
-        fireEvent.change(screen.getByPlaceholderText('Access token'), { target: { value: 'token' } })
+        fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+        fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
         fireEvent.click(screen.getByRole('button', { name: 'Sign In' }))
 
         const hubInput = await screen.findByPlaceholderText('https://hapi.example.com')

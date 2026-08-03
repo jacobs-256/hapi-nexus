@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite'
 
 import type { StoredSession, VersionedUpdateResult } from './types'
 import {
+    assignSessionProject,
     deleteSession,
     getOrCreateSession,
     getSession,
@@ -35,9 +36,14 @@ export class SessionStore {
         model?: string,
         effort?: string,
         modelReasoningEffort?: string,
-        requestedId?: string
+        requestedId?: string,
+        options?: { projectId?: string | null; createdByUserId?: number | null }
     ): StoredSession {
-        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, model, effort, modelReasoningEffort, requestedId)
+        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, model, effort, modelReasoningEffort, requestedId, options)
+    }
+
+    assignSessionProject(id: string, namespace: string, projectId: string, createdByUserId: number): StoredSession | null {
+        return assignSessionProject(this.db, id, namespace, projectId, createdByUserId)
     }
 
     updateSessionMetadata(

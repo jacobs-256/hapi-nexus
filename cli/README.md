@@ -18,7 +18,7 @@ Run Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode sessions from your
 1. Start the hub and set env vars (see ../hub/README.md).
 2. Set the same CLI_API_TOKEN on this machine or run `hapi auth login`.
 3. Run `hapi` to start a session.
-4. Use the web app or Telegram Mini App to monitor and control.
+4. Sign in to the web app with a local username/password account to monitor and control.
 
 ## Commands
 
@@ -67,9 +67,18 @@ Both `start` and `start-sync` accept repeatable `--workspace-root <path>` (or `-
 
 - The web `/browse` page surfaces scoped file trees rooted at those paths.
 - The runner refuses `list-directory` and `spawn-session` requests for paths outside the configured roots.
+- Project workspaces can only be attached under one of these roots.
 - `~` and `~/foo` are expanded.
 
 Omitting the flag keeps the legacy behavior: no scoping, no `/browse` feature.
+
+Use multiple `--workspace-root` flags on one runner when the same machine/namespace has multiple allowed directories:
+
+```bash
+hapi runner start --workspace-root /path/a --workspace-root /path/b
+```
+
+Run separate runners only for separate namespaces or separate machines. Remote users do not need a local copy of the source code; the runner machine owns the files and agent CLIs.
 
 See `src/runner/run.ts`.
 
@@ -92,7 +101,7 @@ See `src/configuration.ts` for all options.
 
 ### Required
 
-- `CLI_API_TOKEN` - Shared secret; must match the hub. Can be set via env or `~/.hapi/settings.json` (env wins).
+- `CLI_API_TOKEN` - Shared secret for CLI/runner hub access; must match the hub. Can be set via env or `~/.hapi/settings.json` (env wins).
 - `HAPI_API_URL` - Hub base URL (default: http://localhost:3006).
 
 ### Optional
@@ -134,7 +143,7 @@ See `src/configuration.ts` for all options.
 
 Data is stored in `~/.hapi/` (or `$HAPI_HOME`):
 
-- `settings.json` - User settings (machineId, token, onboarding flag). See `src/persistence.ts`.
+- `settings.json` - User settings (machineId, CLI API token, onboarding flag). See `src/persistence.ts`.
 - `runner.state.json` - Runner state (pid, port, version, heartbeat).
 - `logs/` - Log files.
 

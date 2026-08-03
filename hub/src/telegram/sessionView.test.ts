@@ -6,6 +6,8 @@ function createSession(overrides: Partial<Session> = {}): Session {
     return {
         id: 'session-1234567890',
         namespace: 'default',
+        projectId: null,
+        createdByUserId: null,
         seq: 1,
         createdAt: 0,
         updatedAt: 0,
@@ -36,6 +38,8 @@ function createMachine(overrides: Partial<Machine> = {}): Machine {
     return {
         id: 'machine-1',
         namespace: 'default',
+        ownerUserId: null,
+        teamId: null,
         seq: 1,
         createdAt: 0,
         updatedAt: 0,

@@ -2,7 +2,7 @@
 
 Run official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions locally and control them remotely through a Web / PWA / Telegram Mini App.
 
-> **Why HAPI?** HAPI is a local-first alternative to Happy. See [Why Not Happy?](docs/guide/why-hapi.md) for the key differences.
+> **Why HAPI?** HAPI is a local-first alternative to Happy. See [Why Not Happy?](docs/en/guide/why-hapi.md) for the key differences.
 
 ## Features
 
@@ -13,6 +13,8 @@ Run official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions
 - **Terminal Anywhere** - Run commands from your phone or browser, directly connected to the working machine.
 - **Voice Control** - Talk to your AI agent hands-free using the built-in voice assistant.
 - **Workspace Browser** - Opt-in via one or more `hapi runner start --workspace-root <path>` flags: browse scoped file trees from the web and start sessions in allowed subdirectories.
+- **Project Sharing** - Create projects, attach runner workspaces, invite users, and share sessions without copying source code to every device.
+- **Private Hub Accounts** - Browser users sign in with local username/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
 
 ## Demo
 
@@ -28,20 +30,24 @@ npx @twsxtd/hapi                 # run claude code
 `hapi server` remains supported as an alias.
 
 The terminal will display a URL and QR code. Scan the QR code with your phone or open the URL to access.
+The default browser login is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.
 
 > The relay uses WireGuard + TLS for end-to-end encryption. Your data is encrypted from your device to your machine.
 
-For self-hosted options (Cloudflare Tunnel, Tailscale), see [Installation](docs/guide/installation.md)
+For self-hosted options (Cloudflare Tunnel, Tailscale), see [Installation](docs/en/guide/installation.md)
 
 ## Docs
 
-- [App](docs/guide/pwa.md)
-- [How it Works](docs/guide/how-it-works.md)
-- [Cursor Agent](docs/guide/cursor.md)
-- [Grok Build](docs/guide/grok.md)
-- [Voice Assistant](docs/guide/voice-assistant.md)
-- [Why HAPI](docs/guide/why-hapi.md)
-- [FAQ](docs/guide/faq.md)
+- [App](docs/en/guide/pwa.md)
+- [Accounts and Access](docs/en/guide/accounts.md)
+- [Settings Console](docs/en/guide/settings.md)
+- [Projects and Sharing](docs/en/guide/projects.md)
+- [How it Works](docs/en/guide/how-it-works.md)
+- [Cursor Agent](docs/en/guide/cursor.md)
+- [Grok Build](docs/en/guide/grok.md)
+- [Voice Assistant](docs/en/guide/voice-assistant.md)
+- [Why HAPI](docs/en/guide/why-hapi.md)
+- [FAQ](docs/en/guide/faq.md)
 
 ## Build from source
 

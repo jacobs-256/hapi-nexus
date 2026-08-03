@@ -211,6 +211,8 @@ export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>
 export const SessionSchema = z.object({
     id: z.string(),
     namespace: z.string(),
+    projectId: z.string().nullable().optional().default(null),
+    createdByUserId: z.number().nullable().optional().default(null),
     seq: z.number(),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -331,6 +333,8 @@ export type MachineHealth = z.infer<typeof MachineHealthSchema>
 export const MachineSchema = z.object({
     id: z.string(),
     namespace: z.string(),
+    ownerUserId: z.number().nullable().optional().default(null),
+    teamId: z.string().nullable().optional().default(null),
     seq: z.number(),
     createdAt: z.number(),
     updatedAt: z.number(),
@@ -344,6 +348,41 @@ export const MachineSchema = z.object({
 })
 
 export type Machine = z.infer<typeof MachineSchema>
+
+export const ProjectRoleSchema = z.enum(['owner', 'admin', 'editor', 'viewer'])
+export type ProjectRole = z.infer<typeof ProjectRoleSchema>
+
+export const ProjectSchema = z.object({
+    id: z.string(),
+    namespace: z.string(),
+    name: z.string(),
+    repoUrl: z.string().nullable().optional(),
+    createdByUserId: z.number().nullable(),
+    createdAt: z.number(),
+    archivedAt: z.number().nullable()
+})
+
+export type Project = z.infer<typeof ProjectSchema>
+
+export const ProjectMemberSchema = z.object({
+    projectId: z.string(),
+    userId: z.number(),
+    role: ProjectRoleSchema,
+    createdAt: z.number()
+})
+
+export type ProjectMember = z.infer<typeof ProjectMemberSchema>
+
+export const ProjectWorkspaceSchema = z.object({
+    id: z.string(),
+    projectId: z.string(),
+    machineId: z.string(),
+    rootPath: z.string(),
+    createdByUserId: z.number().nullable(),
+    createdAt: z.number()
+})
+
+export type ProjectWorkspace = z.infer<typeof ProjectWorkspaceSchema>
 
 export const MachinePatchSchema = z.object({
     active: z.boolean().optional(),

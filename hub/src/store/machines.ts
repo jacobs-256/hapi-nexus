@@ -7,6 +7,8 @@ import { updateVersionedField } from './versionedUpdates'
 type DbMachineRow = {
     id: string
     namespace: string
+    owner_user_id: number | null
+    team_id: string | null
     created_at: number
     updated_at: number
     metadata: string | null
@@ -22,6 +24,8 @@ function toStoredMachine(row: DbMachineRow): StoredMachine {
     return {
         id: row.id,
         namespace: row.namespace,
+        ownerUserId: row.owner_user_id ?? null,
+        teamId: row.team_id ?? null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         metadata: safeJsonParse(row.metadata),
@@ -56,13 +60,28 @@ export function getOrCreateMachine(
     id: string,
     metadata: unknown,
     runnerState: unknown,
-    namespace: string
+    namespace: string,
+    options?: { ownerUserId?: number | null; teamId?: string | null }
 ): StoredMachine {
     const existing = db.prepare('SELECT * FROM machines WHERE id = ?').get(id) as DbMachineRow | undefined
     if (existing) {
         const stored = toStoredMachine(existing)
         if (stored.namespace !== namespace) {
             throw new Error('Machine namespace mismatch')
+        }
+        let ownershipChanged = false
+        if ((stored.ownerUserId === null && options?.ownerUserId) || (stored.teamId === null && options?.teamId)) {
+            db.prepare(`
+                UPDATE machines
+                SET owner_user_id = COALESCE(owner_user_id, @owner_user_id),
+                    team_id = COALESCE(team_id, @team_id)
+                WHERE id = @id
+            `).run({
+                id,
+                owner_user_id: options?.ownerUserId ?? null,
+                team_id: options?.teamId ?? null
+            })
+            ownershipChanged = true
         }
         const merged = mergeMachineMetadata(stored.metadata, metadata)
         if (merged !== undefined) {
@@ -84,6 +103,9 @@ export function getOrCreateMachine(
             }
             return row
         }
+        if (ownershipChanged) {
+            return getMachine(db, id) ?? stored
+        }
         return stored
     }
 
@@ -93,12 +115,12 @@ export function getOrCreateMachine(
 
     db.prepare(`
         INSERT INTO machines (
-            id, namespace, created_at, updated_at,
+            id, namespace, owner_user_id, team_id, created_at, updated_at,
             metadata, metadata_version,
             runner_state, runner_state_version,
             active, active_at, seq
         ) VALUES (
-            @id, @namespace, @created_at, @updated_at,
+            @id, @namespace, @owner_user_id, @team_id, @created_at, @updated_at,
             @metadata, 1,
             @runner_state, 1,
             0, NULL, 0
@@ -106,6 +128,8 @@ export function getOrCreateMachine(
     `).run({
         id,
         namespace,
+        owner_user_id: options?.ownerUserId ?? null,
+        team_id: options?.teamId ?? null,
         created_at: now,
         updated_at: now,
         metadata: metadataJson,

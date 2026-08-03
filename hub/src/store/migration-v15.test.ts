@@ -17,7 +17,16 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
         const store = new Store(':memory:')
         const cols = getColumns(store, 'session_scratchlist')
         expect(cols).toContain('attachments')
-        expect(getUserVersion(store)).toBe(15)
+        const userCols = getColumns(store, 'users')
+        expect(userCols).toEqual(expect.arrayContaining([
+            'username',
+            'password_hash',
+            'access_token',
+            'access_token_hash',
+            'role',
+            'disabled_at'
+        ]))
+        expect(getUserVersion(store)).toBe(17)
         store.close()
     })
 
@@ -36,7 +45,9 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
             store = new Store(dbPath)
             const cols = getColumns(store, 'session_scratchlist')
             expect(cols).toContain('attachments')
-            expect(getUserVersion(store)).toBe(15)
+            const userCols = getColumns(store, 'users')
+            expect(userCols).toContain('access_token_hash')
+            expect(getUserVersion(store)).toBe(17)
         } finally {
             store?.close()
             rmSync(dir, { recursive: true, force: true })
@@ -56,7 +67,7 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
             store2 = new Store(dbPath)
             const cols2 = getColumns(store2, 'session_scratchlist')
             expect(cols2).toEqual(cols1)
-            expect(getUserVersion(store2)).toBe(15)
+            expect(getUserVersion(store2)).toBe(17)
         } finally {
             store2?.close()
             store1?.close()

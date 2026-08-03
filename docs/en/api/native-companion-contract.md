@@ -1,15 +1,20 @@
 # Native companion API contract (phone + Wear)
 
+**Language:** English | [简体中文](../../zh-CN/api/native-companion-contract.md)
+
 **Audience:** Implementers of native companion apps (Android phone + Wear OS, iOS, etc.) that pair with a hapi hub via FCM.
 
-**Auth:** Exchange the pairing `code` / CLI access token with `POST /api/auth`:
-`{ "accessToken": "<code>" }`. Use the returned JWT as `Authorization: Bearer <token>`
-for device registration and session actions. `POST /api/bind` is only for Telegram Mini App
-binding (requires Telegram `initData`).
+**Auth:** Exchange a pairing `code`, personal access token, or operator `CLI_API_TOKEN`
+with `POST /api/auth`: `{ "accessToken": "<code-or-token>" }`. Use the returned
+JWT as `Authorization: Bearer <token>` for device registration and session actions.
+Browser/PWA users sign in with username/password; access-token exchange is for
+native companion, CLI-style, owner, and Telegram-binding flows.
+
+`POST /api/bind` is only for Telegram Mini App binding (requires Telegram `initData`).
 
 ## Scope
 
-A companion implementing this contract is a **native client to the same hub the PWA talks to**, surfacing notifications and reply / approve actions on a phone or wearable. Hub topology is unchanged - the hub still runs on the operator's dev machine.
+A companion implementing this contract is a **native client to the same hub the PWA talks to**, surfacing notifications and reply / approve actions on a phone or wearable. Hub topology is unchanged - the hub still runs on the operator's desktop, runner machine, or private server.
 
 ---
 

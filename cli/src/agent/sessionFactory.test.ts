@@ -62,6 +62,8 @@ function createSession(): Session {
     return {
         id: 'hapi-session-1',
         namespace: 'default',
+        projectId: null,
+        createdByUserId: null,
         seq: 1,
         createdAt: 1,
         updatedAt: 1,

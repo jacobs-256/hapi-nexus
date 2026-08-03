@@ -5,10 +5,78 @@ import {
     RenameMachineRequestSchema,
     SpawnSessionRequestSchema
 } from '@hapi/protocol'
-import { Hono } from 'hono'
-import type { SyncEngine } from '../../sync/syncEngine'
+import { Hono, type Context } from 'hono'
+import type { Machine, SyncEngine } from '../../sync/syncEngine'
+import type { StoredProject } from '../../store'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireMachine } from './guards'
+import { findWorkspaceForPath, isPathInsideMachineRoots } from './workspaceAccess'
+
+function canAccessMachinePath(machine: Machine, path: string): boolean {
+    const roots = machine.metadata?.workspaceRoots ?? []
+    return roots.length === 0 || isPathInsideMachineRoots(machine, path, roots)
+}
+
+function resolveSpawnProject(
+    c: Context<WebAppEnv>,
+    engine: SyncEngine,
+    machine: Machine,
+    input: {
+        projectId?: string
+        directory: string
+    }
+): { project: StoredProject | null } | Response {
+    const userId = c.get('userId')
+    const namespace = c.get('namespace')
+    if (typeof userId !== 'number') {
+        return { project: null }
+    }
+
+    const isMachineOwner = machine.ownerUserId === userId
+    const projects = engine
+        .getProjectsForUser(namespace, userId)
+        .filter((project) => engine.hasProjectRole(project.id, userId, 'editor'))
+
+    if (input.projectId) {
+        const project = engine.getProjectByNamespace(input.projectId, namespace)
+        if (!project || project.archivedAt !== null) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+        if (!engine.hasProjectRole(project.id, userId, 'editor')) {
+            return c.json({ error: 'Project access denied' }, 403)
+        }
+        if (!isMachineOwner) {
+            const workspace = findWorkspaceForPath(machine, engine.listProjectWorkspaces(project.id), input.directory)
+            if (!workspace) {
+                return c.json({ error: 'Directory is outside project workspaces' }, 403)
+            }
+        }
+        return { project }
+    }
+
+    if (isMachineOwner) {
+        const project = projects[0]
+        if (!project) {
+            return c.json({ error: 'No editable project available' }, 403)
+        }
+        return { project }
+    }
+
+    const workspaces = engine.listProjectWorkspacesForUser(namespace, userId, 'editor')
+    const matchingProjectIds = new Set(
+        workspaces
+            .filter((workspace) => findWorkspaceForPath(machine, [workspace], input.directory))
+            .map((workspace) => workspace.projectId)
+    )
+    const matches = projects.filter((project) => matchingProjectIds.has(project.id))
+    if (matches.length === 1) {
+        return { project: matches[0] }
+    }
+    if (matches.length > 1) {
+        return c.json({ error: 'projectId is required when multiple projects match this directory' }, 400)
+    }
+    return c.json({ error: 'Directory is outside editable project workspaces' }, 403)
+}
 
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
@@ -20,7 +88,10 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const namespace = c.get('namespace')
-        const machines = engine.getOnlineMachinesByNamespace(namespace)
+        const userId = c.get('userId')
+        const machines = typeof userId === 'number'
+            ? engine.getOnlineMachinesForUser(namespace, userId)
+            : engine.getOnlineMachinesByNamespace(namespace)
         return c.json({ machines })
     })
 
@@ -31,7 +102,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = requireMachine(c, engine, machineId, { ownerOnly: true })
         if (machine instanceof Response) {
             return machine
         }
@@ -79,6 +150,17 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!parsed.success) {
             return c.json({ error: 'Invalid body' }, 400)
         }
+        if (!canAccessMachinePath(machine, parsed.data.directory)) {
+            return c.json({ error: 'Directory is outside accessible workspace roots' }, 403)
+        }
+
+        const spawnProject = resolveSpawnProject(c, engine, machine, {
+            projectId: parsed.data.projectId,
+            directory: parsed.data.directory
+        })
+        if (spawnProject instanceof Response) {
+            return spawnProject
+        }
 
         const result = await engine.spawnSession(
             machineId,
@@ -96,6 +178,17 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             undefined,
             parsed.data.collaborationMode
         )
+        if (result.type === 'success' && spawnProject.project) {
+            const assigned = await engine.assignSessionProjectWhenAvailable(
+                result.sessionId,
+                c.get('namespace'),
+                spawnProject.project.id,
+                c.get('userId')
+            )
+            if (!assigned) {
+                return c.json({ type: 'error', message: 'Session started but project assignment failed' }, 500)
+            }
+        }
         return c.json(result)
     })
 
@@ -115,6 +208,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const parsed = MachineListDirectoryRequestSchema.safeParse(body)
         if (!parsed.success) {
             return c.json({ error: 'Invalid body' }, 400)
+        }
+        if (!canAccessMachinePath(machine, parsed.data.path)) {
+            return c.json({ error: 'Path is outside accessible workspace roots' }, 403)
         }
 
         try {
@@ -146,6 +242,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const uniquePaths = Array.from(new Set(parsed.data.paths.map((path) => path.trim()).filter(Boolean)))
         if (uniquePaths.length === 0) {
             return c.json({ exists: {} })
+        }
+        if (uniquePaths.some((path) => !canAccessMachinePath(machine, path))) {
+            return c.json({ error: 'Path is outside accessible workspace roots' }, 403)
         }
 
         try {
@@ -195,6 +294,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!cwd) {
             return c.json({ success: false, error: 'cwd query parameter is required' }, 400)
         }
+        if (!canAccessMachinePath(machine, cwd)) {
+            return c.json({ success: false, error: 'cwd is outside accessible workspace roots' }, 403)
+        }
 
         try {
             const result = await engine.listOpencodeModelsForCwd(machineId, cwd)
@@ -220,6 +322,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const cwd = (c.req.query('cwd') ?? '').trim()
         if (!cwd) {
             return c.json({ success: false, error: 'cwd query parameter is required' }, 400)
+        }
+        if (!canAccessMachinePath(machine, cwd)) {
+            return c.json({ success: false, error: 'cwd is outside accessible workspace roots' }, 403)
         }
 
         try {

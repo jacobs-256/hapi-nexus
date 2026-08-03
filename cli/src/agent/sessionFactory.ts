@@ -216,6 +216,8 @@ export async function bootstrapLazySession(options: SessionBootstrapOptions): Pr
     const sessionInfo: Session = {
         id: requestedId,
         namespace: 'pending',
+        projectId: null,
+        createdByUserId: null,
         seq: 0,
         createdAt: now,
         updatedAt: now,

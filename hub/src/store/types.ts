@@ -2,6 +2,8 @@ export type StoredSession = {
     id: string
     tag: string | null
     namespace: string
+    projectId: string | null
+    createdByUserId: number | null
     machineId: string | null
     createdAt: number
     updatedAt: number
@@ -25,6 +27,8 @@ export type StoredSession = {
 export type StoredMachine = {
     id: string
     namespace: string
+    ownerUserId: number | null
+    teamId: string | null
     createdAt: number
     updatedAt: number
     metadata: unknown | null
@@ -52,7 +56,69 @@ export type StoredUser = {
     platform: string
     platformUserId: string
     namespace: string
+    username: string | null
+    usernameNormalized: string | null
+    displayName: string | null
+    passwordHash: string | null
+    accessToken: string | null
+    accessTokenHash: string | null
+    role: 'admin' | 'user'
+    disabledAt: number | null
     createdAt: number
+    updatedAt: number | null
+}
+
+export type StoredTeam = {
+    id: string
+    namespace: string
+    name: string
+    createdByUserId: number | null
+    createdAt: number
+}
+
+export type StoredTeamMember = {
+    teamId: string
+    userId: number
+    role: 'owner' | 'admin' | 'editor' | 'viewer'
+    createdAt: number
+}
+
+export type StoredProject = {
+    id: string
+    namespace: string
+    teamId: string
+    name: string
+    repoUrl: string | null
+    createdByUserId: number | null
+    createdAt: number
+    archivedAt: number | null
+}
+
+export type StoredProjectMember = {
+    projectId: string
+    userId: number
+    role: 'owner' | 'admin' | 'editor' | 'viewer'
+    createdAt: number
+}
+
+export type StoredProjectWorkspace = {
+    id: string
+    projectId: string
+    machineId: string
+    rootPath: string
+    createdByUserId: number | null
+    createdAt: number
+}
+
+export type StoredProjectInvite = {
+    id: string
+    projectId: string
+    tokenHash: string
+    role: 'owner' | 'admin' | 'editor' | 'viewer'
+    expiresAt: number
+    createdByUserId: number | null
+    createdAt: number
+    acceptedAt: number | null
 }
 
 export type StoredPushSubscription = {

@@ -100,6 +100,8 @@ function createSession(overrides: Partial<Session> = {}): Session {
     return {
         id: '11111111-1111-4111-8111-111111111111',
         namespace: 'pending',
+        projectId: null,
+        createdByUserId: null,
         seq: 0,
         createdAt: 1,
         updatedAt: 1,

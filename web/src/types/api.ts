@@ -28,6 +28,7 @@ export type {
     MachineDirectoryEntry,
     MachineListDirectoryResponse,
     MachinePathsExistsResponse,
+    AccountResponse,
     AuthResponse,
     MachinesResponse,
     MessagesResponse,
@@ -37,11 +38,21 @@ export type {
     PiModelSummary,
     PiModelsResponse,
     PiThinkingLevelMap,
+    ProjectInviteAcceptResponse,
+    ProjectInviteCreateResponse,
+    ProjectResponse,
+    ProjectWithDetails,
+    ProjectsResponse,
+    RegenerateUserTokenResponse,
     SlashCommand,
     SlashCommandsResponse,
     SessionResponse,
     SessionsResponse,
     SpawnResponse,
+    EnterpriseUser,
+    UserResponse,
+    UserRole,
+    UsersResponse,
     UploadFileResponse
 } from '@hapi/protocol/apiTypes'
 
@@ -67,6 +78,10 @@ export type {
     ThreadGoal,
     ThreadGoalStatus,
     TodoItem,
+    Project,
+    ProjectMember,
+    ProjectRole,
+    ProjectWorkspace,
     WorktreeMetadata
 } from '@hapi/protocol/types'
 
@@ -216,6 +231,7 @@ export type CodexArchiveSessionResponse = {
 export type CodexDesktopSyncRequest = {
     // 中文注释：前端弹窗直接提交 Codex thread ID，后端会按这些 transcript 直接导入到 Hapi。
     sessionIds: string[]
+    projectId?: string | null
     cwd?: string | null
     machineId?: string | null
     model?: string | null

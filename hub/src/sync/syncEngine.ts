@@ -13,10 +13,12 @@ import type { AgentFlavor, CodexCollaborationMode, DecryptedMessage, PermissionM
 import { unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
 import type { Server } from 'socket.io'
 import type { Store, CancelQueuedMessageResult } from '../store'
+import type { StoredProject } from '../store'
 import type { HapiSessionExportResult } from '@hapi/protocol/sessionExport'
 import type { RpcRegistry } from '../socket/rpcRegistry'
 import type { SSEManager } from '../sse/sseManager'
 import { CursorLegacyMigrator, type CursorLegacyMigratorOptions } from '../cursor/cursorLegacyMigrator'
+import type { ProjectRole } from '../store/projectStore'
 
 import { EventPublisher, type SyncEventListener } from './eventPublisher'
 import { MachineCache, type Machine } from './machineCache'
@@ -267,6 +269,46 @@ export class SyncEngine {
         return this.sessionCache.getSessionsByNamespace(namespace)
     }
 
+    getSessionsForUser(namespace: string, userId: number): Session[] {
+        const projects = this.store.projects.listProjectsForUser(namespace, userId)
+        const allowedProjectIds = new Set(projects.map((project) => project.id))
+        return this.sessionCache.getSessionsByNamespace(namespace)
+            .map((session) => session.projectId === null
+                ? this.sessionCache.refreshSession(session.id) ?? session
+                : session
+            )
+            .filter((session) => {
+                if (session.projectId === null) {
+                    return false
+                }
+                return allowedProjectIds.has(session.projectId)
+            })
+    }
+
+    getProjectsForUser(namespace: string, userId: number): StoredProject[] {
+        return this.store.projects.listProjectsForUser(namespace, userId)
+    }
+
+    getProjectByNamespace(projectId: string, namespace: string): StoredProject | null {
+        return this.store.projects.getProjectByNamespace(projectId, namespace)
+    }
+
+    getProjectMemberRole(projectId: string, userId: number): ProjectRole | null {
+        return this.store.projects.getProjectMemberRole(projectId, userId)
+    }
+
+    hasProjectRole(projectId: string, userId: number, role: ProjectRole): boolean {
+        return this.store.projects.hasProjectRole(projectId, userId, role)
+    }
+
+    listProjectWorkspaces(projectId: string) {
+        return this.store.projects.listProjectWorkspaces(projectId)
+    }
+
+    listProjectWorkspacesForUser(namespace: string, userId: number, role: ProjectRole = 'viewer') {
+        return this.store.projects.listProjectWorkspacesForUser(namespace, userId, role)
+    }
+
     getFutureScheduledMessageCounts(sessionIds: string[], now: number = Date.now()): Map<string, number> {
         return this.store.messages.countFutureScheduledBySessionIds(sessionIds, now)
     }
@@ -295,6 +337,49 @@ export class SyncEngine {
         return this.sessionCache.resolveSessionAccess(sessionId, namespace)
     }
 
+    resolveSessionAccessForUser(
+        sessionId: string,
+        namespace: string,
+        userId: number,
+        requiredRole: ProjectRole = 'viewer'
+    ): { ok: true; sessionId: string; session: Session } | { ok: false; reason: 'not-found' | 'access-denied' } {
+        const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
+        if (!access.ok) {
+            return access
+        }
+        const projectId = access.session.projectId
+        if (!projectId) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        if (!this.store.projects.hasProjectRole(projectId, userId, requiredRole)) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        return access
+    }
+
+    canUserReceiveEvent(userId: number, namespace: string, event: SyncEvent): boolean {
+        if (event.type === 'connection-changed') {
+            return true
+        }
+        const eventNamespace = event.namespace
+        if (eventNamespace && eventNamespace !== namespace) {
+            return false
+        }
+        if ('sessionId' in event) {
+            const access = this.resolveSessionAccessForUser(event.sessionId, namespace, userId, 'viewer')
+            return access.ok
+        }
+        if (event.type === 'toast' && event.data.sessionId) {
+            const access = this.resolveSessionAccessForUser(event.data.sessionId, namespace, userId, 'viewer')
+            return access.ok
+        }
+        if ('machineId' in event) {
+            const access = this.resolveMachineAccessForUser(event.machineId, namespace, userId, 'viewer')
+            return access.ok
+        }
+        return true
+    }
+
     getActiveSessions(): Session[] {
         return this.sessionCache.getActiveSessions()
     }
@@ -305,6 +390,21 @@ export class SyncEngine {
 
     getMachinesByNamespace(namespace: string): Machine[] {
         return this.machineCache.getMachinesByNamespace(namespace)
+    }
+
+    ensureNamespaceDefaults(namespace: string, ownerUserId: number): StoredProject {
+        const project = this.store.projects.ensureDefaults(namespace, ownerUserId)
+        for (const session of this.sessionCache.getSessionsByNamespace(namespace)) {
+            if (session.projectId === null) {
+                this.sessionCache.refreshSession(session.id)
+            }
+        }
+        for (const machine of this.machineCache.getMachinesByNamespace(namespace)) {
+            if (machine.ownerUserId === null || machine.teamId === null) {
+                this.machineCache.refreshMachine(machine.id)
+            }
+        }
+        return project
     }
 
     getMachine(machineId: string): Machine | undefined {
@@ -321,6 +421,69 @@ export class SyncEngine {
 
     getOnlineMachinesByNamespace(namespace: string): Machine[] {
         return this.machineCache.getOnlineMachinesByNamespace(namespace)
+    }
+
+    getOnlineMachinesForUser(namespace: string, userId: number): Machine[] {
+        const rootsByMachine = this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, 'viewer')
+        return this.machineCache.getOnlineMachinesByNamespace(namespace)
+            .filter((machine) => machine.ownerUserId === userId || rootsByMachine.has(machine.id))
+            .map((machine) => machine.ownerUserId === userId
+                ? machine
+                : this.maskMachineWorkspaceRoots(machine, rootsByMachine.get(machine.id) ?? []))
+    }
+
+    resolveMachineAccessForUser(
+        machineId: string,
+        namespace: string,
+        userId: number,
+        requiredRole: ProjectRole = 'viewer'
+    ): { ok: true; machine: Machine } | { ok: false; reason: 'not-found' | 'access-denied' } {
+        const machine = this.machineCache.getMachine(machineId) ?? this.machineCache.refreshMachine(machineId)
+        if (!machine) {
+            return { ok: false, reason: 'not-found' }
+        }
+        if (machine.namespace !== namespace) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        if (machine.ownerUserId === userId) {
+            return { ok: true, machine }
+        }
+
+        const rootsByMachine = this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, requiredRole)
+        const roots = rootsByMachine.get(machineId)
+        if (!roots || roots.length === 0) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        return { ok: true, machine: this.maskMachineWorkspaceRoots(machine, roots) }
+    }
+
+    private getProjectWorkspaceRootsByMachineForUser(
+        namespace: string,
+        userId: number,
+        requiredRole: ProjectRole
+    ): Map<string, string[]> {
+        const rootsByMachine = new Map<string, string[]>()
+        for (const workspace of this.store.projects.listProjectWorkspacesForUser(namespace, userId, requiredRole)) {
+            const roots = rootsByMachine.get(workspace.machineId) ?? []
+            if (!roots.includes(workspace.rootPath)) {
+                roots.push(workspace.rootPath)
+            }
+            rootsByMachine.set(workspace.machineId, roots)
+        }
+        return rootsByMachine
+    }
+
+    private maskMachineWorkspaceRoots(machine: Machine, workspaceRoots: string[]): Machine {
+        if (!machine.metadata) {
+            return machine
+        }
+        return {
+            ...machine,
+            metadata: {
+                ...machine.metadata,
+                workspaceRoots
+            }
+        }
     }
 
     async renameMachine(machineId: string, displayName: string): Promise<void> {
@@ -748,7 +911,8 @@ async uploadScratchlistAttachment(
         model?: string,
         effort?: string,
         modelReasoningEffort?: string,
-        requestedId?: string
+        requestedId?: string,
+        options?: { projectId?: string | null; createdByUserId?: number | null }
     ): Session {
         return this.sessionCache.getOrCreateSession(
             tag,
@@ -758,12 +922,45 @@ async uploadScratchlistAttachment(
             model,
             effort,
             modelReasoningEffort,
-            requestedId
+            requestedId,
+            options
         )
     }
 
-    getOrCreateMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string): Machine {
-        return this.machineCache.getOrCreateMachine(id, metadata, runnerState, namespace)
+    assignSessionProject(
+        sessionId: string,
+        namespace: string,
+        projectId: string,
+        createdByUserId: number
+    ): Session | null {
+        return this.sessionCache.assignSessionProject(sessionId, namespace, projectId, createdByUserId)
+    }
+
+    async assignSessionProjectWhenAvailable(
+        sessionId: string,
+        namespace: string,
+        projectId: string,
+        createdByUserId: number,
+        timeoutMs: number = 5_000
+    ): Promise<boolean> {
+        const start = Date.now()
+        while (Date.now() - start < timeoutMs) {
+            if (this.assignSessionProject(sessionId, namespace, projectId, createdByUserId)) {
+                return true
+            }
+            await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+        return this.assignSessionProject(sessionId, namespace, projectId, createdByUserId) !== null
+    }
+
+    getOrCreateMachine(
+        id: string,
+        metadata: unknown,
+        runnerState: unknown,
+        namespace: string,
+        options?: { ownerUserId?: number | null; teamId?: string | null }
+    ): Machine {
+        return this.machineCache.getOrCreateMachine(id, metadata, runnerState, namespace, options)
     }
 
     async sendMessage(

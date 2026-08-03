@@ -76,7 +76,8 @@ export class SessionCache {
         model?: string,
         effort?: string,
         modelReasoningEffort?: string,
-        requestedId?: string
+        requestedId?: string,
+        options?: { projectId?: string | null; createdByUserId?: number | null }
     ): Session {
         const stored = this.store.sessions.getOrCreateSession(
             tag,
@@ -86,9 +87,23 @@ export class SessionCache {
             model,
             effort,
             modelReasoningEffort,
-            requestedId
+            requestedId,
+            options
         )
         return this.refreshSession(stored.id) ?? (() => { throw new Error('Failed to load session') })()
+    }
+
+    assignSessionProject(
+        sessionId: string,
+        namespace: string,
+        projectId: string,
+        createdByUserId: number
+    ): Session | null {
+        const stored = this.store.sessions.assignSessionProject(sessionId, namespace, projectId, createdByUserId)
+        if (!stored) {
+            return null
+        }
+        return this.refreshSession(stored.id)
     }
 
     refreshSession(sessionId: string): Session | null {
@@ -146,6 +161,8 @@ export class SessionCache {
         const session: Session = {
             id: stored.id,
             namespace: stored.namespace,
+            projectId: stored.projectId,
+            createdByUserId: stored.createdByUserId,
             seq: stored.seq,
             createdAt: stored.createdAt,
             updatedAt: stored.updatedAt,

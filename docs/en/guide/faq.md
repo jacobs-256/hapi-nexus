@@ -1,5 +1,7 @@
 # FAQ
 
+**Language:** English | [简体中文](../../zh-CN/guide/faq.md)
+
 ## General
 
 ### What is HAPI?
@@ -47,14 +49,16 @@ For internet access:
 
 The `CLI_API_TOKEN` is a shared secret that authenticates:
 - CLI connections to the hub
-- Web app logins
+- runner connections and owner access
 - Telegram account binding
 
 It's auto-generated on first hub start and saved to `~/.hapi/settings.json`.
 
+Normal browser/PWA login uses local username/password accounts instead. The first local admin is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.
+
 ### Do you support multiple accounts?
 
-Yes. We support lightweight multi-account access via namespaces for shared team hubs. See [Namespace (Advanced)](./namespace.md).
+Yes. Admins can create local username/password users in **Settings -> Users**. Each user has an independent password and a personal access token visible in **Settings -> Account**. Use projects to share sessions and runner workspaces between users in the same namespace. Use namespaces to isolate separate teams on one hub. See [Accounts and Access](./accounts.md), [Projects and Sharing](./projects.md), and [Namespace (Advanced)](./namespace.md).
 
 ### Can I use HAPI without Telegram?
 
@@ -80,7 +84,7 @@ HAPI supports two methods:
 
 Yes, with runner mode:
 
-1. Run `hapi runner start` on your computer
+1. Run `hapi runner start --workspace-root /path/to/projects` on your computer
 2. Your machine appears in the "Machines" list in the web app
 3. Tap to spawn new sessions from anywhere
 
@@ -114,14 +118,16 @@ Yes. HAPI is local-first:
 - Nothing is uploaded to external servers
 - The database is stored locally in `~/.hapi/`
 
-### How secure is the token authentication?
+### How secure is authentication?
 
-The auto-generated token is 256-bit (cryptographically secure). For external access, always use HTTPS via a tunnel.
+Browser login uses local username/password accounts. Passwords are hashed before storage. The auto-generated `CLI_API_TOKEN` is 256-bit and cryptographically secure. For external access, always use HTTPS via a tunnel or reverse proxy.
 
 ### Can others access my HAPI instance?
 
-Only if they have your access token. For additional security:
-- Use a strong, unique token
+Only if they have valid browser credentials, a valid Web session, or a valid access token for CLI/companion/Telegram flows. For additional security:
+- Change the default `admin` / `admin` password immediately
+- Use strong, unique user passwords
+- Keep CLI and personal access tokens secret
 - Always use HTTPS for external access
 - Consider Tailscale for private networking
 
@@ -157,10 +163,16 @@ http://<your-computer-ip>:3006
 
 Also verify your OS firewall allows inbound connections on port `3006`.
 
+### "Invalid username or password" error
+
+- Check the username and password
+- If this is a new hub, try the first-start default `admin` / `admin`
+- If you are already signed in as an admin, reset the user's password in **Settings -> Users**
+
 ### "Invalid token" error
 
 - Re-run `hapi auth login`
-- Check token matches in CLI and hub
+- Check the CLI token matches the hub `CLI_API_TOKEN`
 - Verify `~/.hapi/settings.json` has correct `cliApiToken`
 
 ### Runner won't start
@@ -213,7 +225,7 @@ This checks hub connectivity, token validity, agent availability, and more.
 | Aspect | Happy | HAPI |
 |--------|-------|------|
 | Design | Cloud-first | Local-first |
-| Users | Multi-user | Single user |
+| Users | Managed multi-user cloud | Private multi-user hub |
 | Deployment | Multiple services | Single binary |
 | Data | Encrypted on server | Never leaves your machine |
 

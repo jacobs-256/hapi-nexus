@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ApiClient, ApiError } from '@/api/client'
-import type { AuthResponse } from '@/types/api'
+import type { AuthResponse, EnterpriseUser } from '@/types/api'
 
 export type AuthSource =
     | { type: 'telegram'; initData: string }
-    | { type: 'accessToken'; token: string }
+    | { type: 'webSession'; token: string }
 
 function decodeJwtExpMs(token: string): number | null {
     const parts = token.split('.')
@@ -26,15 +26,23 @@ function decodeJwtExpMs(token: string): number | null {
     }
 }
 
-function getAuthPayload(source: AuthSource): { initData: string } | { accessToken: string } {
-    if (source.type === 'telegram') {
-        return { initData: source.initData }
-    }
-    return { accessToken: source.token }
+function getAuthPayload(source: Extract<AuthSource, { type: 'telegram' }>): { initData: string } {
+    return { initData: source.initData }
 }
 
 function isNotBoundError(error: unknown): boolean {
     return error instanceof ApiError && error.status === 401 && error.code === 'not_bound'
+}
+
+function toAuthUser(user: EnterpriseUser): AuthResponse['user'] {
+    return {
+        id: user.id,
+        username: user.username ?? undefined,
+        displayName: user.displayName,
+        platform: user.platform,
+        role: user.role,
+        accessToken: user.accessToken
+    }
 }
 
 const ACCESS_TOKEN_PREFIX = 'hapi_access_token::'
@@ -81,6 +89,20 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
             return null
         }
 
+        if (currentSource.type === 'webSession') {
+            const expMs = decodeJwtExpMs(currentSource.token)
+            const now = Date.now()
+            if (!expMs || expMs <= now || options?.force) {
+                tokenRef.current = null
+                setToken(null)
+                setUser(null)
+                setError('Session expired. Please login again.')
+                return null
+            }
+            tokenRef.current = currentSource.token
+            return currentSource.token
+        }
+
         const expMs = currentToken ? decodeJwtExpMs(currentToken) : null
         const minTtlMs = options?.minTtlMs ?? 0
         const now = Date.now()
@@ -122,10 +144,8 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
                     tokenRef.current = null
                     setToken(null)
                     setUser(null)
-                    const msg = currentSource.type === 'telegram'
-                        ? 'Session expired. Reopen the Mini App from Telegram.'
-                        : 'Session expired. Please login again.'
-                    setError(msg)
+                const msg = 'Session expired. Reopen the Mini App from Telegram.'
+                setError(msg)
                 }
                 return null
             }
@@ -192,8 +212,14 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
 
         async function run() {
             if (!authSource) {
-                // No auth source - waiting for login
+                tokenRef.current = null
+                refreshPromiseRef.current = null
+                lastRefreshAttemptRef.current = 0
+                setToken(null)
+                setUser(null)
+                setError(null)
                 setNeedsBinding(false)
+                setIsLoading(false)
                 return
             }
 
@@ -201,6 +227,25 @@ export function useAuth(authSource: AuthSource | null, baseUrl: string): {
             setError(null)
             setNeedsBinding(false)
             try {
+                if (authSource.type === 'webSession') {
+                    const expMs = decodeJwtExpMs(authSource.token)
+                    if (!expMs || expMs <= Date.now()) {
+                        setToken(null)
+                        setUser(null)
+                        setError('Session expired. Please login again.')
+                        return
+                    }
+
+                    const client = new ApiClient(authSource.token, { baseUrl })
+                    const account = await client.getAccount()
+                    if (isCancelled) return
+                    tokenRef.current = authSource.token
+                    setToken(authSource.token)
+                    setUser(toAuthUser(account.user))
+                    setNeedsBinding(false)
+                    return
+                }
+
                 const client = new ApiClient('', { baseUrl }) // temporary for auth call
                 const auth = await client.authenticate(getAuthPayload(authSource))
                 if (isCancelled) return

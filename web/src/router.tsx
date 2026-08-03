@@ -57,9 +57,13 @@ import SettingsChatPage from '@/routes/settings/chat'
 import SettingsVoicePage from '@/routes/settings/voice'
 import SettingsVoiceVoicesPage from '@/routes/settings/voice-voices'
 import SettingsVoiceAdvancedPage from '@/routes/settings/voice-advanced'
+import SettingsAccountPage from '@/routes/settings/account'
+import SettingsUsersPage from '@/routes/settings/users'
+import SettingsProjectsPage from '@/routes/settings/projects'
 import SettingsMachinesPage from '@/routes/settings/machines'
 import SettingsAboutPage from '@/routes/settings/about'
 import SettingsStoragePage from '@/routes/settings/storage'
+import ProjectInvitePage from '@/routes/project-invite'
 import SharePage from '@/routes/share'
 import { setSharePendingTransfer } from '@/lib/sharePendingState'
 import { deleteShareTransfer } from '@/lib/shareTransfer'
@@ -202,7 +206,7 @@ function SessionsPage() {
         <>
             <div className="flex h-full min-h-0">
             <div
-                className={`${isSessionsIndex ? 'flex' : 'hidden split:flex'} w-full shrink-0 flex-col bg-[var(--app-bg)]`}
+                className={`${isSessionsIndex ? 'flex' : 'hidden split:flex'} w-full shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] text-[var(--sidebar-foreground)]`}
                 style={{ '--sidebar-w': `${sidebar.width}px` } as React.CSSProperties}
             >
                 <div className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)]">
@@ -229,7 +233,7 @@ function SessionsPage() {
                                 <button
                                     type="button"
                                     onClick={() => navigate({ to: '/browse' })}
-                                    className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors"
+                                    className="rounded-[7px] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                                     title={t('browse.nav')}
                                 >
                                     <FolderOpenIcon className="h-5 w-5" />
@@ -237,7 +241,7 @@ function SessionsPage() {
                                 <button
                                     type="button"
                                     onClick={() => navigate({ to: '/settings' })}
-                                    className="p-1.5 rounded-full text-[var(--app-hint)] hover:text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] transition-colors"
+                                    className="rounded-[7px] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                                     title={t('settings.title')}
                                 >
                                     <SettingsIcon className="h-5 w-5" />
@@ -245,7 +249,7 @@ function SessionsPage() {
                                 <button
                                     type="button"
                                     onClick={() => navigate({ to: '/sessions/new' })}
-                                    className="session-list-new-button flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-link)] transition-colors"
+                                    className="session-list-new-button flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--primary)] transition-colors"
                                     title={t('sessions.new')}
                                 >
                                     <PlusIcon className="h-5 w-5" />
@@ -266,7 +270,7 @@ function SessionsPage() {
                 onPointerDown={sidebar.onPointerDown}
             />
 
-            <div className={`${isSessionsIndex ? 'hidden split:flex' : 'flex'} min-w-0 flex-1 flex-col bg-[var(--app-bg)]`}>
+            <div className={`${isSessionsIndex ? 'hidden split:flex' : 'flex'} min-w-0 flex-1 flex-col bg-[var(--background)]`}>
                 <div className="flex-1 min-h-0">
                     <Outlet />
                 </div>
@@ -748,7 +752,7 @@ function SessionDetailRoute() {
 }
 
 function NewSessionPage() {
-    const { api } = useAppContext()
+    const { api, user } = useAppContext()
     const navigate = useNavigate()
     const goBack = useAppGoBack()
     const queryClient = useQueryClient()
@@ -793,12 +797,12 @@ function NewSessionPage() {
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-2 border-b border-[var(--app-border)] bg-[var(--app-bg)] p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+            <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--card)] p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
                 {!isTelegramApp() && (
                     <button
                         type="button"
                         onClick={goBack}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                     >
                         <BackIcon />
                     </button>
@@ -825,6 +829,7 @@ function NewSessionPage() {
                     onChooseFolder={handleChooseFolder}
                     initialDirectory={initialDirectory}
                     initialMachineId={initialMachineId}
+                    currentUserId={user.id}
                 />
             </div>
         </div>
@@ -850,12 +855,12 @@ function BrowsePage() {
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center gap-2 border-b border-[var(--app-border)] bg-[var(--app-bg)] p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+            <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--card)] p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
                 {!isTelegramApp() && (
                     <button
                         type="button"
                         onClick={goBack}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)]"
+                        className="flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
                     >
                         <BackIcon />
                     </button>
@@ -1068,10 +1073,28 @@ const settingsVoiceAdvancedRoute = createRoute({
     component: SettingsVoiceAdvancedPage,
 })
 
+const settingsAccountRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'account',
+    component: SettingsAccountPage,
+})
+
+const settingsUsersRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'users',
+    component: SettingsUsersPage,
+})
+
 const settingsMachinesRoute = createRoute({
     getParentRoute: () => settingsRoute,
     path: 'machines',
     component: SettingsMachinesPage,
+})
+
+const settingsProjectsRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'projects',
+    component: SettingsProjectsPage,
 })
 
 const settingsAboutRoute = createRoute({
@@ -1105,6 +1128,15 @@ const shareRoute = createRoute({
     component: SharePage,
 })
 
+const projectInviteRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/invite/$token',
+    component: function ProjectInviteRoute() {
+        const { token } = useParams({ from: '/invite/$token' })
+        return <ProjectInvitePage token={token} />
+    },
+})
+
 export const routeTree = rootRoute.addChildren([
     indexRoute,
     sessionsRoute.addChildren([
@@ -1125,10 +1157,14 @@ export const routeTree = rootRoute.addChildren([
         settingsVoiceRoute,
         settingsVoiceVoicesRoute,
         settingsVoiceAdvancedRoute,
+        settingsAccountRoute,
+        settingsUsersRoute,
+        settingsProjectsRoute,
         settingsMachinesRoute,
         settingsStorageRoute,
         settingsAboutRoute,
     ]),
+    projectInviteRoute,
     shareRoute,
 ])
 

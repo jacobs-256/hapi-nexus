@@ -35,6 +35,8 @@ function makeMachine(id: string): Machine {
     return {
         id,
         namespace: 'default',
+        ownerUserId: null,
+        teamId: null,
         seq: 1,
         createdAt: 0,
         updatedAt: 0,

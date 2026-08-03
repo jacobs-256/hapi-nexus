@@ -1,0 +1,626 @@
+# 安装
+
+**语言：** [English](../../en/guide/installation.md) | 简体中文
+
+安装 HAPI CLI 并设置 hub。
+
+## 前置条件
+
+已安装 Claude Code、OpenAI Codex CLI、Cursor Agent CLI、Grok Build CLI 或 OpenCode CLI。
+
+验证 CLI 是否已安装：
+
+```bash
+# Claude Code
+claude --version
+
+# OpenAI Codex CLI
+codex --version
+
+# Cursor Agent CLI
+agent --version
+
+# Grok Build CLI
+grok --version
+
+# OpenCode CLI
+opencode --version
+```
+
+## 架构
+
+HAPI 有三个组件：
+
+| 组件 | 角色 | 必需 |
+|-----------|------|----------|
+| **CLI** | 包装 AI agent（Claude/Codex/Cursor/Grok/OpenCode），运行会话 | 是 |
+| **Hub** | 中央协调器：持久化、实时同步、远程访问 | 是 |
+| **Runner** | 用于远程启动会话的后台服务 | 可选 |
+
+### 它们如何协作
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Your Machine                           │
+│                                                     │
+│  ┌─────────┐    Socket.IO    ┌─────────────┐       │
+│  │  CLI    │◄───────────────►│    Hub      │       │
+│  │+ Agent  │                 │  + SQLite   │       │
+│  └─────────┘                 └──────┬──────┘       │
+│       ▲                             │ SSE          │
+│       │ spawn                       ▼              │
+│  ┌────┴────┐                 ┌─────────────┐       │
+│  │ Runner  │◄────RPC────────►│   Web App   │       │
+│  │(背景)   │                 └─────────────┘       │
+│  └─────────┘                                       │
+└─────────────────────────────────────────────────────┘
+                    │
+           [Tunnel / Public URL]
+                    │
+              ┌─────▼─────┐
+              │ Phone/Web │
+              └───────────┘
+```
+
+- **CLI**：用 `hapi` 启动会话。CLI 包装 AI agent 并与 hub 同步。
+- **Hub**：运行 `hapi hub`。保存会话、处理权限、启用远程访问。
+- **Runner**：运行 `hapi runner start --workspace-root /path/to/projects`。无需保持终端打开，也能从 Web/PWA 远程启动会话。
+
+### 典型工作流
+
+**仅本地**：`hapi hub` -> `hapi` -> 在终端工作
+
+**远程访问**：`hapi hub --relay` -> `hapi runner start --workspace-root /path/to/projects` -> 从 Web/PWA 控制
+
+浏览器/PWA 用户使用本地用户名/密码账号登录。首次启动管理员是 `admin` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
+
+## 安装 CLI
+
+```bash
+npm install -g @twsxtd/hapi --registry=https://registry.npmjs.org
+```
+
+> 建议使用官方 npm registry 全局安装。一些镜像可能无法及时同步平台相关包。
+
+也可以使用 Homebrew：
+
+```bash
+brew install tiann/tap/hapi
+```
+
+## 其他安装方式
+
+<details>
+<summary>npx（无需安装）</summary>
+
+```bash
+npx @twsxtd/hapi
+```
+</details>
+
+<details>
+<summary>预构建二进制</summary>
+
+从 [GitHub Releases](https://github.com/tiann/hapi/releases) 下载最新版本。
+
+```bash
+xattr -d com.apple.quarantine ./hapi
+chmod +x ./hapi
+sudo mv ./hapi /usr/local/bin/
+```
+</details>
+
+<details>
+<summary>从源码构建</summary>
+
+```bash
+git clone https://github.com/tiann/hapi.git
+cd hapi
+bun install
+bun build:single-exe
+
+./cli/dist/hapi
+```
+</details>
+
+## Hub 设置
+
+Hub 可以部署在：
+
+- **本地桌面**（默认）- 运行在你的开发机器上
+- **远程主机** - 部署到 VPS、云主机或任何有网络访问的机器
+
+### 默认：公共 Relay（推荐）
+
+```bash
+hapi hub --relay
+```
+
+终端会显示 URL 和二维码，扫码即可从任意位置访问。
+
+`hapi server` 仍然作为别名保留。
+
+- 使用 WireGuard + TLS **端到端加密**
+- 无需配置
+- 可穿透 NAT、防火墙和任意网络
+
+> **提示：** relay 默认使用 UDP。如果遇到连接问题，可设置 `HAPI_RELAY_FORCE_TCP=true` 强制使用 TCP 模式。
+
+### 仅本地
+
+```bash
+hapi hub
+# or
+hapi hub --no-relay
+```
+
+Hub 默认监听 `http://localhost:3006`。
+
+首次运行时，HAPI 会：
+
+1. 创建 `~/.hapi/`
+2. 生成安全的 `CLI_API_TOKEN`
+3. 打印 token 并保存到 `~/.hapi/settings.json`
+4. 创建用户名为 `admin`、密码为 `admin` 的本地 Web 管理员
+
+`admin` / `admin` 只用于首次登录，之后请在 **Settings -> Account** 中修改。
+
+<details>
+<summary>配置文件</summary>
+
+```
+~/.hapi/
+├── settings.json      # 主配置
+├── hapi.db           # SQLite 数据库（hub）
+├── runner.state.json  # Runner 进程状态
+└── logs/             # 日志文件
+```
+</details>
+
+<details>
+<summary>环境变量</summary>
+
+| 变量 | 默认值 | settings.json | 说明 |
+|----------|---------|---------------|-------------|
+| `CLI_API_TOKEN` | 自动生成 | `cliApiToken` | 认证共享密钥 |
+| `HAPI_ADMIN_USERNAME` | `admin` | - | 第一个本地 Web 管理员用户名 |
+| `HAPI_ADMIN_PASSWORD` | `admin` | - | 第一个本地 Web 管理员密码 |
+| `HAPI_API_URL` | `http://localhost:3006` | `apiUrl` | CLI 连接 hub 的 URL |
+| `HAPI_EXTRA_HEADERS_JSON` | - | `extraHeaders` | CLI → hub HTTP/WebSocket 请求的额外出站 headers |
+| `HAPI_LISTEN_HOST` | `127.0.0.1` | `listenHost` | Hub HTTP 绑定地址 |
+| `HAPI_LISTEN_PORT` | `3006` | `listenPort` | Hub HTTP 端口 |
+| `HAPI_PUBLIC_URL` | - | `publicUrl` | 外部访问公网 URL |
+| `CORS_ORIGINS` | - | `corsOrigins` | 允许的 CORS origins（逗号分隔） |
+| `TELEGRAM_BOT_TOKEN` | - | `telegramBotToken` | Telegram Bot API token |
+| `TELEGRAM_NOTIFICATION` | `true` | `telegramNotification` | 启用 Telegram 通知 |
+| `HAPI_RELAY_FORCE_TCP` | `false` | - | relay 强制使用 TCP 模式 |
+| `VAPID_SUBJECT` | `mailto:admin@hapi.run` | - | Web Push 联系信息 |
+| `HAPI_HOME` | `~/.hapi` | - | 配置目录路径 |
+| `DB_PATH` | `~/.hapi/hapi.db` | - | 数据库文件路径 |
+| `ELEVENLABS_API_KEY` | - | - | 语音功能的 ElevenLabs API key |
+| `ELEVENLABS_AGENT_ID` | 自动创建 | - | 自定义 ElevenLabs agent ID |
+</details>
+
+<details>
+<summary>settings.json 示例</summary>
+
+配置优先级：**ENV > settings.json > default**
+
+当 ENV 中设置了值且 settings.json 中不存在时，HAPI 会自动保存这些值。`HAPI_EXTRA_HEADERS_JSON` 不会自动保存，以避免访问凭据被意外持久化。
+
+```json
+{
+  "$schema": "https://hapi.run/docs/schemas/settings.schema.json",
+  "listenHost": "0.0.0.0",
+  "listenPort": 3006,
+  "publicUrl": "https://your-domain.com",
+  "extraHeaders": {
+    "Cookie": "CF_Authorization=..."
+  }
+}
+```
+
+JSON Schema：[settings.schema.json](https://hapi.run/schemas/settings.schema.json)
+</details>
+
+## CLI 设置
+
+如果 hub 不在 localhost，请在运行 `hapi` 前设置：
+
+```bash
+export HAPI_API_URL="http://your-hub:3006"
+export CLI_API_TOKEN="your-token-here"
+export HAPI_EXTRA_HEADERS_JSON='{"Cookie":"CF_Authorization=..."}'
+```
+
+或使用交互式登录：
+
+```bash
+hapi auth login
+```
+
+认证命令：
+
+```bash
+hapi auth status
+hapi auth login
+hapi auth logout
+```
+
+每台机器会获得一个唯一 ID，并保存到 `~/.hapi/settings.json`。这支持：
+
+- 多台机器连接到同一个 hub
+- 在指定机器上远程启动会话
+- 机器健康监控
+
+## 运维
+
+### 自托管隧道
+
+如果你不想使用公共 relay（例如希望更低延迟或自管基础设施），可以使用以下替代方案：
+
+<details>
+<summary>Cloudflare Tunnel</summary>
+
+https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+
+> **注意：** Cloudflare Quick Tunnels（TryCloudflare）不受支持，因为它们[不支持 SSE](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)，而 HAPI 依赖 SSE 实时更新。请使用 Named Tunnel。
+
+**Named tunnel 设置：**
+
+```bash
+# 安装 cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+# 创建并配置 named tunnel
+cloudflared tunnel create hapi
+cloudflared tunnel route dns hapi hapi.yourdomain.com
+
+# 运行 tunnel
+cloudflared tunnel --protocol http2 run hapi
+```
+
+> **提示：** 使用 `--protocol http2` 代替默认 QUIC，可避免长连接的潜在超时问题。
+
+</details>
+
+<details>
+<summary>Tailscale</summary>
+
+https://tailscale.com/download
+
+```bash
+sudo tailscale up
+hapi hub
+```
+
+通过你的 Tailscale IP 访问：
+
+```
+http://100.x.x.x:3006
+```
+</details>
+
+<details>
+<summary>公网 IP / 反向代理</summary>
+
+如果 hub 有公网 IP，可直接通过 `http://your-hub-ip:3006` 访问。
+
+生产环境请使用 HTTPS（Nginx、Caddy 等）。
+
+**自签证书（HTTPS）**
+
+如果 `HAPI_API_URL` 指向一个使用自签名证书（或其他不受信证书）的 `https://...` URL，CLI 可能失败：
+
+```
+Error: self signed certificate
+```
+
+推荐修复方式（按优先级）：
+
+1. 使用公开受信任证书（例如 Let's Encrypt）
+2. 信任你的私有 CA（私有网络推荐）
+3. 仅开发环境临时方案：关闭 TLS 校验（不安全）
+
+```bash
+# 推荐：信任自己的 CA
+export NODE_EXTRA_CA_CERTS="/path/to/your-ca.pem"
+
+# 仅开发环境：关闭 TLS 校验（不安全）
+export NODE_TLS_REJECT_UNAUTHORIZED=0
+```
+
+如果使用仅开发环境方案，请假设存在 MITM 风险；不要在公网使用。
+
+</details>
+
+### Telegram 设置
+
+启用 Telegram 通知和 Mini App 访问：
+
+1. 给 [@BotFather](https://t.me/BotFather) 发消息并创建 bot
+2. 设置 bot token 和 public URL
+3. 启动 hub 并绑定账号
+
+```bash
+export TELEGRAM_BOT_TOKEN="your-bot-token"
+export HAPI_PUBLIC_URL="https://your-public-url"
+
+hapi hub
+```
+
+然后向 bot 发送 `/start`，打开应用，并输入你的 `CLI_API_TOKEN`。
+
+普通浏览器/PWA 登录不使用 `CLI_API_TOKEN`；请使用本地用户名/密码账号。
+
+**故障排查：**
+
+- 如果绑定失败，确认 `HAPI_PUBLIC_URL` 可以从互联网访问
+- Telegram Mini App 要求 HTTPS（不是 HTTP）
+
+### Runner 设置
+
+运行后台服务以支持远程启动会话：
+
+```bash
+hapi runner start --workspace-root /path/to/projects
+hapi runner status
+hapi runner logs
+hapi runner stop
+```
+
+Runner 运行后：
+
+- 你的机器会出现在 “Machines” 列表中
+- 可以从 Web 应用远程启动会话
+- 即使终端关闭，会话也会继续存在
+
+`/path/to/projects` 是 runner 机器上的目录。它应包含你想浏览或启动会话的仓库。多个允许目录时，在同一个 runner 上重复传入参数：
+
+```bash
+hapi runner start --workspace-root /path/a --workspace-root /path/b
+```
+
+远程用户不需要本地复制源码。他们连接到 hub，并使用 runner 机器共享出来的项目。
+
+<details>
+<summary>替代方案：pm2</summary>
+
+如果你偏好用 pm2 管理进程：
+
+```bash
+pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+pm2 save
+```
+</details>
+
+### 后台服务部署
+
+让 HAPI 持续运行，使其在终端关闭、系统重启后仍在后台运行。
+
+<details>
+<summary>快速方式：nohup</summary>
+
+快速后台运行的一行命令：
+
+```bash
+# Hub
+nohup hapi hub --relay > ~/.hapi/logs/hub.log 2>&1 &
+
+# Runner
+nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
+```
+
+查看日志：
+
+```bash
+tail -f ~/.hapi/logs/hub.log
+tail -f ~/.hapi/logs/runner.log
+```
+
+停止进程：
+
+```bash
+pkill -f "hapi hub"
+pkill -f "hapi runner"
+```
+</details>
+
+<details>
+<summary>pm2（Node.js 用户推荐）</summary>
+
+pm2 提供崩溃自动重启和系统重启后自启动。
+
+```bash
+# 安装 pm2
+npm install -g pm2
+
+# 启动 hub 和 runner
+pm2 start "hapi hub --relay" --name hapi-hub
+pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+
+# 查看状态和日志
+pm2 status
+pm2 logs hapi-hub
+pm2 logs hapi-runner
+
+# 系统重启后自动启动
+pm2 startup    # 按输出提示操作
+pm2 save       # 保存当前进程列表
+```
+</details>
+
+<details>
+<summary>macOS: launchd</summary>
+
+在 macOS 上创建 plist 文件实现自动启动。
+
+**Hub** (`~/Library/LaunchAgents/com.hapi.hub.plist`)：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hapi.hub</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/hapi</string>
+        <string>hub</string>
+        <string>--relay</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USERNAME/.hapi/logs/hub.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USERNAME/.hapi/logs/hub.log</string>
+</dict>
+</plist>
+```
+
+**Runner** (`~/Library/LaunchAgents/com.hapi.runner.plist`)：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.hapi.runner</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/hapi</string>
+        <string>runner</string>
+        <string>start-sync</string>
+        <string>--workspace-root</string>
+        <string>/path/to/projects</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USERNAME/.hapi/logs/runner.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USERNAME/.hapi/logs/runner.log</string>
+</dict>
+</plist>
+```
+
+加载/卸载服务：
+
+```bash
+# Load (start)
+launchctl load ~/Library/LaunchAgents/com.hapi.hub.plist
+launchctl load ~/Library/LaunchAgents/com.hapi.runner.plist
+
+# Unload (stop)
+launchctl unload ~/Library/LaunchAgents/com.hapi.hub.plist
+launchctl unload ~/Library/LaunchAgents/com.hapi.runner.plist
+```
+
+> **macOS 睡眠说明：** 显示器睡眠时，macOS 可能挂起后台进程。可用 `caffeinate` 防止：
+> ```bash
+> caffeinate -dimsu hapi hub --relay
+> ```
+> 或单独在一个终端中运行 `caffeinate -dimsu`。
+</details>
+
+<details>
+<summary>Linux: systemd</summary>
+
+创建用户级 systemd 服务实现自动启动。
+
+**Hub** (`~/.config/systemd/user/hapi-hub.service`)：
+
+```ini
+[Unit]
+Description=HAPI Hub
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hapi hub --relay
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+**Runner** (`~/.config/systemd/user/hapi-runner.service`)：
+
+```ini
+[Unit]
+Description=HAPI Runner
+After=network.target hapi-hub.service
+
+[Service]
+Type=simple
+KillMode=process
+ExecStart=/usr/local/bin/hapi runner start-sync --workspace-root /path/to/projects
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+> **为什么需要 `KillMode=process`？** runner 会把每个 agent 会话作为 detached child process 启动（`detached: true`，见 `cli/src/runner/run.ts`），这样 runner 退出时会话仍能存活。如果不设置 `KillMode=process`，systemd 默认 `KillMode=control-group` 会在 unit 停止时向 runner cgroup 中的每个 PID 发送 SIGTERM，破坏 detach 约定并强制归档所有运行中的会话。`KillMode=process` 保留约定：停止或重启 runner 只影响 runner 自身；agent 会话保持运行，新的 runner 会通过现有 socket.io reconnect 路径重新接管。这适用于 runner 升级、手动重启，以及任何在 agent 完成前停止 runner unit 的重启流程。
+
+启用并启动：
+
+```bash
+# Reload systemd
+systemctl --user daemon-reload
+
+# Enable (auto-start on login)
+systemctl --user enable hapi-hub
+systemctl --user enable hapi-runner
+
+# Start now
+systemctl --user start hapi-hub
+systemctl --user start hapi-runner
+
+# View status/logs
+systemctl --user status hapi-hub
+journalctl --user -u hapi-hub -f
+```
+
+> **退出登录后仍保持运行：**
+> ```bash
+> loginctl enable-linger $USER
+> ```
+</details>
+
+### 语音助手设置
+
+启用语音控制：
+
+1. 从 [elevenlabs.io](https://elevenlabs.io/app/settings/api-keys) 获取 API key
+2. 设置环境变量：
+
+```bash
+export ELEVENLABS_API_KEY="your-api-key"
+hapi hub --relay
+```
+
+使用详情见[语音助手](./voice-assistant.md)。
+
+### 安全注意事项
+
+- 首次登录后立即修改默认 `admin` / `admin` 凭据
+- 保管好 CLI 和个人 access token，并在需要时轮换
+- 公网访问使用 HTTPS
+- 生产环境限制 CORS origins
+
+<details>
+<summary>防火墙示例（ufw）</summary>
+
+```bash
+ufw allow from 192.168.1.0/24 to any port 3006
+```
+</details>

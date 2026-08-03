@@ -22,7 +22,7 @@ export default function SettingsStoragePage() {
     })
 
     return (
-        <SettingsPageContent description={t('settings.storage.description')}>
+        <SettingsPageContent title={t('settings.storage.title')} description={t('settings.storage.description')}>
             <SettingsSection>
                 {query.isLoading ? <SettingsRow label={t('settings.storage.loading')} /> : null}
                 {query.error ? <SettingsRow label={t('settings.storage.error')} description={query.error instanceof Error ? query.error.message : undefined} /> : null}

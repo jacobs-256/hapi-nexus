@@ -9,6 +9,7 @@ import { FcmStore } from './fcmStore'
 import { ScratchlistStore } from './scratchlistStore'
 import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
+import { ProjectStore } from './projectStore'
 
 export type {
     StoredMachine,
@@ -17,6 +18,12 @@ export type {
     StoredFcmDevice,
     StoredScratchlistEntry,
     StoredSession,
+    StoredProject,
+    StoredProjectInvite,
+    StoredProjectMember,
+    StoredProjectWorkspace,
+    StoredTeam,
+    StoredTeamMember,
     StoredUser,
     VersionedUpdateResult
 } from './types'
@@ -28,14 +35,22 @@ export { FcmStore } from './fcmStore'
 export { ScratchlistStore } from './scratchlistStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
+export { ProjectStore } from './projectStore'
 
-const SCHEMA_VERSION: number = 15
+const SCHEMA_VERSION: number = 17
 const REQUIRED_TABLES = [
     'sessions',
     'machines',
     'messages',
     'message_epochs',
     'users',
+    'teams',
+    'team_members',
+    'projects',
+    'project_members',
+    'project_workspaces',
+    'project_invites',
+    'audit_log',
     'push_subscriptions',
     'fcm_devices',
     'session_scratchlist'
@@ -50,6 +65,7 @@ export class Store {
     readonly machines: MachineStore
     readonly messages: MessageStore
     readonly users: UserStore
+    readonly projects: ProjectStore
     readonly push: PushStore
     readonly fcm: FcmStore
     readonly scratchlist: ScratchlistStore
@@ -102,6 +118,7 @@ export class Store {
         this.machines = new MachineStore(this.db)
         this.messages = new MessageStore(this.db)
         this.users = new UserStore(this.db)
+        this.projects = new ProjectStore(this.db)
         this.push = new PushStore(this.db)
         this.fcm = new FcmStore(this.db)
         this.scratchlist = new ScratchlistStore(this.db)
@@ -172,6 +189,8 @@ export class Store {
             12: () => this.migrateFromV12ToV13(),
             13: () => this.migrateFromV13ToV14(),
             14: () => this.migrateFromV14ToV15(),
+            15: () => this.migrateFromV15ToV16(),
+            16: () => this.migrateFromV16ToV17(),
         })
 
         if (currentVersion === 0) {
@@ -223,6 +242,8 @@ export class Store {
                 id TEXT PRIMARY KEY,
                 tag TEXT,
                 namespace TEXT NOT NULL DEFAULT 'default',
+                project_id TEXT,
+                created_by_user_id INTEGER,
                 machine_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
@@ -244,10 +265,13 @@ export class Store {
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
+            CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,
                 namespace TEXT NOT NULL DEFAULT 'default',
+                owner_user_id INTEGER,
+                team_id TEXT,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 metadata TEXT,
@@ -259,6 +283,7 @@ export class Store {
                 seq INTEGER DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace);
+            CREATE INDEX IF NOT EXISTS idx_machines_team ON machines(team_id);
 
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
@@ -290,11 +315,108 @@ export class Store {
                 platform TEXT NOT NULL,
                 platform_user_id TEXT NOT NULL,
                 namespace TEXT NOT NULL DEFAULT 'default',
+                username TEXT,
+                username_normalized TEXT,
+                display_name TEXT,
+                password_hash TEXT,
+                access_token TEXT,
+                access_token_hash TEXT,
+                role TEXT NOT NULL DEFAULT 'user',
+                disabled_at INTEGER,
                 created_at INTEGER NOT NULL,
+                updated_at INTEGER,
                 UNIQUE(platform, platform_user_id)
             );
             CREATE INDEX IF NOT EXISTS idx_users_platform ON users(platform);
             CREATE INDEX IF NOT EXISTS idx_users_platform_namespace ON users(platform, namespace);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_local_username_namespace
+                ON users(namespace, username_normalized)
+                WHERE platform = 'local' AND username_normalized IS NOT NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_access_token_hash
+                ON users(access_token_hash)
+                WHERE access_token_hash IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS teams (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_teams_namespace ON teams(namespace);
+
+            CREATE TABLE IF NOT EXISTS team_members (
+                team_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (team_id, user_id),
+                FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                team_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                repo_url TEXT,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                archived_at INTEGER,
+                FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_namespace ON projects(namespace);
+            CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
+
+            CREATE TABLE IF NOT EXISTS project_members (
+                project_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (project_id, user_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+
+            CREATE TABLE IF NOT EXISTS project_workspaces (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                machine_id TEXT NOT NULL,
+                root_path TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                UNIQUE(project_id, machine_id, root_path),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_project ON project_workspaces(project_id);
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_machine ON project_workspaces(machine_id);
+
+            CREATE TABLE IF NOT EXISTS project_invites (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                accepted_at INTEGER,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_invites_project ON project_invites(project_id);
+            CREATE INDEX IF NOT EXISTS idx_project_invites_token_hash ON project_invites(token_hash);
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id TEXT PRIMARY KEY,
+                actor_user_id INTEGER,
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                metadata TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
 
             CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -595,6 +717,167 @@ export class Store {
         }
     }
 
+    /**
+     * Multi-user project sharing foundation. Adds project/team ACL tables and
+     * nullable ownership columns on existing rows. Backfill needs the runtime
+     * owner id, so it is performed lazily by auth/CLI startup instead of inside
+     * this synchronous migration.
+     */
+    private migrateFromV15ToV16(): void {
+        const sessionColumns = this.getSessionColumnNames()
+        if (sessionColumns.size > 0) {
+            if (!sessionColumns.has('project_id')) {
+                this.db.exec('ALTER TABLE sessions ADD COLUMN project_id TEXT')
+            }
+            if (!sessionColumns.has('created_by_user_id')) {
+                this.db.exec('ALTER TABLE sessions ADD COLUMN created_by_user_id INTEGER')
+            }
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)')
+        }
+
+        const machineColumns = this.getMachineColumnNames()
+        if (machineColumns.size > 0) {
+            if (!machineColumns.has('owner_user_id')) {
+                this.db.exec('ALTER TABLE machines ADD COLUMN owner_user_id INTEGER')
+            }
+            if (!machineColumns.has('team_id')) {
+                this.db.exec('ALTER TABLE machines ADD COLUMN team_id TEXT')
+            }
+            this.db.exec('CREATE INDEX IF NOT EXISTS idx_machines_team ON machines(team_id)')
+        }
+
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS teams (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_teams_namespace ON teams(namespace);
+
+            CREATE TABLE IF NOT EXISTS team_members (
+                team_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (team_id, user_id),
+                FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                team_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                repo_url TEXT,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                archived_at INTEGER,
+                FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_projects_namespace ON projects(namespace);
+            CREATE INDEX IF NOT EXISTS idx_projects_team ON projects(team_id);
+
+            CREATE TABLE IF NOT EXISTS project_members (
+                project_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (project_id, user_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+
+            CREATE TABLE IF NOT EXISTS project_workspaces (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                machine_id TEXT NOT NULL,
+                root_path TEXT NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                UNIQUE(project_id, machine_id, root_path),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (machine_id) REFERENCES machines(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_project ON project_workspaces(project_id);
+            CREATE INDEX IF NOT EXISTS idx_project_workspaces_machine ON project_workspaces(machine_id);
+
+            CREATE TABLE IF NOT EXISTS project_invites (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                role TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_by_user_id INTEGER,
+                created_at INTEGER NOT NULL,
+                accepted_at INTEGER,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_project_invites_project ON project_invites(project_id);
+            CREATE INDEX IF NOT EXISTS idx_project_invites_token_hash ON project_invites(token_hash);
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id TEXT PRIMARY KEY,
+                actor_user_id INTEGER,
+                action TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                metadata TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+        `)
+    }
+
+    /**
+     * Enterprise local accounts. Adds password/token/profile fields to the
+     * existing multi-provider users table; Telegram rows keep these nullable.
+     */
+    private migrateFromV16ToV17(): void {
+        const columns = this.getUserColumnNames()
+        if (columns.size === 0) return
+
+        if (!columns.has('username')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN username TEXT')
+        }
+        if (!columns.has('username_normalized')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN username_normalized TEXT')
+        }
+        if (!columns.has('display_name')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN display_name TEXT')
+        }
+        if (!columns.has('password_hash')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT')
+        }
+        if (!columns.has('access_token')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN access_token TEXT')
+        }
+        if (!columns.has('access_token_hash')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN access_token_hash TEXT')
+        }
+        if (!columns.has('role')) {
+            this.db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        }
+        if (!columns.has('disabled_at')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN disabled_at INTEGER')
+        }
+        if (!columns.has('updated_at')) {
+            this.db.exec('ALTER TABLE users ADD COLUMN updated_at INTEGER')
+            this.db.exec('UPDATE users SET updated_at = created_at WHERE updated_at IS NULL')
+        }
+
+        this.db.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_local_username_namespace
+                ON users(namespace, username_normalized)
+                WHERE platform = 'local' AND username_normalized IS NOT NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_access_token_hash
+                ON users(access_token_hash)
+                WHERE access_token_hash IS NOT NULL;
+        `)
+    }
+
     private getSessionColumnNames(): Set<string> {
         const rows = this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>
         return new Set(rows.map((row) => row.name))
@@ -607,6 +890,11 @@ export class Store {
 
     private getMessageColumnNames(): Set<string> {
         const rows = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+        return new Set(rows.map((row) => row.name))
+    }
+
+    private getUserColumnNames(): Set<string> {
+        const rows = this.db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>
         return new Set(rows.map((row) => row.name))
     }
 

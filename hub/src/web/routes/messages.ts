@@ -49,7 +49,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -91,7 +91,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }

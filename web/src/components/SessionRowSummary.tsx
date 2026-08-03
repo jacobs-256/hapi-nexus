@@ -147,6 +147,12 @@ export function SessionRowSummary(props: {
     const attentionId = attentionTooltipIdProp ?? ownedIds.attentionId
     const scheduleId = scheduleTooltipIdProp ?? ownedIds.scheduleId
     const timeLabel = getSessionTimeLabel(s, t)
+    const titleClassName = selected
+        ? 'text-white'
+        : s.active
+            ? 'text-[var(--app-fg)]'
+            : 'text-[var(--app-hint)]'
+    const secondaryClassName = selected ? 'text-white/70' : 'text-[var(--app-hint)]'
 
     return (
         <div className={`flex w-full min-w-0 flex-col gap-1 ${className ?? ''}`}>
@@ -154,7 +160,7 @@ export function SessionRowSummary(props: {
                 <div className="flex min-w-0 items-center gap-2">
                     <AgentFlavorIcon flavor={s.metadata?.flavor} className="h-4 w-4 shrink-0 -translate-y-px" />
                     <div
-                        className={`min-w-0 flex-1 truncate text-sm font-medium ${s.active ? 'text-[var(--app-fg)]' : 'text-[var(--app-hint)]'}`}
+                        className={`min-w-0 flex-1 truncate text-sm font-medium ${titleClassName}`}
                         title={sessionName}
                     >
                         {sessionName}
@@ -199,7 +205,7 @@ export function SessionRowSummary(props: {
                 </div>
                 <div className="flex min-w-0 items-center justify-end gap-2 overflow-hidden text-xs">
                     {todoProgress ? (
-                        <span className="flex shrink-0 items-center gap-1 text-[var(--app-hint)]">
+                        <span className={`flex shrink-0 items-center gap-1 ${secondaryClassName}`}>
                             <BulbIcon className="h-3 w-3" />
                             {todoProgress.completed}/{todoProgress.total}
                         </span>
@@ -210,13 +216,13 @@ export function SessionRowSummary(props: {
                         </span>
                     ) : null}
                     {timeLabel ? (
-                        <span className="min-w-0 truncate whitespace-nowrap tabular-nums text-[var(--app-hint)]">{timeLabel}</span>
+                        <span className={`min-w-0 truncate whitespace-nowrap tabular-nums ${secondaryClassName}`}>{timeLabel}</span>
                     ) : null}
                 </div>
             </div>
             {showPath || worktreeLabel ? (
                 <div
-                    className="truncate text-xs text-[var(--app-hint)]"
+                    className={`truncate text-xs ${secondaryClassName}`}
                     title={worktreeLabel
                         ? s.metadata?.worktree?.worktreePath ?? s.metadata?.path
                         : undefined}

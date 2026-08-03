@@ -12,7 +12,7 @@ export default function SettingsGeneralPage() {
     const { t, locale, setLocale } = useTranslation()
     const { baseUrl } = useAppContext()
     return (
-        <SettingsPageContent description={t('settings.general.description')}>
+        <SettingsPageContent title={t('settings.general.title')} description={t('settings.general.description')}>
             <SettingsSection title={t('settings.language.label')}>
                 <SettingsChoiceGroup hideLabel label={t('settings.language.label')} value={locale} options={locales} onChange={setLocale} />
             </SettingsSection>

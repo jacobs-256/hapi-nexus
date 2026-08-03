@@ -7,6 +7,7 @@ import {
     PROTOCOL_VERSION
 } from '@hapi/protocol'
 import { getConfiguration } from '../../configuration'
+import { getOrCreateOwnerId } from '../../config/ownerId'
 import { constantTimeEquals } from '../../utils/crypto'
 import { parseAccessToken } from '../../utils/accessToken'
 import type { Machine, Session, SyncEngine } from '../../sync/syncEngine'
@@ -95,6 +96,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const namespace = c.get('namespace')
+        const ownerUserId = await getOrCreateOwnerId()
+        const defaultProject = engine.ensureNamespaceDefaults(namespace, ownerUserId)
         const machineInput = parsed.data.machine
         if (machineInput) {
             const existingMachine = engine.getMachine(machineInput.id)
@@ -105,7 +108,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
                 machineInput.id,
                 machineInput.metadata,
                 machineInput.runnerState ?? null,
-                namespace
+                namespace,
+                { ownerUserId, teamId: defaultProject.teamId }
             )
         }
 
@@ -118,7 +122,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
                 parsed.data.model,
                 parsed.data.effort,
                 parsed.data.modelReasoningEffort,
-                parsed.data.id
+                parsed.data.id,
+                { projectId: defaultProject.id, createdByUserId: ownerUserId }
             )
             return c.json({ session })
         } catch (error) {
@@ -272,11 +277,19 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const namespace = c.get('namespace')
+        const ownerUserId = await getOrCreateOwnerId()
+        const defaultProject = engine.ensureNamespaceDefaults(namespace, ownerUserId)
         const existing = engine.getMachine(parsed.data.id)
         if (existing && existing.namespace !== namespace) {
             return c.json({ error: 'Machine access denied' }, 403)
         }
-        const machine = engine.getOrCreateMachine(parsed.data.id, parsed.data.metadata, parsed.data.runnerState ?? null, namespace)
+        const machine = engine.getOrCreateMachine(
+            parsed.data.id,
+            parsed.data.metadata,
+            parsed.data.runnerState ?? null,
+            namespace,
+            { ownerUserId, teamId: defaultProject.teamId }
+        )
         return c.json({ machine })
     })
 

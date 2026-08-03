@@ -50,7 +50,7 @@ export default function SettingsChatPage() {
     const { terminalToolDisplayMode, setTerminalToolDisplayMode } = useTerminalToolDisplayMode()
     const { toolGroupBackground, userMessageBackground, setToolGroupBackground, setUserMessageBackground } = useChatSurfaceColors()
     return (
-        <SettingsPageContent description={t('settings.chat.description')}>
+        <SettingsPageContent title={t('settings.chat.title')} description={t('settings.chat.description')}>
             <SettingsSection title={t('settings.chat.input')}>
                 <SettingsChoiceGroup
                     label={t('settings.chat.enterBehavior')}

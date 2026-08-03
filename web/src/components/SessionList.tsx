@@ -846,7 +846,7 @@ function SessionItem(props: {
             <button
                 type="button"
                 {...longPressHandlers}
-                className={`session-list-item group/session-row flex w-full flex-col gap-1 py-2 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-link)] select-none rounded-lg ${selected ? 'bg-[var(--app-secondary-bg)]' : ''}`}
+                className={`session-list-item group/session-row flex w-full flex-col gap-1 rounded-lg py-2 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] select-none ${selected ? 'bg-[var(--primary)] text-white' : 'text-[var(--sidebar-foreground)]'}`}
                 style={{ WebkitTouchCallout: 'none' }}
                 aria-current={selected ? 'page' : undefined}
                 aria-describedby={describedBy}
@@ -1320,7 +1320,7 @@ export function SessionList(props: {
                                 <button
                                     type="button"
                                     onClick={props.onNewSession}
-                                    className="session-list-new-button flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-link)] transition-colors"
+                                    className="session-list-new-button flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--primary)] transition-colors"
                                     title={t('sessions.new')}
                                 >
                                     <PlusIcon className="h-5 w-5" />
@@ -1412,7 +1412,7 @@ export function SessionList(props: {
                     return (
                         <div key={group.key}>
                             <div
-                                className="group/project sticky top-0 z-10 flex items-center gap-2 bg-[var(--app-bg)] py-1.5 pl-2 pr-2 text-left rounded-lg transition-colors hover:bg-[var(--app-secondary-bg)] cursor-pointer min-w-0 w-full select-none"
+                                className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
                                 onClick={() => toggleGroup(group.key, isCollapsed)}
                                 title={group.directory}
                             >
@@ -1431,7 +1431,7 @@ export function SessionList(props: {
                                                 directory: group.directory
                                             })
                                         }}
-                                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--app-hint)] opacity-70 transition-colors hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-link)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-link)]"
+                                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] opacity-70 transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
                                         title={t('sessions.group.new')}
                                         aria-label={t('sessions.group.new')}
                                     >

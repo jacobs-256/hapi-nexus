@@ -1,7 +1,10 @@
 export const queryKeys = {
     sessions: ['sessions'] as const,
+    account: ['account'] as const,
+    users: ['users'] as const,
     session: (sessionId: string) => ['session', sessionId] as const,
     messages: (sessionId: string) => ['messages', sessionId] as const,
+    projects: ['projects'] as const,
     machines: ['machines'] as const,
     sqliteStorage: ['sqlite-storage'] as const,
     machineCodexModels: (machineId: string) => ['machine-codex-models', machineId] as const,
