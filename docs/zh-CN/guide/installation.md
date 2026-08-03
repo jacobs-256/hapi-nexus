@@ -2,7 +2,7 @@
 
 **语言：** [English](../../en/guide/installation.md) | 简体中文
 
-安装 HAPI CLI 并设置 hub。
+从源码安装 HAPI Nexus，并设置私有 Hub。
 
 ## 前置条件
 
@@ -29,7 +29,7 @@ opencode --version
 
 ## 架构
 
-HAPI 有三个组件：
+HAPI Nexus 有三个组件：
 
 | 组件 | 角色 | 必需 |
 |-----------|------|----------|
@@ -74,34 +74,33 @@ HAPI 有三个组件：
 
 浏览器/PWA 用户使用本地用户名/密码账号登录。首次启动管理员是 `admin` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
 
-## 安装 CLI
+## 构建 CLI
+
+本 fork 文档按“从源码构建并私有部署”的方式编写。请从本仓库构建 all-in-one 二进制：
 
 ```bash
-npm install -g @twsxtd/hapi --registry=https://registry.npmjs.org
+bun install
+bun run build:single-exe
 ```
 
-> 建议使用官方 npm registry 全局安装。一些镜像可能无法及时同步平台相关包。
-
-也可以使用 Homebrew：
-
-```bash
-brew install tiann/tap/hapi
-```
+CLI 命令仍然保留为 `hapi`。在源码 checkout 中，使用 `./cli/dist/hapi` 运行。
 
 ## 其他安装方式
 
 <details>
-<summary>npx（无需安装）</summary>
+<summary>开发模式</summary>
 
 ```bash
-npx @twsxtd/hapi
+bun run dev
 ```
+
+这会同时启动 hub 和 web app，用于本地开发。
 </details>
 
 <details>
-<summary>预构建二进制</summary>
+<summary>从你自己的 release 安装预构建二进制</summary>
 
-从 [GitHub Releases](https://github.com/tiann/hapi/releases) 下载最新版本。
+项目发布到 GitHub 后，可以把构建出的 `hapi` 二进制附加到你自己的 Releases 页面。
 
 ```bash
 xattr -d com.apple.quarantine ./hapi
@@ -111,16 +110,9 @@ sudo mv ./hapi /usr/local/bin/
 </details>
 
 <details>
-<summary>从源码构建</summary>
+<summary>上游包发布渠道</summary>
 
-```bash
-git clone https://github.com/tiann/hapi.git
-cd hapi
-bun install
-bun build:single-exe
-
-./cli/dist/hapi
-```
+上游 HAPI 项目可能发布 npm、npx、Homebrew 或 GitHub Release 构建物。这些是上游 HAPI 构建，不是 HAPI Nexus 构建。只有当你明确想使用上游项目时才使用它们。
 </details>
 
 ## Hub 设置
@@ -130,33 +122,41 @@ Hub 可以部署在：
 - **本地桌面**（默认）- 运行在你的开发机器上
 - **远程主机** - 部署到 VPS、云主机或任何有网络访问的机器
 
-### 默认：公共 Relay（推荐）
+### 私有 LAN / VPN / 反向代理（推荐）
 
 ```bash
-hapi hub --relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
 ```
 
-终端会显示 URL 和二维码，扫码即可从任意位置访问。
+终端会显示 Hub URL。
 
 `hapi server` 仍然作为别名保留。
 
-- 使用 WireGuard + TLS **端到端加密**
-- 无需配置
-- 可穿透 NAT、防火墙和任意网络
+- 适合企业/私有部署
+- 可配合 LAN、VPN、反向代理或私有 tunnel 使用
+- Web app 由你自己的 Hub 提供
 
-> **提示：** relay 默认使用 UDP。如果遇到连接问题，可设置 `HAPI_RELAY_FORCE_TCP=true` 强制使用 TCP 模式。
+> **提示：** 将 `HAPI_PUBLIC_URL` 设置为浏览器用户实际访问的外部 URL。
+
+### Relay 模式
+
+Relay 模式仍保留在代码中，但 HAPI Nexus 不把上游公共 relay 作为私有部署的默认路径。只有当你已经配置了符合自己部署的 relay 基础设施时才使用。
+
+```bash
+./cli/dist/hapi hub --relay
+```
 
 ### 仅本地
 
 ```bash
-hapi hub
+./cli/dist/hapi hub
 # or
-hapi hub --no-relay
+./cli/dist/hapi hub --no-relay
 ```
 
 Hub 默认监听 `http://localhost:3006`。
 
-首次运行时，HAPI 会：
+首次运行时，HAPI Nexus 会：
 
 1. 创建 `~/.hapi/`
 2. 生成安全的 `CLI_API_TOKEN`
@@ -194,7 +194,7 @@ Hub 默认监听 `http://localhost:3006`。
 | `TELEGRAM_BOT_TOKEN` | - | `telegramBotToken` | Telegram Bot API token |
 | `TELEGRAM_NOTIFICATION` | `true` | `telegramNotification` | 启用 Telegram 通知 |
 | `HAPI_RELAY_FORCE_TCP` | `false` | - | relay 强制使用 TCP 模式 |
-| `VAPID_SUBJECT` | `mailto:admin@hapi.run` | - | Web Push 联系信息 |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | - | Web Push 联系信息 |
 | `HAPI_HOME` | `~/.hapi` | - | 配置目录路径 |
 | `DB_PATH` | `~/.hapi/hapi.db` | - | 数据库文件路径 |
 | `ELEVENLABS_API_KEY` | - | - | 语音功能的 ElevenLabs API key |
@@ -210,7 +210,6 @@ Hub 默认监听 `http://localhost:3006`。
 
 ```json
 {
-  "$schema": "https://hapi.run/docs/schemas/settings.schema.json",
   "listenHost": "0.0.0.0",
   "listenPort": 3006,
   "publicUrl": "https://your-domain.com",
@@ -219,8 +218,6 @@ Hub 默认监听 `http://localhost:3006`。
   }
 }
 ```
-
-JSON Schema：[settings.schema.json](https://hapi.run/schemas/settings.schema.json)
 </details>
 
 ## CLI 设置

@@ -1,15 +1,11 @@
----
-layout: home
-title: HAPI 文档
----
-
-<script setup>
-import { onMounted } from 'vue'
-import { withBase } from 'vitepress'
-
-onMounted(() => {
-  window.location.replace(withBase('/zh-CN/guide/quick-start'))
-})
-</script>
+# HAPI Nexus 文档
 
 **语言：** [English](../en/index.md) | 简体中文
+
+- [快速开始](./guide/quick-start.md)
+- [安装](./guide/installation.md)
+- [账号与访问](./guide/accounts.md)
+- [项目与共享](./guide/projects.md)
+- [设置控制台](./guide/settings.md)
+- [许可证与归属](./guide/license.md)
+- [FAQ](./guide/faq.md)

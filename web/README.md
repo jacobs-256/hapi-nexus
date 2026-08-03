@@ -1,6 +1,6 @@
 # hapi-web
 
-React Mini App / PWA for monitoring and controlling hapi sessions.
+React Mini App / PWA for monitoring and controlling HAPI Nexus sessions.
 
 ## What it does
 
@@ -45,7 +45,7 @@ See `src/router.tsx` for route definitions.
 - `/settings/projects` - Project sharing, members, invites, and workspaces.
 - `/settings/machines` - Machine display names.
 - `/settings/storage` - Storage usage.
-- `/settings/about` - Application links and version information.
+- `/settings/about` - Application version information.
 - `/invite/$token` - Accept a project invite.
 
 The full settings area is documented in `docs/en/guide/settings.md`.
@@ -199,7 +199,7 @@ The built assets land in `web/dist` and are served by hapi-hub. The single execu
 
 ## Standalone hosting
 
-You can host `web/dist` on a static host (GitHub Pages, Cloudflare Pages) and point it at any hapi hub:
+You can host `web/dist` on a static host (GitHub Pages, Cloudflare Pages) and point it at any HAPI Nexus hub:
 
 1. Build the web app. If your static host uses a subpath, set the Vite base:
 

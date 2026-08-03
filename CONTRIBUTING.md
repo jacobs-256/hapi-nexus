@@ -1,6 +1,6 @@
-# Contributing to HAPI
+# Contributing to HAPI Nexus
 
-Thank you for your interest in contributing to HAPI! We welcome bug fixes, feature suggestions, and thoughtful contributions from the community.
+Thank you for your interest in contributing to HAPI Nexus. This project is an independent modified version of HAPI focused on enterprise-oriented private deployments.
 
 ## Code of Conduct
 
@@ -65,6 +65,10 @@ Have an idea to improve HAPI? Open an issue with:
 
 See the [README](README.md) for more build options.
 
+## License
+
+By contributing, you agree that your contribution is licensed under AGPL-3.0-only as part of this project. Keep upstream notices intact and document user-visible changes when relevant.
+
 ## Questions?
 
-If you have questions, feel free to open an issue. We're here to help!
+Open an issue in this repository after it is published.

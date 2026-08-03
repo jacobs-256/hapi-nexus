@@ -8,17 +8,17 @@ HAPI can run the official Grok Build CLI locally and control the same coding ses
 
 Install Grok Build using the official installer:
 
-::: code-group
+### macOS / Linux / WSL
 
-```bash [macOS / Linux / WSL]
+```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 ```
 
-```powershell [Windows PowerShell]
+### Windows PowerShell
+
+```powershell
 irm https://x.ai/cli/install.ps1 | iex
 ```
-
-:::
 
 Verify the installation:
 

@@ -4,9 +4,9 @@ Work style: telegraph; noun-phrases ok; drop grammar;
 
 Short guide for AI agents in this repo. Prefer progressive loading: start with the root README, then package READMEs as needed.
 
-## What is HAPI?
+## What is HAPI Nexus?
 
-Local-first platform for running AI coding agents (Claude Code, Codex, Gemini) with remote control via web/phone. CLI wraps agents and connects to hub; hub serves web app and handles real-time sync.
+Enterprise-oriented private-deployment fork of HAPI for running AI coding agents (Claude Code, Codex, Gemini) with remote control via web/phone. CLI wraps agents and connects to hub; hub serves web app and handles real-time sync.
 
 ## Repo layout
 
@@ -15,8 +15,7 @@ cli/     - CLI binary, agent wrappers, runner daemon
 hub/     - HTTP API + Socket.IO + SSE + Telegram bot
 web/     - React PWA for remote control
 shared/  - Common types, schemas, utilities
-docs/    - VitePress documentation site
-website/ - Marketing site
+docs/    - Markdown documentation
 ```
 
 Bun workspaces; `shared` consumed by cli, hub, web.

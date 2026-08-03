@@ -1,13 +1,4 @@
----
-layout: home
-title: HAPI Documentation
----
+# HAPI Nexus Documentation
 
-<script setup>
-import { onMounted } from 'vue'
-import { withBase } from 'vitepress'
-
-onMounted(() => {
-  window.location.replace(withBase('/en/guide/quick-start'))
-})
-</script>
+- [English](./en/index.md)
+- [简体中文](./zh-CN/index.md)

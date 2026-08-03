@@ -988,8 +988,7 @@ export default {
   'settings.machines.error': 'Could not rename this machine.',
   'settings.hub.machines.summary': 'Custom names for your machines',
   'settings.about.title': 'About',
-  'settings.about.description': 'HAPI links and version information.',
-  'settings.about.website': 'Website',
+  'settings.about.description': 'HAPI version information.',
   'settings.about.appVersion': 'App Version',
   'settings.about.protocolVersion': 'Protocol Version',
 

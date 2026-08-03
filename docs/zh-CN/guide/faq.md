@@ -4,19 +4,19 @@
 
 ## 常见问题
 
-### HAPI 是什么？
+### HAPI Nexus 是什么？
 
-HAPI 是一个 local-first、自托管的平台，用于远程运行和控制 AI 编程代理（Claude Code、Codex、Cursor Agent、Grok Build 和 OpenCode）。你可以在自己的电脑上启动编程会话，然后从手机监控和控制。
+HAPI Nexus 是一个 local-first、自托管的平台，用于远程运行和控制 AI 编程代理（Claude Code、Codex、Cursor Agent、Grok Build 和 OpenCode）。团队可以在可信机器上启动编程会话，并通过私有 Web/PWA 界面监控和控制。
 
-### HAPI 代表什么？
+### HAPI Nexus 代表什么？
 
-HAPI（哈皮）是 “Happy” 的中文音译，表达项目目标：把 AI 编程助手从终端里解放出来，让体验更轻松。
+HAPI 来自上游 HAPI 项目名，本身是 “Happy” 的中文音译。Nexus 表示这个 fork 的私有 Hub 方向：把用户、机器、工作区和项目连接到同一个部署中。
 
-### HAPI 免费吗？
+### HAPI Nexus 免费吗？
 
-是。HAPI 是开源项目，使用 AGPL-3.0-only 许可证，可免费使用。
+是。HAPI Nexus 是开源项目，使用 AGPL-3.0-only 许可证，可免费使用。
 
-### HAPI 支持哪些 AI agent？
+### HAPI Nexus 支持哪些 AI agent？
 
 - **Claude Code**（推荐）
 - **OpenAI Codex**
@@ -28,11 +28,11 @@ HAPI（哈皮）是 “Happy” 的中文音译，表达项目目标：把 AI �
 
 ### 我需要单独的 hub 吗？
 
-不需要。HAPI 内置 hub。只要在你的机器上运行 `hapi hub` 即可，不需要外部 hub。
+不需要。HAPI Nexus 内置 hub。只要在你的机器上运行 `hapi hub` 即可，不需要外部 hub。
 
 `hapi server` 仍然作为别名保留。
 
-### 如何从手机访问 HAPI？
+### 如何从手机访问 HAPI Nexus？
 
 本地网络访问：
 
@@ -117,7 +117,7 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 
 ### 我的数据安全吗？
 
-是。HAPI 是 local-first：
+是。HAPI Nexus 是 local-first：
 
 - 所有数据都留在你的机器上
 - 不会上传到外部服务器
@@ -145,7 +145,7 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 - 检查防火墙是否允许 3006 端口
 - 验证 `HAPI_API_URL` 是否正确
 
-### 手机无法在局域网访问 HAPI
+### 手机无法在局域网访问 HAPI Nexus
 
 如果 HAPI 在电脑上可用，但同一局域网的其他设备无法访问，请先检查 hub 绑定地址。默认情况下，HAPI 监听 `127.0.0.1`，只接受本机连接。
 
@@ -228,9 +228,9 @@ hapi doctor
 
 ## 对比
 
-### HAPI vs Happy
+### HAPI Nexus vs Happy
 
-| 方面 | Happy | HAPI |
+| 方面 | Happy | HAPI Nexus |
 |--------|-------|------|
 | 设计 | Cloud-first | Local-first |
 | 用户 | 托管多用户云服务 | 私有多用户 hub |
@@ -239,9 +239,9 @@ hapi doctor
 
 详细对比见[为什么选择 HAPI](./why-hapi.md)。
 
-### HAPI vs 直接运行 Claude Code
+### HAPI Nexus vs 直接运行 Claude Code
 
-| 功能 | Claude Code | HAPI + Claude Code |
+| 功能 | Claude Code | HAPI Nexus + Claude Code |
 |---------|-------------|-------------------|
 | 远程访问 | 否 | 是 |
 | 手机控制 | 否 | 是 |
@@ -253,7 +253,7 @@ hapi doctor
 
 ### 如何贡献？
 
-访问我们的 [GitHub 仓库](https://github.com/tiann/hapi)：
+项目发布后，请使用本仓库的 GitHub Issues 和 Pull Requests：
 
 - 报告问题
 - 提交 pull request
@@ -261,4 +261,4 @@ hapi doctor
 
 ### 在哪里报告 bug？
 
-在 [GitHub Issues](https://github.com/tiann/hapi/issues) 创建 issue。
+项目发布后，在本仓库创建 issue。

@@ -1,14 +1,14 @@
-# Why HAPI?
+# Why HAPI Nexus?
 
 **Language:** English | [简体中文](../../zh-CN/guide/why-hapi.md)
 
-[Happy](https://github.com/slopus/happy) is an excellent project. So why build HAPI?
+[Happy](https://github.com/slopus/happy) is an excellent project. So why build HAPI Nexus?
 
-**The short answer**: Happy uses a centralized server that stores your encrypted data. HAPI is decentralized — each private deployment runs its own hub, and the relay server only forwards encrypted traffic without storing anything. These different goals lead to fundamentally different architectures.
+**The short answer**: Happy uses a centralized server that stores your encrypted data. HAPI Nexus keeps the HAPI local-first architecture: each private deployment runs its own hub, and relay/tunnel infrastructure only forwards traffic instead of becoming the product database. These different goals lead to fundamentally different architectures.
 
 ## TL;DR
 
-| Aspect | Happy | HAPI |
+| Aspect | Happy | HAPI Nexus |
 |--------|-------|------|
 | **Architecture** | Centralized (cloud server stores encrypted data) | Decentralized private hubs |
 | **Users** | Multi-user on shared server | Private multi-user hub per deployment |
@@ -17,7 +17,7 @@
 | **Deployment** | Multiple services (PostgreSQL, Redis, app server) | Single binary |
 | **Complexity** | High (E2EE, key management, scaling) | Low (one command) |
 
-**Choose HAPI if**: You want data sovereignty, self-hosting, and minimal setup.
+**Choose HAPI Nexus if**: You want data sovereignty, self-hosting, multi-user private administration, and minimal setup.
 
 **Choose Happy if**: You need a managed cloud service instead of operating your own private hub.
 
@@ -174,7 +174,7 @@ The relay server only forwards encrypted packets — it cannot read your data.
 
 ### Security Approach
 
-| Aspect | Happy | HAPI (self-hosted) | HAPI (relay) |
+| Aspect | Happy | HAPI Nexus (self-hosted) | HAPI Nexus (relay) |
 |--------|-------|-------------------|--------------|
 | **Problem** | Data on untrusted server | Remote access to local hub | Remote access via third-party relay |
 | **Solution** | Application-layer E2EE | HTTPS (you control the path) | WireGuard + TLS (tunwg) |

@@ -18,13 +18,11 @@ A Progressive Web App (PWA) is a web application that can be installed on your d
 ### Android (Chrome/Edge)
 
 1. Open HAPI in Chrome or Edge browser
-2. Look for the **"Install HAPI"** banner at the bottom
+2. Look for the install banner at the bottom
 3. Tap **"Install"**
 4. HAPI appears on your home screen
 
-::: tip
-If you don't see the install banner, tap the three-dot menu and select **"Add to Home screen"** or **"Install app"**.
-:::
+> Tip: If you don't see the install banner, tap the three-dot menu and select **"Add to Home screen"** or **"Install app"**.
 
 ### iOS (Safari)
 
@@ -33,15 +31,13 @@ If you don't see the install banner, tap the three-dot menu and select **"Add to
 3. Scroll down and tap **"Add to Home Screen"**
 4. Tap **"Add"** in the top right corner
 
-::: warning
-iOS requires Safari for PWA installation. Chrome/Firefox on iOS don't support the "Add to Home Screen" feature.
-:::
+> Warning: iOS requires Safari for PWA installation. Chrome/Firefox on iOS don't support the "Add to Home Screen" feature.
 
 ### Desktop (Chrome/Edge)
 
 1. Open HAPI in your browser
 2. Click the install icon in the address bar (⊕)
-3. Or use the menu: **"Install HAPI..."**
+3. Or use the browser install menu
 4. HAPI opens as a standalone window
 
 ## PWA Features
@@ -103,9 +99,7 @@ HAPI supports push notifications to alert you when agents need attention.
 | Permission Request | Agent needs your approval |
 | Ready | Agent finished and awaits input |
 
-::: tip
-If push notifications don't work in your region (e.g., FCM unavailable), use [Telegram integration](./installation.md#telegram-setup) instead.
-:::
+> Tip: If push notifications don't work in your region (e.g., FCM unavailable), use [Telegram integration](./installation.md#telegram-setup) instead.
 
 ## Managing Your PWA
 

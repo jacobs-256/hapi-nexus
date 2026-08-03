@@ -2,7 +2,7 @@
 
 **Language:** English | [简体中文](../../zh-CN/guide/installation.md)
 
-Install the HAPI CLI and set up the hub.
+Install HAPI Nexus from source and set up the private hub.
 
 ## Prerequisites
 
@@ -29,7 +29,7 @@ opencode --version
 
 ## Architecture
 
-HAPI has three components:
+HAPI Nexus has three components:
 
 | Component | Role | Required |
 |-----------|------|----------|
@@ -74,34 +74,33 @@ HAPI has three components:
 
 Browser/PWA users sign in with local username/password accounts. The first-start administrator is `admin` / `admin`; change it after first login or set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first hub start.
 
-## Install the CLI
+## Build the CLI
+
+This fork is documented as a source-built private deployment. Build the all-in-one binary from this repository:
 
 ```bash
-npm install -g @twsxtd/hapi --registry=https://registry.npmjs.org
+bun install
+bun run build:single-exe
 ```
 
-> Recommendation: use the official npm registry for global install. Some mirrors may not sync platform packages in time.
-
-Or with Homebrew:
-
-```bash
-brew install tiann/tap/hapi
-```
+The CLI command remains `hapi`. In a source checkout, run it as `./cli/dist/hapi`.
 
 ## Other install options
 
 <details>
-<summary>npx (no install)</summary>
+<summary>Development mode</summary>
 
 ```bash
-npx @twsxtd/hapi
+bun run dev
 ```
+
+This starts the hub and web app concurrently for local development.
 </details>
 
 <details>
-<summary>Prebuilt binary</summary>
+<summary>Prebuilt binary from your own release</summary>
 
-Download the latest release from [GitHub Releases](https://github.com/tiann/hapi/releases).
+After publishing this project on GitHub, attach the built `hapi` binary to your own Releases page.
 
 ```bash
 xattr -d com.apple.quarantine ./hapi
@@ -111,16 +110,9 @@ sudo mv ./hapi /usr/local/bin/
 </details>
 
 <details>
-<summary>Build from source</summary>
+<summary>Upstream package channels</summary>
 
-```bash
-git clone https://github.com/tiann/hapi.git
-cd hapi
-bun install
-bun build:single-exe
-
-./cli/dist/hapi
-```
+The upstream HAPI project may publish npm, npx, Homebrew, or GitHub Release artifacts. Those artifacts are upstream HAPI builds, not HAPI Nexus builds. Use them only when you intentionally want the upstream project instead of this fork.
 </details>
 
 ## Hub setup
@@ -130,33 +122,41 @@ The hub can be deployed on:
 - **Local desktop** (default) - Run on your development machine
 - **Remote host** - Deploy the hub on a VPS, cloud host, or any machine with network access
 
-### Default: Public Relay (recommended)
+### Private LAN / VPN / reverse proxy (recommended)
 
 ```bash
-hapi hub --relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
 ```
 
-The terminal displays a URL and QR code. Scan to access from anywhere.
+The terminal displays the hub URL.
 
 `hapi server` remains supported as an alias.
 
-- **End-to-end encrypted** with WireGuard + TLS
-- No configuration needed
-- Works behind NAT, firewalls, and any network
+- Fits enterprise/private deployments
+- Works well with LAN, VPN, reverse proxy, or a private tunnel
+- Keeps the web app served by your own hub
 
-> **Tip:** The relay uses UDP by default. If you experience connectivity issues, set `HAPI_RELAY_FORCE_TCP=true` to force TCP mode.
+> **Tip:** Set `HAPI_PUBLIC_URL` to the externally reachable URL that browser users should open.
 
-### Local Only
+### Relay mode
+
+Relay mode still exists in the codebase, but HAPI Nexus does not document upstream public relay as the default private-deployment path. Use it only when you have configured relay infrastructure that matches your deployment.
 
 ```bash
-hapi hub
+./cli/dist/hapi hub --relay
+```
+
+### Local only
+
+```bash
+./cli/dist/hapi hub
 # or
-hapi hub --no-relay
+./cli/dist/hapi hub --no-relay
 ```
 
 The hub listens on `http://localhost:3006` by default.
 
-On first run, HAPI:
+On first run, HAPI Nexus:
 
 1. Creates `~/.hapi/`
 2. Generates a secure `CLI_API_TOKEN`
@@ -194,7 +194,7 @@ Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Ac
 | `TELEGRAM_BOT_TOKEN` | - | `telegramBotToken` | Telegram Bot API token |
 | `TELEGRAM_NOTIFICATION` | `true` | `telegramNotification` | Enable Telegram notifications |
 | `HAPI_RELAY_FORCE_TCP` | `false` | - | Force TCP mode for relay |
-| `VAPID_SUBJECT` | `mailto:admin@hapi.run` | - | Web Push contact info |
+| `VAPID_SUBJECT` | `mailto:admin@example.com` | - | Web Push contact info |
 | `HAPI_HOME` | `~/.hapi` | - | Config directory path |
 | `DB_PATH` | `~/.hapi/hapi.db` | - | Database file path |
 | `ELEVENLABS_API_KEY` | - | - | ElevenLabs API key for voice |
@@ -211,7 +211,6 @@ When ENV values are set and not present in settings.json, they are automatically
 
 ```json
 {
-  "$schema": "https://hapi.run/docs/schemas/settings.schema.json",
   "listenHost": "0.0.0.0",
   "listenPort": 3006,
   "publicUrl": "https://your-domain.com",
@@ -220,8 +219,6 @@ When ENV values are set and not present in settings.json, they are automatically
   }
 }
 ```
-
-JSON Schema: [settings.schema.json](https://hapi.run/schemas/settings.schema.json)
 </details>
 
 ## CLI setup

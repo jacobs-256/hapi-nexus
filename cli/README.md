@@ -1,6 +1,6 @@
 # hapi CLI
 
-Run Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode sessions from your terminal and control them remotely through the hapi hub.
+Run Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode sessions from your terminal and control them remotely through the HAPI Nexus hub.
 
 ## What it does
 
@@ -44,7 +44,7 @@ hapi resume
 hapi resume <session-id>
 ```
 
-`hapi resume` lists resumable sessions for the current machine. `hapi resume <session-id>` hands off an active remote session and opens the same HAPI session in the local terminal.
+`hapi resume` lists resumable sessions for the current machine. `hapi resume <session-id>` hands off an active remote session and opens the same HAPI Nexus session in the local terminal.
 
 ### Authentication
 
@@ -85,7 +85,7 @@ See `src/runner/run.ts`.
 ### Diagnostics
 
 - `hapi doctor` - Show full diagnostics (version, runner status, logs, processes).
-- `hapi doctor clean` - Kill runaway HAPI processes.
+- `hapi doctor clean` - Kill runaway HAPI Nexus processes.
 
 See `src/ui/doctor.ts`.
 

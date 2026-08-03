@@ -80,7 +80,7 @@ HAPI 的旧版事件转换器会拦截这个合成响应，并把它改写成显
 
 随着旧会话逐步消失，这个拦截会自然退出；恢复 ACP 前旧会话是唯一仍会触发该代码的路径。
 
-跟踪 issue：[tiann/hapi#784](https://github.com/tiann/hapi/issues/784)。
+历史上游跟踪 issue：`tiann/hapi#784`。
 
 ## 集成
 

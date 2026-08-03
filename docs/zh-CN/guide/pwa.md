@@ -18,13 +18,11 @@ Progressive Web App（PWA）是一种可以安装到设备上的 Web 应用，�
 ### Android（Chrome/Edge）
 
 1. 在 Chrome 或 Edge 浏览器中打开 HAPI
-2. 查找底部的 **"Install HAPI"** 横幅
+2. 查找底部的安装横幅
 3. 点击 **"Install"**
 4. HAPI 会出现在主屏幕
 
-::: tip
-如果没有看到安装横幅，点击三点菜单并选择 **"Add to Home screen"** 或 **"Install app"**。
-:::
+> 提示：如果没有看到安装横幅，点击三点菜单并选择 **"Add to Home screen"** 或 **"Install app"**。
 
 ### iOS（Safari）
 
@@ -33,15 +31,13 @@ Progressive Web App（PWA）是一种可以安装到设备上的 Web 应用，�
 3. 向下滚动并点击 **"Add to Home Screen"**
 4. 点击右上角 **"Add"**
 
-::: warning
-iOS 要求使用 Safari 安装 PWA。iOS 上的 Chrome/Firefox 不支持 “Add to Home Screen” 功能。
-:::
+> 警告：iOS 要求使用 Safari 安装 PWA。iOS 上的 Chrome/Firefox 不支持 “Add to Home Screen” 功能。
 
 ### 桌面端（Chrome/Edge）
 
 1. 在浏览器中打开 HAPI
 2. 点击地址栏中的安装图标（⊕）
-3. 或使用菜单：**"Install HAPI..."**
+3. 或使用浏览器安装菜单
 4. HAPI 会作为独立窗口打开
 
 ## PWA 功能
@@ -103,9 +99,7 @@ HAPI 支持 push notifications，在 agent 需要注意时提醒你。
 | Permission Request | Agent 需要你批准 |
 | Ready | Agent 完成并等待输入 |
 
-::: tip
-如果 push notifications 在你的地区不可用（例如 FCM 不可用），请改用 [Telegram 集成](./installation.md#telegram-设置)。
-:::
+> 提示：如果 push notifications 在你的地区不可用（例如 FCM 不可用），请改用 [Telegram 集成](./installation.md#telegram-设置)。
 
 ## 管理你的 PWA
 
@@ -139,7 +133,7 @@ HAPI 会根据安装状态显示不同 UI：
 
 如果遇到问题：
 
-1. 在浏览器中打开 HAPI（不是已安装版本）
+1. 在浏览器中打开 HAPI Nexus（不是已安装版本）
 2. 打开 Developer Tools（F12）
 3. 进入 Application → Storage
 4. 点击 “Clear site data”

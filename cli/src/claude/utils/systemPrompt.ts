@@ -14,13 +14,13 @@ const BASE_SYSTEM_PROMPT = (() => trimIdent(`
  * Co-authored-by credits to append when enabled
  */
 const CO_AUTHORED_CREDITS = (() => trimIdent(`
-    When making commit messages, you SHOULD also give credit to HAPI like so:
+    When making commit messages, you SHOULD also give credit to HAPI Nexus like so:
 
     <main commit message>
 
-    via [HAPI](https://hapi.run)
+    via HAPI Nexus
 
-    Co-Authored-By: HAPI <noreply@hapi.run>
+    Co-Authored-By: HAPI Nexus <noreply@hapi-nexus.local>
 `))();
 
 /**

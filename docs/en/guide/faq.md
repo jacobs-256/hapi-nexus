@@ -4,19 +4,19 @@
 
 ## General
 
-### What is HAPI?
+### What is HAPI Nexus?
 
-HAPI is a local-first, self-hosted platform for running and controlling AI coding agents (Claude Code, Codex, Cursor Agent, Grok Build, and OpenCode) remotely. It lets you start coding sessions on your computer and monitor/control them from your phone.
+HAPI Nexus is a local-first, self-hosted platform for running and controlling AI coding agents (Claude Code, Codex, Cursor Agent, Grok Build, and OpenCode) remotely. It lets teams start coding sessions on trusted machines and monitor/control them from a private Web/PWA interface.
 
-### What does HAPI stand for?
+### What does HAPI Nexus stand for?
 
-HAPI (哈皮) is a Chinese transliteration of "Happy", reflecting the project's goal of making AI coding assistance a happier experience by freeing you from the terminal.
+HAPI comes from the upstream HAPI project name, itself a Chinese transliteration of "Happy". Nexus reflects this fork's private-hub direction: users, machines, workspaces, and projects connected through one deployment.
 
-### Is HAPI free?
+### Is HAPI Nexus free?
 
-Yes, HAPI is open source and free to use under the AGPL-3.0-only license.
+Yes, HAPI Nexus is open source and free to use under the AGPL-3.0-only license.
 
-### What AI agents does HAPI support?
+### What AI agents does HAPI Nexus support?
 
 - **Claude Code** (recommended)
 - **OpenAI Codex**
@@ -28,7 +28,7 @@ Yes, HAPI is open source and free to use under the AGPL-3.0-only license.
 
 ### Do I need a hub?
 
-HAPI includes an embedded hub. Just run `hapi hub` on your machine - no external hub required.
+HAPI Nexus includes an embedded hub. Run `hapi hub` on your machine - no external hub required.
 
 `hapi server` remains supported as an alias.
 
@@ -220,20 +220,20 @@ This checks hub connectivity, token validity, agent availability, and more.
 
 ## Comparison
 
-### HAPI vs Happy
+### HAPI Nexus vs Happy
 
-| Aspect | Happy | HAPI |
+| Aspect | Happy | HAPI Nexus |
 |--------|-------|------|
 | Design | Cloud-first | Local-first |
 | Users | Managed multi-user cloud | Private multi-user hub |
 | Deployment | Multiple services | Single binary |
 | Data | Encrypted on server | Never leaves your machine |
 
-See [Why HAPI](./why-hapi.md) for detailed comparison.
+See [Why HAPI Nexus](./why-hapi.md) for detailed comparison.
 
-### HAPI vs running Claude Code directly
+### HAPI Nexus vs running Claude Code directly
 
-| Feature | Claude Code | HAPI + Claude Code |
+| Feature | Claude Code | HAPI Nexus + Claude Code |
 |---------|-------------|-------------------|
 | Remote access | No | Yes |
 | Mobile control | No | Yes |
@@ -245,11 +245,11 @@ See [Why HAPI](./why-hapi.md) for detailed comparison.
 
 ### How can I contribute?
 
-Visit our [GitHub repository](https://github.com/tiann/hapi) to:
+Use this repository's GitHub Issues and Pull Requests after it is published to:
 - Report issues
 - Submit pull requests
 - Suggest features
 
 ### Where do I report bugs?
 
-Open an issue on [GitHub Issues](https://github.com/tiann/hapi/issues).
+Open an issue in this repository after it is published.

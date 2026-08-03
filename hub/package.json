@@ -2,8 +2,8 @@
     "name": "hapi-hub",
     "private": true,
     "version": "0.1.0",
-    "description": "Telegram Bot client for HAPI - control Claude Code sessions",
-    "author": "weishu",
+    "description": "HAPI Nexus private hub for multi-user AI coding agent control",
+    "author": "HAPI Nexus contributors; derived from work by weishu",
     "license": "AGPL-3.0-only",
     "type": "module",
     "exports": {

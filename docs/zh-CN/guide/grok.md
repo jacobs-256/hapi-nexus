@@ -8,17 +8,17 @@ HAPI 可以在本地运行官方 Grok Build CLI，并从 Web/PWA 远程控制同
 
 使用官方安装器安装 Grok Build：
 
-::: code-group
+### macOS / Linux / WSL
 
-```bash [macOS / Linux / WSL]
+```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 ```
 
-```powershell [Windows PowerShell]
+### Windows PowerShell
+
+```powershell
 irm https://x.ai/cli/install.ps1 | iex
 ```
-
-:::
 
 验证安装：
 

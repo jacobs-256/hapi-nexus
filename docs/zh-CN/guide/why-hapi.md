@@ -1,14 +1,14 @@
-# 为什么选择 HAPI？
+# 为什么选择 HAPI Nexus？
 
 **语言：** [English](../../en/guide/why-hapi.md) | 简体中文
 
-[Happy](https://github.com/slopus/happy) 是一个优秀项目。为什么还要构建 HAPI？
+[Happy](https://github.com/slopus/happy) 是一个优秀项目。为什么还要构建 HAPI Nexus？
 
-**简短回答**：Happy 使用中心化服务器保存你的加密数据。HAPI 是去中心化的，每个私有部署运行自己的 hub，relay server 只转发加密流量，不保存任何数据。目标不同，架构也根本不同。
+**简短回答**：Happy 使用中心化服务器保存你的加密数据。HAPI Nexus 保留 HAPI 的 local-first 架构：每个私有部署运行自己的 hub，relay/tunnel 基础设施只转发流量，而不是成为产品数据库。目标不同，架构也根本不同。
 
 ## TL;DR
 
-| 方面 | Happy | HAPI |
+| 方面 | Happy | HAPI Nexus |
 |--------|-------|------|
 | **架构** | 中心化（云服务器保存加密数据） | 去中心化私有 hub |
 | **用户** | 共享服务器上的多用户 | 每个部署一个私有多用户 hub |
@@ -17,7 +17,7 @@
 | **部署** | 多个服务（PostgreSQL、Redis、应用服务器） | 单个二进制 |
 | **复杂度** | 高（E2EE、密钥管理、扩展） | 低（一条命令） |
 
-**选择 HAPI 如果**：你需要数据主权、自托管和最小部署复杂度。
+**选择 HAPI Nexus 如果**：你需要数据主权、自托管、私有多用户管理和最小部署复杂度。
 
 **选择 Happy 如果**：你需要托管云服务，而不是自己运维私有 hub。
 
@@ -174,7 +174,7 @@ Relay 服务器只转发加密数据包，无法读取你的数据。
 
 ### 安全方式
 
-| 方面 | Happy | HAPI（自托管） | HAPI（relay） |
+| 方面 | Happy | HAPI Nexus（自托管） | HAPI Nexus（relay） |
 |--------|-------|-------------------|--------------|
 | **问题** | 数据在不可信服务器上 | 远程访问本地 hub | 通过第三方 relay 远程访问 |
 | **方案** | 应用层 E2EE | HTTPS（你控制路径） | WireGuard + TLS（tunwg） |

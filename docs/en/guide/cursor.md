@@ -80,7 +80,7 @@ HAPI's legacy event converter intercepts this synthetic response and rewrites it
 
 The intercept drains naturally with the legacy session population - resumed pre-ACP sessions are the only path that still hits this code.
 
-Tracking issue: [tiann/hapi#784](https://github.com/tiann/hapi/issues/784).
+Historical upstream tracking issue: `tiann/hapi#784`.
 
 ## Integration
 

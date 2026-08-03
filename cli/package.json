@@ -1,17 +1,11 @@
 {
   "name": "@twsxtd/hapi",
   "version": "0.25.2",
-  "description": "App for agentic coding - access coding agent anywhere",
-  "author": "Kirill Dubovitskiy & weishu",
+  "description": "HAPI Nexus CLI for private multi-user AI coding agent control",
+  "author": "HAPI Nexus contributors; derived from work by Kirill Dubovitskiy & weishu",
   "license": "AGPL-3.0-only",
   "type": "module",
-  "homepage": "https://github.com/tiann/hapi",
-  "bugs": "https://github.com/tiann/hapi/issues",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/tiann/hapi.git",
-    "directory": "cli"
-  },
+  "bugs": "the HAPI Nexus repository issues page",
   "bin": {
     "hapi": "bin/hapi.cjs"
   },

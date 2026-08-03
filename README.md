@@ -1,8 +1,12 @@
-# HAPI
+# HAPI Nexus
 
-Run official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions locally and control them remotely through a Web / PWA / Telegram Mini App.
+**Language:** English | [简体中文](README.zh-CN.md)
 
-> **Why HAPI?** HAPI is a local-first alternative to Happy. See [Why Not Happy?](docs/en/guide/why-hapi.md) for the key differences.
+Enterprise-oriented private-deployment platform for running official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions locally and controlling them remotely through a Web / PWA / Telegram Mini App.
+
+HAPI Nexus is an independent modified version of HAPI. It keeps the local-first agent workflow and adds private-hub features for teams: local username/password accounts, administrator-managed users, per-user access tokens, scoped runner workspaces, project sharing, and an enterprise-style Web console.
+
+The CLI command is still `hapi` for compatibility with the existing codebase.
 
 ## Features
 
@@ -16,37 +20,45 @@ Run official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions
 - **Project Sharing** - Create projects, attach runner workspaces, invite users, and share sessions without copying source code to every device.
 - **Private Hub Accounts** - Browser users sign in with local username/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
 
-## Demo
-
-https://github.com/user-attachments/assets/38230353-94c6-4dbe-9c29-b2a2cc457546
-
 ## Getting Started
 
+After cloning this repository, install dependencies and build the all-in-one binary:
+
 ```bash
-npx @twsxtd/hapi hub --relay     # start hub with E2E encrypted relay
-npx @twsxtd/hapi                 # run claude code
+bun install
+bun run build:single-exe
 ```
 
-`hapi server` remains supported as an alias.
+Start a private hub:
 
-The terminal will display a URL and QR code. Scan the QR code with your phone or open the URL to access.
-The default browser login is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.
+```bash
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+```
 
-> The relay uses WireGuard + TLS for end-to-end encryption. Your data is encrypted from your device to your machine.
+Start a runner with one or more allowed workspace roots:
 
-For self-hosted options (Cloudflare Tunnel, Tailscale), see [Installation](docs/en/guide/installation.md)
+```bash
+./cli/dist/hapi runner start --workspace-root /path/to/projects
+```
+
+Open the hub URL in a browser. The default browser login is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.
+
+For deployment options, see [Installation](docs/en/guide/installation.md).
 
 ## Docs
 
+- [Quick Start](docs/en/guide/quick-start.md)
+- [Installation](docs/en/guide/installation.md)
 - [App](docs/en/guide/pwa.md)
 - [Accounts and Access](docs/en/guide/accounts.md)
 - [Settings Console](docs/en/guide/settings.md)
 - [Projects and Sharing](docs/en/guide/projects.md)
 - [How it Works](docs/en/guide/how-it-works.md)
+- [License and Attribution](docs/en/guide/license.md)
 - [Cursor Agent](docs/en/guide/cursor.md)
 - [Grok Build](docs/en/guide/grok.md)
 - [Voice Assistant](docs/en/guide/voice-assistant.md)
-- [Why HAPI](docs/en/guide/why-hapi.md)
+- [Why HAPI Nexus](docs/en/guide/why-hapi.md)
 - [FAQ](docs/en/guide/faq.md)
 
 ## Build from source
@@ -56,6 +68,8 @@ bun install
 bun run build:single-exe
 ```
 
-## Credits
+## License and Attribution
 
-HAPI means "哈皮" a Chinese transliteration of [Happy](https://github.com/slopus/happy). Great credit to the original project.
+HAPI Nexus is distributed under the [GNU Affero General Public License v3.0](LICENSE). Because this is a modified AGPL-covered project, keep the license, preserve upstream notices, and provide corresponding source code to users who interact with a deployed network service.
+
+See [NOTICE.md](NOTICE.md) and [License and Attribution](docs/en/guide/license.md) for upstream attribution and modification notes.

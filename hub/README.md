@@ -1,6 +1,6 @@
 # hapi-hub
 
-Telegram bot + HTTP API + realtime updates for hapi hub.
+Telegram bot + HTTP API + realtime updates for the HAPI Nexus hub.
 
 ## What it does
 

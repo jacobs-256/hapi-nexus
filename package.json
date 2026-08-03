@@ -1,9 +1,10 @@
 {
-    "name": "hapi",
+    "name": "hapi-nexus",
+    "description": "Enterprise-oriented private-deployment fork of HAPI for multi-user AI coding agent control, project sharing, and local-first remote workflows.",
     "private": true,
-    "workspaces": ["cli", "shared", "hub", "web", "website", "docs"],
+    "license": "AGPL-3.0-only",
+    "workspaces": ["cli", "shared", "hub", "web"],
     "scripts": {
-        "build:site": "bun run --cwd website build && bun run --cwd docs docs:build && cp -r docs/.vitepress/dist website/dist/public/docs",
         "dev": "concurrently \"bun run dev:hub\" \"bun run dev:web\" --kill-others-on-exit",
         "build": "bun run build:cli && bun run build:web && (cd hub && bun run generate:embedded-web-assets) && bun run build:hub",
         "build:cli": "bun run typecheck:cli",

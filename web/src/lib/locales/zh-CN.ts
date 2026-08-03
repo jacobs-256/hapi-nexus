@@ -992,8 +992,7 @@ export default {
   'settings.machines.error': '重命名失败。',
   'settings.hub.machines.summary': '给设备起自定义名字',
   'settings.about.title': '关于',
-  'settings.about.description': 'HAPI 链接和版本信息。',
-  'settings.about.website': '官方网站',
+  'settings.about.description': 'HAPI 版本信息。',
   'settings.about.appVersion': '应用版本',
   'settings.about.protocolVersion': '协议版本',
 

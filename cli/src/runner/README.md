@@ -1,6 +1,6 @@
-# HAPI CLI Runner: Control Flow and Lifecycle
+# HAPI Nexus CLI Runner: Control Flow and Lifecycle
 
-The runner is a persistent background process that manages HAPI sessions, enables remote control from the Web/PWA/Telegram clients, and handles auto-updates when the CLI version changes.
+The runner is a persistent background process that manages HAPI Nexus sessions, enables remote control from the Web/PWA/Telegram clients, and handles auto-updates when the CLI version changes.
 
 ## 1. Runner Lifecycle
 
@@ -105,10 +105,10 @@ Initiated by Web/PWA/Telegram clients via hub RPC:
 3. `spawnSession()`:
    - Validates/creates directory (with approval flow)
    - Configures agent-specific token environment
-   - Spawns detached HAPI process with `--hapi-starting-mode remote --started-by runner`
+   - Spawns detached HAPI Nexus process with `--hapi-starting-mode remote --started-by runner`
    - Adds to `pidToTrackedSession` map
    - Sets up 15-second awaiter for session webhook
-4. New HAPI process:
+4. New HAPI Nexus process:
    - Creates session with the hub, receives `happySessionId`
    - Calls `notifyRunnerSessionStarted()` to POST to runner's `/session-started`
 5. Runner updates tracking with `happySessionId`, resolves awaiter
@@ -118,7 +118,7 @@ Initiated by Web/PWA/Telegram clients via hub RPC:
 
 User runs `hapi` directly:
 1. CLI auto-starts runner if configured
-2. HAPI process calls `notifyRunnerSessionStarted()`
+2. HAPI Nexus process calls `notifyRunnerSessionStarted()`
 3. Runner receives webhook, creates `TrackedSession` with `startedBy: 'hapi directly - likely by user from terminal'`
 4. Session tracked for health monitoring
 
@@ -265,7 +265,7 @@ All data is plain JSON over TLS; authentication is `CLI_API_TOKEN` (no end-to-en
 
 ### Doctor Command
 
-`hapi doctor` uses `ps aux | grep` to find all HAPI processes:
+`hapi doctor` uses `ps aux | grep` to find all HAPI Nexus processes:
 - Production: matches `hapi` binary, `happy-coder`
 - Development: matches `src/index.ts` (run via `bun`)
 - Categorizes by command args: runner, runner-spawned, user-session, doctor
