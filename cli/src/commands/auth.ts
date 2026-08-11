@@ -32,9 +32,9 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
         if (!hasToken) {
             console.log('')
             console.log(chalk.yellow('  Token not configured. To get your token:'))
-            console.log(chalk.gray('    1. Check the server startup logs (first run shows generated token)'))
-            console.log(chalk.gray('    2. Read ~/.hapi/settings.json on the server'))
-            console.log(chalk.gray('    3. Ask your server administrator (if token is set via env var)'))
+            console.log(chalk.gray('    1. Sign in to the Web UI with your username/password'))
+            console.log(chalk.gray('    2. Open Settings -> Account'))
+            console.log(chalk.gray('    3. Copy your personal access token'))
             console.log('')
             console.log(chalk.gray('  Then run: hapi auth login'))
         }
@@ -51,7 +51,7 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
         const rl = readline.createInterface({ input, output })
 
         try {
-            const token = await rl.question(chalk.cyan('Enter CLI_API_TOKEN: '))
+            const token = await rl.question(chalk.cyan('Enter CLI/runner access token: '))
 
             if (!token.trim()) {
                 console.error(chalk.red('Token cannot be empty'))
@@ -92,7 +92,7 @@ ${chalk.bold('hapi auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
   hapi auth status            Show current configuration
-  hapi auth login             Enter and save CLI_API_TOKEN
+  hapi auth login             Enter and save the CLI/runner access token
   hapi auth logout            Clear saved credentials
 
 ${chalk.bold('Token priority (highest to lowest):')}

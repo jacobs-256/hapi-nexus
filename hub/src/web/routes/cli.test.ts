@@ -4,17 +4,20 @@ import type { SyncEngine } from '../../sync/syncEngine'
 import { createConfiguration } from '../../configuration'
 import { createCliRoutes } from './cli'
 import { SessionIdentityConflictError } from '../../store/sessions'
-import type { StoredProject } from '../../store'
+import type { Store, StoredProject, StoredUser } from '../../store'
 
-function createApp(engine: Partial<SyncEngine>) {
+function createApp(engine: Partial<SyncEngine>, store: Store = createRouteStore()) {
     const app = new Hono()
-    app.route('/cli', createCliRoutes(() => engine as SyncEngine))
+    app.route('/cli', createCliRoutes(() => engine as SyncEngine, {
+        store,
+        getOwnerUserId: async () => 1
+    }))
     return app
 }
 
-function authHeaders() {
+function authHeaders(token = 'test-token') {
     return {
-        authorization: 'Bearer test-token'
+        authorization: `Bearer ${token}`
     }
 }
 
@@ -29,6 +32,54 @@ function defaultProject(): StoredProject {
         createdAt: 1,
         archivedAt: null
     }
+}
+
+function personalProject(namespace: string, userId: number): StoredProject {
+    return {
+        id: `personal-project:${namespace}:${userId}`,
+        namespace,
+        teamId: `personal-team:${namespace}:${userId}`,
+        name: 'Personal Workspace',
+        repoUrl: null,
+        createdByUserId: userId,
+        createdAt: 1,
+        archivedAt: null
+    }
+}
+
+function localUser(input: Partial<StoredUser> & { id: number; accessToken: string; namespace?: string }): StoredUser {
+    const namespace = input.namespace ?? 'default'
+    return {
+        id: input.id,
+        platform: 'local',
+        platformUserId: `${namespace}:user-${input.id}`,
+        namespace,
+        username: `user-${input.id}`,
+        usernameNormalized: `user-${input.id}`,
+        displayName: null,
+        passwordHash: 'hash',
+        accessToken: input.accessToken,
+        accessTokenHash: 'hash',
+        role: input.role ?? 'user',
+        disabledAt: input.disabledAt ?? null,
+        createdAt: 1,
+        updatedAt: null
+    }
+}
+
+function createRouteStore(options?: {
+    users?: StoredUser[]
+    ensurePersonalProject?: (namespace: string, userId: number) => StoredProject
+}): Store {
+    const usersByToken = new Map((options?.users ?? []).map((user) => [user.accessToken, user]))
+    return {
+        users: {
+            getUserByAccessToken: (token: string) => usersByToken.get(token.trim()) ?? null
+        },
+        projects: {
+            ensurePersonalProject: options?.ensurePersonalProject ?? personalProject
+        }
+    } as unknown as Store
 }
 
 beforeAll(async () => {
@@ -167,7 +218,7 @@ describe('cli lazy session creation', () => {
             { host: 'localhost' },
             null,
             'default',
-            { ownerUserId: expect.any(Number), teamId: 'default-team' }
+            { ownerUserId: 1, teamId: 'default-team' }
         )
         expect(getOrCreateSession).toHaveBeenCalledWith(
             'lazy-tag',
@@ -178,8 +229,110 @@ describe('cli lazy session creation', () => {
             undefined,
             undefined,
             sessionId,
-            { projectId: 'default-project', createdByUserId: expect.any(Number) }
+            { projectId: 'default-project', createdByUserId: 1 }
         )
+    })
+
+    it('creates runner resources with the authenticated local user token', async () => {
+        const ensurePersonalProject = mock(personalProject)
+        const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
+        const getOrCreateSession = mock(() => ({ id: sessionId }))
+        const user = localUser({ id: 42, namespace: 'team-a', accessToken: 'hapi_user_alice' })
+        const app = createApp({
+            getMachine: () => null,
+            getOrCreateMachine,
+            getOrCreateSession
+        } as never, createRouteStore({
+            users: [user],
+            ensurePersonalProject
+        }))
+
+        const response = await app.request('/cli/sessions', {
+            method: 'POST',
+            headers: {
+                ...authHeaders('hapi_user_alice'),
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: sessionId,
+                tag: 'lazy-tag',
+                metadata: { path: '/tmp/project' },
+                machine: {
+                    id: 'machine-1',
+                    metadata: { host: 'localhost' }
+                }
+            })
+        })
+
+        expect(response.status).toBe(200)
+        expect(ensurePersonalProject).toHaveBeenCalledWith('team-a', 42)
+        expect(getOrCreateMachine).toHaveBeenCalledWith(
+            'machine-1',
+            { host: 'localhost' },
+            null,
+            'team-a',
+            { ownerUserId: 42, teamId: 'personal-team:team-a:42' }
+        )
+        expect(getOrCreateSession).toHaveBeenCalledWith(
+            'lazy-tag',
+            { path: '/tmp/project' },
+            null,
+            'team-a',
+            undefined,
+            undefined,
+            undefined,
+            sessionId,
+            { projectId: 'personal-project:team-a:42', createdByUserId: 42 }
+        )
+    })
+
+    it('rejects disabled local user access tokens', async () => {
+        const app = createApp({} as never, createRouteStore({
+            users: [localUser({
+                id: 42,
+                accessToken: 'hapi_user_disabled',
+                disabledAt: 123
+            })]
+        }))
+
+        const response = await app.request('/cli/machines', {
+            method: 'POST',
+            headers: {
+                ...authHeaders('hapi_user_disabled'),
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: 'machine-1',
+                metadata: {}
+            })
+        })
+
+        expect(response.status).toBe(401)
+    })
+
+    it('rejects a local user token claiming another user machine', async () => {
+        const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
+        const app = createApp({
+            getMachine: () => ({ id: 'machine-1', namespace: 'default', ownerUserId: 7 }),
+            getOrCreateMachine
+        } as never, createRouteStore({
+            users: [localUser({ id: 42, accessToken: 'hapi_user_alice' })]
+        }))
+
+        const response = await app.request('/cli/machines', {
+            method: 'POST',
+            headers: {
+                ...authHeaders('hapi_user_alice'),
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: 'machine-1',
+                metadata: {}
+            })
+        })
+
+        expect(response.status).toBe(403)
+        expect(getOrCreateMachine).not.toHaveBeenCalled()
     })
 
     it('rejects an embedded machine owned by another namespace', async () => {

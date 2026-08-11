@@ -35,7 +35,7 @@ describe('auth routes local accounts', () => {
                 accessToken: 'hapi_user_alice'
             }))
             const verified = await jwtVerify(body.token, JWT_SECRET, { algorithms: ['HS256'] })
-            expect(verified.payload).toEqual(expect.objectContaining({ uid: user.id, ns: 'default' }))
+            expect(verified.payload).toEqual(expect.objectContaining({ uid: user.id, ns: 'default', plt: 'local' }))
         } finally {
             store.close()
         }

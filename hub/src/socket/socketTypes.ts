@@ -4,6 +4,8 @@ import type { DefaultEventsMap, Server, Socket } from 'socket.io'
 export type SocketData = {
     namespace?: string
     userId?: number
+    authPlatform?: 'owner' | 'local'
+    cliAuthSource?: 'system' | 'user'
 }
 
 export type SocketServer = Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketData>

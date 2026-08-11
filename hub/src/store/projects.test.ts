@@ -2,6 +2,27 @@ import { describe, expect, it } from 'bun:test'
 
 import { Store } from './index'
 
+describe('ProjectStore personal defaults', () => {
+    it('creates one isolated personal project per user', () => {
+        const store = new Store(':memory:')
+        try {
+            const aliceProject = store.projects.ensurePersonalProject('default', 1)
+            const bobProject = store.projects.ensurePersonalProject('default', 2)
+            const aliceAgain = store.projects.ensurePersonalProject('default', 1)
+
+            expect(aliceAgain.id).toBe(aliceProject.id)
+            expect(bobProject.id).not.toBe(aliceProject.id)
+
+            expect(store.projects.getProjectMemberRole(aliceProject.id, 1)).toBe('owner')
+            expect(store.projects.getProjectMemberRole(aliceProject.id, 2)).toBeNull()
+            expect(store.projects.getProjectMemberRole(bobProject.id, 2)).toBe('owner')
+            expect(store.projects.getProjectMemberRole(bobProject.id, 1)).toBeNull()
+        } finally {
+            store.close()
+        }
+    })
+})
+
 describe('ProjectStore invites', () => {
     it('lets one invite link add multiple users without downgrading existing roles', () => {
         const store = new Store(':memory:')

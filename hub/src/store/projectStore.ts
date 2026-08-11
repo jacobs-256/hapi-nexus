@@ -17,6 +17,7 @@ import {
     createProject,
     createProjectInvite,
     ensureDefaultProject,
+    ensurePersonalProject,
     getProjectByNamespace,
     getProjectMemberRole,
     hasProjectRole,
@@ -43,6 +44,10 @@ export class ProjectStore {
 
     ensureDefaultProject(namespace: string, ownerUserId: number): StoredProject {
         return ensureDefaultProject(this.db, namespace, ownerUserId)
+    }
+
+    ensurePersonalProject(namespace: string, ownerUserId: number): StoredProject {
+        return ensurePersonalProject(this.db, namespace, ownerUserId)
     }
 
     assignLegacySessionsToDefaultProject(namespace: string, ownerUserId: number): string {

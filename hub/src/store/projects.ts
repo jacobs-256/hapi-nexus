@@ -16,6 +16,8 @@ export const PROJECT_ROLES: ProjectRole[] = ['viewer', 'editor', 'admin', 'owner
 
 const DEFAULT_TEAM_NAME = 'Default'
 const DEFAULT_PROJECT_NAME = 'Default Project'
+const PERSONAL_TEAM_NAME = 'Personal'
+const PERSONAL_PROJECT_NAME = 'Personal Workspace'
 
 type DbTeamRow = {
     id: string
@@ -160,6 +162,14 @@ function defaultProjectId(namespace: string): string {
     return `default-project:${namespace}`
 }
 
+function personalTeamId(namespace: string, ownerUserId: number): string {
+    return `personal-team:${namespace}:${ownerUserId}`
+}
+
+function personalProjectId(namespace: string, ownerUserId: number): string {
+    return `personal-project:${namespace}:${ownerUserId}`
+}
+
 export function ensureDefaultTeam(db: Database, namespace: string, ownerUserId: number): StoredTeam {
     const id = defaultTeamId(namespace)
     const now = Date.now()
@@ -211,6 +221,52 @@ export function ensureDefaultProject(db: Database, namespace: string, ownerUserI
 
     const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as DbProjectRow | undefined
     if (!row) throw new Error('Failed to ensure default project')
+    return toProject(row)
+}
+
+export function ensurePersonalProject(db: Database, namespace: string, ownerUserId: number): StoredProject {
+    const teamId = personalTeamId(namespace, ownerUserId)
+    const projectId = personalProjectId(namespace, ownerUserId)
+    const now = Date.now()
+
+    db.prepare(`
+        INSERT INTO teams (id, namespace, name, created_by_user_id, created_at)
+        VALUES (@id, @namespace, @name, @created_by_user_id, @created_at)
+        ON CONFLICT(id) DO NOTHING
+    `).run({
+        id: teamId,
+        namespace,
+        name: PERSONAL_TEAM_NAME,
+        created_by_user_id: ownerUserId,
+        created_at: now
+    })
+
+    db.prepare(`
+        INSERT INTO team_members (team_id, user_id, role, created_at)
+        VALUES (@team_id, @user_id, 'owner', @created_at)
+        ON CONFLICT(team_id, user_id) DO UPDATE SET role = 'owner'
+    `).run({ team_id: teamId, user_id: ownerUserId, created_at: now })
+
+    db.prepare(`
+        INSERT INTO projects (
+            id, namespace, team_id, name, repo_url, created_by_user_id, created_at, archived_at
+        ) VALUES (
+            @id, @namespace, @team_id, @name, NULL, @created_by_user_id, @created_at, NULL
+        )
+        ON CONFLICT(id) DO UPDATE SET archived_at = NULL
+    `).run({
+        id: projectId,
+        namespace,
+        team_id: teamId,
+        name: PERSONAL_PROJECT_NAME,
+        created_by_user_id: ownerUserId,
+        created_at: now
+    })
+
+    addProjectMember(db, projectId, ownerUserId, 'owner')
+
+    const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as DbProjectRow | undefined
+    if (!row) throw new Error('Failed to ensure personal project')
     return toProject(row)
 }
 

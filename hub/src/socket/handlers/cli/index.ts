@@ -57,6 +57,8 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionReady, onSessionEnd, onMachineAlive, onWebappEvent, onBackgroundTaskDelta, onSessionActivity, onSweepImmediateQueued, onMessagesConsumed } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
+    const userId = typeof socket.data.userId === 'number' ? socket.data.userId : null
+    const isUserToken = socket.data.cliAuthSource === 'user'
 
     const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
         if (!namespace) {
@@ -64,6 +66,14 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         }
         const session = store.sessions.getSessionByNamespace(sessionId, namespace)
         if (session) {
+            if (isUserToken) {
+                if (userId === null || session.projectId === null) {
+                    return { ok: false, reason: 'access-denied' }
+                }
+                if (!store.projects.hasProjectRole(session.projectId, userId, 'editor')) {
+                    return { ok: false, reason: 'access-denied' }
+                }
+            }
             return { ok: true, value: session }
         }
         if (store.sessions.getSession(sessionId)) {
@@ -78,6 +88,9 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
         }
         const machine = store.machines.getMachineByNamespace(machineId, namespace)
         if (machine) {
+            if (isUserToken && machine.ownerUserId !== userId) {
+                return { ok: false, reason: 'access-denied' }
+            }
             return { ok: true, value: machine }
         }
         if (store.machines.getMachine(machineId)) {

@@ -57,12 +57,12 @@ async function promptForToken(): Promise<string> {
 
     console.log(chalk.yellow('\nNo CLI_API_TOKEN found.'))
     console.log(chalk.gray('Where to find the token:'))
-    console.log(chalk.gray('  1. Check the server startup logs (first run shows generated token)'))
-    console.log(chalk.gray('  2. Read ~/.hapi/settings.json on the server'))
-    console.log(chalk.gray('  3. Ask your server administrator (if token is set via env var)\n'))
+    console.log(chalk.gray('  1. Sign in to the Web UI with your username/password'))
+    console.log(chalk.gray('  2. Open Settings -> Account'))
+    console.log(chalk.gray('  3. Copy your personal access token\n'))
 
     try {
-        const token = await rl.question(chalk.cyan('Enter CLI_API_TOKEN: '))
+        const token = await rl.question(chalk.cyan('Enter CLI/runner access token: '))
         if (!token.trim()) {
             throw new Error('Token cannot be empty')
         }

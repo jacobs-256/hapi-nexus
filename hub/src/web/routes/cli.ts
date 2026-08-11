@@ -6,10 +6,8 @@ import {
     CursorMigrateToAcpRequestSchema,
     PROTOCOL_VERSION
 } from '@hapi/protocol'
-import { getConfiguration } from '../../configuration'
-import { getOrCreateOwnerId } from '../../config/ownerId'
-import { constantTimeEquals } from '../../utils/crypto'
-import { parseAccessToken } from '../../utils/accessToken'
+import { resolveCliAuthToken, type CliAuthContext } from '../../cliAuth'
+import type { Store, StoredProject } from '../../store'
 import type { Machine, Session, SyncEngine } from '../../sync/syncEngine'
 import { SessionIdentityConflictError } from '../../store/sessions'
 
@@ -23,15 +21,26 @@ const getMessagesQuerySchema = z.object({
 type CliEnv = {
     Variables: {
         namespace: string
+        userId: number
+        authPlatform: CliAuthContext['authPlatform']
+        cliRole: CliAuthContext['role']
+        cliAuthSource: CliAuthContext['source']
     }
+}
+
+type CliRouteOptions = {
+    store: Store
+    getOwnerUserId?: () => Promise<number>
 }
 
 function resolveSessionForNamespace(
     engine: SyncEngine,
     sessionId: string,
-    namespace: string
+    auth: CliAuthContext
 ): { ok: true; session: Session; sessionId: string } | { ok: false; status: 403 | 404; error: string } {
-    const access = engine.resolveSessionAccess(sessionId, namespace)
+    const access = auth.source === 'system'
+        ? engine.resolveSessionAccess(sessionId, auth.namespace)
+        : engine.resolveSessionAccessForUser(sessionId, auth.namespace, auth.userId, 'editor')
     if (access.ok) {
         return { ok: true, session: access.session, sessionId: access.sessionId }
     }
@@ -45,19 +54,57 @@ function resolveSessionForNamespace(
 function resolveMachineForNamespace(
     engine: SyncEngine,
     machineId: string,
-    namespace: string
+    auth: CliAuthContext
 ): { ok: true; machine: Machine } | { ok: false; status: 403 | 404; error: string } {
-    const machine = engine.getMachineByNamespace(machineId, namespace)
-    if (machine) {
-        return { ok: true, machine }
+    if (auth.source === 'system') {
+        const machine = engine.getMachineByNamespace(machineId, auth.namespace)
+        if (machine) {
+            return { ok: true, machine }
+        }
+        if (engine.getMachine(machineId)) {
+            return { ok: false, status: 403, error: 'Machine access denied' }
+        }
+        return { ok: false, status: 404, error: 'Machine not found' }
     }
-    if (engine.getMachine(machineId)) {
+
+    const access = engine.resolveMachineAccessForUser(machineId, auth.namespace, auth.userId, 'editor')
+    if (access.ok && access.machine.ownerUserId === auth.userId) {
+        return { ok: true, machine: access.machine }
+    }
+    if (access.ok || access.reason === 'access-denied') {
         return { ok: false, status: 403, error: 'Machine access denied' }
     }
     return { ok: false, status: 404, error: 'Machine not found' }
 }
 
-export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<CliEnv> {
+function getCliAuth(c: { get: <K extends keyof CliEnv['Variables']>(key: K) => CliEnv['Variables'][K] }): CliAuthContext {
+    return {
+        namespace: c.get('namespace'),
+        userId: c.get('userId'),
+        authPlatform: c.get('authPlatform'),
+        role: c.get('cliRole'),
+        source: c.get('cliAuthSource')
+    }
+}
+
+async function ensureCliProject(engine: SyncEngine, store: Store, auth: CliAuthContext): Promise<StoredProject> {
+    if (auth.source === 'system') {
+        return engine.ensureNamespaceDefaults(auth.namespace, auth.userId)
+    }
+    return store.projects.ensurePersonalProject(auth.namespace, auth.userId)
+}
+
+function canUseExistingMachineForAuth(machine: Machine, auth: CliAuthContext): boolean {
+    if (machine.namespace !== auth.namespace) {
+        return false
+    }
+    if (auth.source === 'system') {
+        return true
+    }
+    return machine.ownerUserId === null || machine.ownerUserId === auth.userId
+}
+
+export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options: CliRouteOptions): Hono<CliEnv> {
     const app = new Hono<CliEnv>()
 
     app.use('*', async (c, next) => {
@@ -74,13 +121,18 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         }
 
         const token = parsed.data.replace(/^Bearer\s+/i, '')
-        const configuration = getConfiguration()
-        const parsedToken = parseAccessToken(token)
-        if (!parsedToken || !constantTimeEquals(parsedToken.baseToken, configuration.cliApiToken)) {
+        const auth = await resolveCliAuthToken(options.store, token, {
+            getOwnerUserId: options.getOwnerUserId
+        })
+        if (!auth) {
             return c.json({ error: 'Invalid token' }, 401)
         }
 
-        c.set('namespace', parsedToken.namespace)
+        c.set('namespace', auth.namespace)
+        c.set('userId', auth.userId)
+        c.set('authPlatform', auth.authPlatform)
+        c.set('cliRole', auth.role)
+        c.set('cliAuthSource', auth.source)
         return await next()
     })
 
@@ -95,21 +147,20 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const namespace = c.get('namespace')
-        const ownerUserId = await getOrCreateOwnerId()
-        const defaultProject = engine.ensureNamespaceDefaults(namespace, ownerUserId)
+        const auth = getCliAuth(c)
+        const defaultProject = await ensureCliProject(engine, options.store, auth)
         const machineInput = parsed.data.machine
         if (machineInput) {
             const existingMachine = engine.getMachine(machineInput.id)
-            if (existingMachine && existingMachine.namespace !== namespace) {
+            if (existingMachine && !canUseExistingMachineForAuth(existingMachine, auth)) {
                 return c.json({ error: 'Machine access denied' }, 403)
             }
             engine.getOrCreateMachine(
                 machineInput.id,
                 machineInput.metadata,
                 machineInput.runnerState ?? null,
-                namespace,
-                { ownerUserId, teamId: defaultProject.teamId }
+                auth.namespace,
+                { ownerUserId: auth.userId, teamId: defaultProject.teamId }
             )
         }
 
@@ -118,12 +169,12 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
                 parsed.data.tag,
                 parsed.data.metadata,
                 parsed.data.agentState ?? null,
-                namespace,
+                auth.namespace,
                 parsed.data.model,
                 parsed.data.effort,
                 parsed.data.modelReasoningEffort,
                 parsed.data.id,
-                { projectId: defaultProject.id, createdByUserId: ownerUserId }
+                { projectId: defaultProject.id, createdByUserId: auth.userId }
             )
             return c.json({ session })
         } catch (error) {
@@ -140,9 +191,11 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
 
-        const namespace = c.get('namespace')
+        const auth = getCliAuth(c)
         const machineId = c.req.query('machineId') || undefined
-        const sessions = engine.listLocalResumableSessions(namespace, { machineId })
+        const sessions = engine.listLocalResumableSessions(auth.namespace, { machineId })
+            .filter((session) => auth.source === 'system'
+                || engine.resolveSessionAccessForUser(session.sessionId, auth.namespace, auth.userId, 'editor').ok)
         return c.json({ sessions })
     })
 
@@ -152,13 +205,20 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
 
-        const namespace = c.get('namespace')
-        const result = engine.resolveLocalResumeTarget(c.req.param('id'), namespace)
+        const auth = getCliAuth(c)
+        const result = engine.resolveLocalResumeTarget(c.req.param('id'), auth.namespace)
         if (result.type === 'error') {
             const status = result.code === 'access_denied' ? 403
                 : result.code === 'session_not_found' ? 404
                     : 409
             return c.json({ error: result.message, code: result.code }, status)
+        }
+        if (auth.source !== 'system') {
+            const access = engine.resolveSessionAccessForUser(result.target.sessionId, auth.namespace, auth.userId, 'editor')
+            if (!access.ok) {
+                const status = access.reason === 'access-denied' ? 403 : 404
+                return c.json({ error: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found' }, status)
+            }
         }
 
         return c.json({ target: result.target })
@@ -170,8 +230,15 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
 
-        const namespace = c.get('namespace')
-        const result = await engine.handoffSessionToLocal(c.req.param('id'), namespace)
+        const auth = getCliAuth(c)
+        if (auth.source !== 'system') {
+            const access = engine.resolveSessionAccessForUser(c.req.param('id'), auth.namespace, auth.userId, 'editor')
+            if (!access.ok) {
+                const status = access.reason === 'access-denied' ? 403 : 404
+                return c.json({ error: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found' }, status)
+            }
+        }
+        const result = await engine.handoffSessionToLocal(c.req.param('id'), auth.namespace)
         if (result.type === 'error') {
             const status = result.code === 'access_denied' ? 403
                 : result.code === 'session_not_found' ? 404
@@ -189,8 +256,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
         const sessionId = c.req.param('id')
-        const namespace = c.get('namespace')
-        const resolved = resolveSessionForNamespace(engine, sessionId, namespace)
+        const auth = getCliAuth(c)
+        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
@@ -203,8 +270,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
         const sessionId = c.req.param('id')
-        const namespace = c.get('namespace')
-        const resolved = resolveSessionForNamespace(engine, sessionId, namespace)
+        const auth = getCliAuth(c)
+        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
@@ -233,8 +300,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
         const sessionId = c.req.param('id')
-        const namespace = c.get('namespace')
-        const resolved = resolveSessionForNamespace(engine, sessionId, namespace)
+        const auth = getCliAuth(c)
+        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
@@ -255,7 +322,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
         if (!parsed.success) {
             return c.json({ error: 'Invalid body', issues: parsed.error.issues }, 400)
         }
-        const outcome = await engine.migrateLegacyCursorSession(resolved.sessionId, namespace, parsed.data)
+        const outcome = await engine.migrateLegacyCursorSession(resolved.sessionId, auth.namespace, parsed.data)
         const status = outcome.ok ? 200
             : outcome.reason === 'already_acp' || outcome.reason === 'not_cursor_session' || outcome.reason === 'no_cursor_session_id' ? 409
                 : outcome.reason === 'running_refused' ? 409
@@ -276,19 +343,18 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Invalid body' }, 400)
         }
 
-        const namespace = c.get('namespace')
-        const ownerUserId = await getOrCreateOwnerId()
-        const defaultProject = engine.ensureNamespaceDefaults(namespace, ownerUserId)
+        const auth = getCliAuth(c)
+        const defaultProject = await ensureCliProject(engine, options.store, auth)
         const existing = engine.getMachine(parsed.data.id)
-        if (existing && existing.namespace !== namespace) {
+        if (existing && !canUseExistingMachineForAuth(existing, auth)) {
             return c.json({ error: 'Machine access denied' }, 403)
         }
         const machine = engine.getOrCreateMachine(
             parsed.data.id,
             parsed.data.metadata,
             parsed.data.runnerState ?? null,
-            namespace,
-            { ownerUserId, teamId: defaultProject.teamId }
+            auth.namespace,
+            { ownerUserId: auth.userId, teamId: defaultProject.teamId }
         )
         return c.json({ machine })
     })
@@ -299,8 +365,8 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null): Hono<Cl
             return c.json({ error: 'Not ready' }, 503)
         }
         const machineId = c.req.param('id')
-        const namespace = c.get('namespace')
-        const resolved = resolveMachineForNamespace(engine, machineId, namespace)
+        const auth = getCliAuth(c)
+        const resolved = resolveMachineForNamespace(engine, machineId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
