@@ -95,4 +95,42 @@ describe('UserStore local accounts', () => {
             store.close()
         }
     })
+
+    it('removes local users and transfers sole project ownership to the replacement owner', () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                role: 'admin'
+            })
+            const user = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'dev',
+                passwordHash: 'hash-dev',
+                accessToken: 'hapi_user_dev'
+            })
+            const project = store.projects.createProject('default', 'Shared Project', user.id)
+            store.projects.addProjectMember(project.id, admin.id, 'viewer')
+            store.machines.getOrCreateMachine(
+                'machine-1',
+                { host: 'workstation', workspaceRoots: ['/srv/projects'] },
+                null,
+                'default',
+                { ownerUserId: user.id, teamId: project.teamId }
+            )
+
+            const removed = store.users.removeLocalUserById(user.id, 'default', admin.id)
+
+            expect(removed?.id).toBe(user.id)
+            expect(store.users.getUserById(user.id, 'default')).toBeNull()
+            expect(store.users.getUserByAccessToken('hapi_user_dev')).toBeNull()
+            expect(store.projects.getProjectMemberRole(project.id, user.id)).toBeNull()
+            expect(store.projects.getProjectMemberRole(project.id, admin.id)).toBe('owner')
+            expect(store.machines.getMachineByNamespace('machine-1', 'default')?.ownerUserId).toBe(admin.id)
+        } finally {
+            store.close()
+        }
+    })
 })

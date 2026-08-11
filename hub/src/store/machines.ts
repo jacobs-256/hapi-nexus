@@ -4,6 +4,13 @@ import type { StoredMachine, VersionedUpdateResult } from './types'
 import { safeJsonParse } from './json'
 import { updateVersionedField } from './versionedUpdates'
 
+export type DeleteMachineResult = {
+    machineDeleted: boolean
+    deletedSessionIds: string[]
+    deletedProjectCount: number
+    deletedProjectWorkspaceCount: number
+}
+
 type DbMachineRow = {
     id: string
     namespace: string
@@ -224,4 +231,107 @@ export function getMachinesByNamespace(db: Database, namespace: string): StoredM
         'SELECT * FROM machines WHERE namespace = ? ORDER BY updated_at DESC'
     ).all(namespace) as DbMachineRow[]
     return rows.map(toStoredMachine)
+}
+
+export function deleteMachineByNamespace(
+    db: Database,
+    id: string,
+    namespace: string
+): DeleteMachineResult {
+    return db.transaction((): DeleteMachineResult => {
+        const existing = getMachineByNamespace(db, id, namespace)
+        if (!existing) {
+            return {
+                machineDeleted: false,
+                deletedSessionIds: [],
+                deletedProjectCount: 0,
+                deletedProjectWorkspaceCount: 0
+            }
+        }
+
+        const machineOnlyProjectIds = db.prepare(`
+            SELECT DISTINCT p.id
+            FROM projects p
+            INNER JOIN project_workspaces pw ON pw.project_id = p.id
+            WHERE p.namespace = @namespace
+              AND pw.machine_id = @machine_id
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM project_workspaces other
+                  WHERE other.project_id = p.id
+                    AND other.machine_id <> @machine_id
+              )
+        `).all({ namespace, machine_id: id }) as Array<{ id: string }>
+        const projectIds = machineOnlyProjectIds.map((row) => row.id)
+
+        const workspaceCountRow = db.prepare(`
+            SELECT COUNT(*) AS count
+            FROM project_workspaces pw
+            INNER JOIN projects p ON p.id = pw.project_id
+            WHERE p.namespace = @namespace
+              AND pw.machine_id = @machine_id
+        `).get({ namespace, machine_id: id }) as { count: number } | undefined
+
+        const projectIdPlaceholders = projectIds.map((_, index) => `@project_${index}`).join(', ')
+        const projectParams = Object.fromEntries(projectIds.map((projectId, index) => [`project_${index}`, projectId]))
+        const projectSessionClause = projectIds.length > 0
+            ? `OR project_id IN (${projectIdPlaceholders})`
+            : ''
+        const sessionRows = db.prepare(`
+            SELECT id
+            FROM sessions
+            WHERE namespace = @namespace
+              AND (
+                  machine_id = @machine_id
+                  ${projectSessionClause}
+                  OR (
+                      metadata IS NOT NULL
+                      AND json_valid(metadata)
+                      AND json_extract(metadata, '$.machineId') = @machine_id
+                  )
+              )
+        `).all({
+            namespace,
+            machine_id: id,
+            ...projectParams
+        }) as Array<{ id: string }>
+        const deletedSessionIds = sessionRows.map((row) => row.id)
+
+        if (deletedSessionIds.length > 0) {
+            const sessionPlaceholders = deletedSessionIds.map((_, index) => `@session_${index}`).join(', ')
+            const sessionParams = Object.fromEntries(
+                deletedSessionIds.map((sessionId, index) => [`session_${index}`, sessionId])
+            )
+            db.prepare(`
+                DELETE FROM sessions
+                WHERE namespace = @namespace
+                  AND id IN (${sessionPlaceholders})
+            `).run({
+                namespace,
+                ...sessionParams
+            })
+        }
+
+        if (projectIds.length > 0) {
+            db.prepare(`
+                DELETE FROM projects
+                WHERE namespace = @namespace
+                  AND id IN (${projectIdPlaceholders})
+            `).run({
+                namespace,
+                ...projectParams
+            })
+        }
+
+        const machineResult = db.prepare(
+            'DELETE FROM machines WHERE id = ? AND namespace = ?'
+        ).run(id, namespace)
+
+        return {
+            machineDeleted: machineResult.changes > 0,
+            deletedSessionIds,
+            deletedProjectCount: projectIds.length,
+            deletedProjectWorkspaceCount: workspaceCountRow?.count ?? 0
+        }
+    })()
 }

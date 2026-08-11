@@ -321,6 +321,106 @@ export function regenerateUserAccessToken(db: Database, userId: number, namespac
     return getUserById(db, userId, namespace)
 }
 
+export function removeLocalUserById(
+    db: Database,
+    userId: number,
+    namespace: string,
+    replacementOwnerUserId: number
+): StoredUser | null {
+    const remove = db.transaction((): StoredUser | null => {
+        const user = getUserById(db, userId, namespace)
+        if (!user || user.platform !== 'local') {
+            return null
+        }
+
+        const now = Date.now()
+        const soleOwnerProjects = db.prepare(`
+            SELECT pm.project_id
+            FROM project_members pm
+            INNER JOIN projects p ON p.id = pm.project_id
+            WHERE p.namespace = ?
+              AND pm.user_id = ?
+              AND pm.role = 'owner'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM project_members other
+                  WHERE other.project_id = pm.project_id
+                    AND other.user_id != pm.user_id
+                    AND other.role = 'owner'
+              )
+        `).all(namespace, userId) as Array<{ project_id: string }>
+        for (const project of soleOwnerProjects) {
+            db.prepare(`
+                INSERT INTO project_members (project_id, user_id, role, created_at)
+                VALUES (?, ?, 'owner', ?)
+                ON CONFLICT(project_id, user_id) DO UPDATE SET role = 'owner'
+            `).run(project.project_id, replacementOwnerUserId, now)
+        }
+
+        const soleOwnerTeams = db.prepare(`
+            SELECT tm.team_id
+            FROM team_members tm
+            INNER JOIN teams t ON t.id = tm.team_id
+            WHERE t.namespace = ?
+              AND tm.user_id = ?
+              AND tm.role = 'owner'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM team_members other
+                  WHERE other.team_id = tm.team_id
+                    AND other.user_id != tm.user_id
+                    AND other.role = 'owner'
+              )
+        `).all(namespace, userId) as Array<{ team_id: string }>
+        for (const team of soleOwnerTeams) {
+            db.prepare(`
+                INSERT INTO team_members (team_id, user_id, role, created_at)
+                VALUES (?, ?, 'owner', ?)
+                ON CONFLICT(team_id, user_id) DO UPDATE SET role = 'owner'
+            `).run(team.team_id, replacementOwnerUserId, now)
+        }
+
+        db.prepare('UPDATE machines SET owner_user_id = ? WHERE namespace = ? AND owner_user_id = ?')
+            .run(replacementOwnerUserId, namespace, userId)
+        db.prepare('UPDATE sessions SET created_by_user_id = NULL WHERE namespace = ? AND created_by_user_id = ?')
+            .run(namespace, userId)
+        db.prepare('UPDATE teams SET created_by_user_id = NULL WHERE namespace = ? AND created_by_user_id = ?')
+            .run(namespace, userId)
+        db.prepare('UPDATE projects SET created_by_user_id = NULL WHERE namespace = ? AND created_by_user_id = ?')
+            .run(namespace, userId)
+        db.prepare(`
+            UPDATE project_workspaces
+            SET created_by_user_id = NULL
+            WHERE created_by_user_id = ?
+              AND project_id IN (SELECT id FROM projects WHERE namespace = ?)
+        `).run(userId, namespace)
+        db.prepare(`
+            UPDATE project_invites
+            SET created_by_user_id = NULL
+            WHERE created_by_user_id = ?
+              AND project_id IN (SELECT id FROM projects WHERE namespace = ?)
+        `).run(userId, namespace)
+        db.prepare(`
+            DELETE FROM team_members
+            WHERE user_id = ?
+              AND team_id IN (SELECT id FROM teams WHERE namespace = ?)
+        `).run(userId, namespace)
+        db.prepare(`
+            DELETE FROM project_members
+            WHERE user_id = ?
+              AND project_id IN (SELECT id FROM projects WHERE namespace = ?)
+        `).run(userId, namespace)
+
+        const result = db.prepare(
+            "DELETE FROM users WHERE id = ? AND namespace = ? AND platform = 'local'"
+        ).run(userId, namespace)
+
+        return result.changes > 0 ? user : null
+    })
+
+    return remove()
+}
+
 export function removeUser(db: Database, platform: string, platformUserId: string): boolean {
     const result = db.prepare(
         'DELETE FROM users WHERE platform = ? AND platform_user_id = ?'

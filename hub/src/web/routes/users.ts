@@ -63,13 +63,24 @@ async function isEnterpriseAdmin(
     store: Store,
     namespace: string,
     userId: number,
-    getOwnerUserId: () => Promise<number>
+    getOwnerUserId: () => Promise<number>,
+    authPlatform?: string
 ): Promise<boolean> {
     const ownerId = await getOwnerUserId()
-    if (userId === ownerId) return true
+    if (authPlatform === 'owner' || (authPlatform === undefined && userId === ownerId)) return true
 
     const user = store.users.getUserById(userId, namespace)
     return user?.role === 'admin' && user.disabledAt === null
+}
+
+async function isOwnerAuth(
+    userId: number,
+    authPlatform: string | undefined,
+    getOwnerUserId: () => Promise<number>
+): Promise<boolean> {
+    if (authPlatform === 'owner') return true
+    if (authPlatform !== undefined) return false
+    return userId === await getOwnerUserId()
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -93,8 +104,9 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.get('/me', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
+        const authPlatform = c.get('authPlatform')
         const ownerId = await getOwnerUserId()
-        if (userId === ownerId) {
+        if (await isOwnerAuth(userId, authPlatform, getOwnerUserId)) {
             return c.json({
                 user: {
                     ...toOwnerEnterpriseUser(ownerId, namespace, false),
@@ -114,8 +126,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.post('/me/token/regenerate', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const ownerId = await getOwnerUserId()
-        if (userId === ownerId) {
+        if (await isOwnerAuth(userId, c.get('authPlatform'), getOwnerUserId)) {
             return c.json({ error: 'Hub owner token is CLI_API_TOKEN. Regenerate it from hub settings.' }, 400)
         }
 
@@ -133,8 +144,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.post('/me/password', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const ownerId = await getOwnerUserId()
-        if (userId === ownerId) {
+        if (await isOwnerAuth(userId, c.get('authPlatform'), getOwnerUserId)) {
             return c.json({ error: 'Hub owner password is not available. Sign in with a local admin account.' }, 400)
         }
 
@@ -165,8 +175,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.patch('/me/username', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const ownerId = await getOwnerUserId()
-        if (userId === ownerId) {
+        if (await isOwnerAuth(userId, c.get('authPlatform'), getOwnerUserId)) {
             return c.json({ error: 'Hub owner username is not editable. Sign in with a local admin account.' }, 400)
         }
 
@@ -190,7 +199,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.get('/users', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        if (!await isEnterpriseAdmin(store, namespace, userId, getOwnerUserId)) {
+        if (!await isEnterpriseAdmin(store, namespace, userId, getOwnerUserId, c.get('authPlatform'))) {
             return c.json({ error: 'Admin access required' }, 403)
         }
 
@@ -208,7 +217,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.post('/users', async (c) => {
         const namespace = c.get('namespace')
         const actorUserId = c.get('userId')
-        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId)) {
+        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))) {
             return c.json({ error: 'Admin access required' }, 403)
         }
 
@@ -240,7 +249,8 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
     app.patch('/users/:id', async (c) => {
         const namespace = c.get('namespace')
         const actorUserId = c.get('userId')
-        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId)) {
+        const actorIsOwner = await isOwnerAuth(actorUserId, c.get('authPlatform'), getOwnerUserId)
+        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))) {
             return c.json({ error: 'Admin access required' }, 403)
         }
 
@@ -250,7 +260,8 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
         }
 
         const ownerId = await getOwnerUserId()
-        if (targetUserId === ownerId) {
+        const target = store.users.getUserById(targetUserId, namespace)
+        if (!target && targetUserId === ownerId) {
             return c.json({ error: 'Hub owner is managed by CLI_API_TOKEN settings' }, 400)
         }
 
@@ -260,7 +271,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        if (targetUserId === actorUserId && (parsed.data.disabled || parsed.data.role === 'user')) {
+        if (!actorIsOwner && targetUserId === actorUserId && (parsed.data.disabled || parsed.data.role === 'user')) {
             return c.json({ error: 'Admins cannot disable or demote their own account' }, 400)
         }
 
@@ -278,10 +289,46 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
         return c.json({ user: toEnterpriseUser(user, true) })
     })
 
+    app.delete('/users/:id', async (c) => {
+        const namespace = c.get('namespace')
+        const actorUserId = c.get('userId')
+        const actorIsOwner = await isOwnerAuth(actorUserId, c.get('authPlatform'), getOwnerUserId)
+        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))) {
+            return c.json({ error: 'Admin access required' }, 403)
+        }
+
+        const targetUserId = Number(c.req.param('id'))
+        if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+            return c.json({ error: 'Invalid user id' }, 400)
+        }
+
+        const ownerId = await getOwnerUserId()
+        const target = store.users.getUserById(targetUserId, namespace)
+        if (!target && targetUserId === ownerId) {
+            return c.json({ error: 'Hub owner is managed by CLI_API_TOKEN settings' }, 400)
+        }
+        if (!actorIsOwner && targetUserId === actorUserId) {
+            return c.json({ error: 'Admins cannot delete their own account' }, 400)
+        }
+        if (!target) {
+            return c.json({ error: 'User not found' }, 404)
+        }
+        if (target.platform !== 'local') {
+            return c.json({ error: 'Only local users can be deleted' }, 400)
+        }
+
+        const deleted = store.users.removeLocalUserById(targetUserId, namespace, actorUserId)
+        if (!deleted) {
+            return c.json({ error: 'Local user not found' }, 404)
+        }
+
+        return c.json({ ok: true })
+    })
+
     app.post('/users/:id/password', async (c) => {
         const namespace = c.get('namespace')
         const actorUserId = c.get('userId')
-        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId)) {
+        if (!await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))) {
             return c.json({ error: 'Admin access required' }, 403)
         }
 
@@ -312,13 +359,14 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid user id' }, 400)
         }
 
-        const isAdmin = await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId)
+        const isAdmin = await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))
         if (!isAdmin && actorUserId !== targetUserId) {
             return c.json({ error: 'Admin access required' }, 403)
         }
 
         const ownerId = await getOwnerUserId()
-        if (targetUserId === ownerId) {
+        const target = store.users.getUserById(targetUserId, namespace)
+        if (!target && targetUserId === ownerId) {
             return c.json({ error: 'Hub owner token is CLI_API_TOKEN. Regenerate it from hub settings.' }, 400)
         }
 

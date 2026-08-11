@@ -101,15 +101,23 @@ export type MessagesResponse = {
 }
 
 export type MachinesResponse = { machines: Machine[] }
+export type DeleteMachineResponse = {
+    ok: true
+    deletedSessionCount: number
+    deletedProjectCount: number
+    deletedProjectWorkspaceCount: number
+}
 
 export type ProjectWithDetails = Project & {
     role: z.infer<typeof ProjectRoleSchema>
     members: ProjectMember[]
     workspaces: ProjectWorkspace[]
+    createdByUser?: EnterpriseUser | null
 }
 
 export type ProjectsResponse = { projects: ProjectWithDetails[] }
 export type ProjectResponse = { project: ProjectWithDetails }
+export type ProjectMemberCandidatesResponse = { users: EnterpriseUser[] }
 
 export const UserRoleSchema = z.enum(['admin', 'user'])
 export type UserRole = z.infer<typeof UserRoleSchema>
@@ -131,6 +139,7 @@ export type EnterpriseUser = {
 export type AccountResponse = { user: EnterpriseUser }
 export type UsersResponse = { users: EnterpriseUser[] }
 export type UserResponse = { user: EnterpriseUser }
+export type DeleteUserResponse = { ok: true }
 export type RegenerateUserTokenResponse = { user: EnterpriseUser; accessToken: string }
 
 export const CreateUserRequestSchema = z.object({
@@ -202,6 +211,27 @@ export const ProjectWorkspaceCreateRequestSchema = z.object({
 })
 
 export type ProjectWorkspaceCreateRequest = z.infer<typeof ProjectWorkspaceCreateRequestSchema>
+
+export const ProjectWorkspaceMoveRequestSchema = z.object({
+    targetProjectId: z.string().trim().min(1)
+})
+
+export type ProjectWorkspaceMoveRequest = z.infer<typeof ProjectWorkspaceMoveRequestSchema>
+export type ProjectWorkspaceMoveResponse = {
+    workspace: ProjectWorkspace
+}
+
+export const ProjectDirectoryMoveRequestSchema = z.object({
+    targetProjectId: z.string().trim().min(1),
+    machineId: z.string().trim().min(1),
+    rootPath: z.string().trim().min(1),
+    sourceWorkspaceId: z.string().trim().min(1).optional()
+})
+
+export type ProjectDirectoryMoveRequest = z.infer<typeof ProjectDirectoryMoveRequestSchema>
+export type ProjectDirectoryMoveResponse = {
+    workspace: ProjectWorkspace
+}
 
 export const ProjectInviteCreateRequestSchema = z.object({
     role: ProjectRoleSchema,

@@ -2,6 +2,8 @@ import type { Database } from 'bun:sqlite'
 
 import type { StoredMachine, VersionedUpdateResult } from './types'
 import {
+    deleteMachineByNamespace,
+    type DeleteMachineResult,
     getMachine,
     getMachineByNamespace,
     getMachines,
@@ -61,4 +63,10 @@ export class MachineStore {
     getMachinesByNamespace(namespace: string): StoredMachine[] {
         return getMachinesByNamespace(this.db, namespace)
     }
+
+    deleteMachineByNamespace(id: string, namespace: string): DeleteMachineResult {
+        return deleteMachineByNamespace(this.db, id, namespace)
+    }
 }
+
+export type { DeleteMachineResult }

@@ -7,15 +7,22 @@ import { createUsersRoutes } from './users'
 
 const OWNER_ID = 999
 
-function createApp(store: Store, userId: number, namespace = 'default') {
+function createApp(
+    store: Store,
+    userId: number,
+    namespace = 'default',
+    options?: { ownerId?: number; authPlatform?: string }
+) {
+    const ownerId = options?.ownerId ?? OWNER_ID
     const app = new Hono<WebAppEnv>()
     app.use('*', async (c, next) => {
         c.set('namespace', namespace)
         c.set('userId', userId)
+        c.set('authPlatform', options?.authPlatform ?? (userId === ownerId ? 'owner' : 'local'))
         await next()
     })
     app.route('/api', createUsersRoutes(store, {
-        getOwnerUserId: async () => OWNER_ID,
+        getOwnerUserId: async () => ownerId,
         getOwnerAccessToken: (ns) => ns === 'default' ? 'owner-token' : `owner-token:${ns}`
     }))
     return app
@@ -108,6 +115,37 @@ describe('users routes', () => {
         }
     })
 
+    it('does not treat a local user as owner when their row id collides with the owner id', async () => {
+        const store = new Store(':memory:')
+        try {
+            const user = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                accessToken: 'hapi_user_admin',
+                role: 'admin'
+            })
+            const app = createApp(store, user.id, 'default', {
+                ownerId: user.id,
+                authPlatform: 'local'
+            })
+
+            const response = await app.request('/api/me')
+
+            expect(response.status).toBe(200)
+            expect(await response.json()).toEqual({
+                user: expect.objectContaining({
+                    id: user.id,
+                    platform: 'local',
+                    username: 'admin',
+                    accessToken: 'hapi_user_admin'
+                })
+            })
+        } finally {
+            store.close()
+        }
+    })
+
     it('lets a local user change their own username', async () => {
         const store = new Store(':memory:')
         try {
@@ -164,6 +202,136 @@ describe('users routes', () => {
 
             expect(response.status).toBe(409)
             expect(store.users.getUserById(user.id, 'default')?.username).toBe('dev')
+        } finally {
+            store.close()
+        }
+    })
+
+    it('lets administrators delete local users', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                role: 'admin'
+            })
+            const user = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'dev',
+                passwordHash: 'hash-dev',
+                accessToken: 'hapi_user_dev'
+            })
+            const app = createApp(store, admin.id)
+
+            const response = await app.request(`/api/users/${user.id}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(200)
+            expect(await response.json()).toEqual({ ok: true })
+            expect(store.users.getUserById(user.id, 'default')).toBeNull()
+            expect(store.users.getUserByAccessToken('hapi_user_dev')).toBeNull()
+        } finally {
+            store.close()
+        }
+    })
+
+    it('lets the owner delete a local user whose row id collides with the owner id', async () => {
+        const store = new Store(':memory:')
+        try {
+            const user = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'dev',
+                passwordHash: 'hash-dev',
+                accessToken: 'hapi_user_dev'
+            })
+            const app = createApp(store, user.id, 'default', {
+                ownerId: user.id,
+                authPlatform: 'owner'
+            })
+
+            const response = await app.request(`/api/users/${user.id}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(200)
+            expect(store.users.getUserById(user.id, 'default')).toBeNull()
+        } finally {
+            store.close()
+        }
+    })
+
+    it('rejects non-admin local user deletion', async () => {
+        const store = new Store(':memory:')
+        try {
+            const actor = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'actor',
+                passwordHash: 'hash-actor',
+                role: 'user'
+            })
+            const target = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'target',
+                passwordHash: 'hash-target'
+            })
+            const app = createApp(store, actor.id)
+
+            const response = await app.request(`/api/users/${target.id}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(403)
+            expect(store.users.getUserById(target.id, 'default')?.username).toBe('target')
+        } finally {
+            store.close()
+        }
+    })
+
+    it('rejects deleting the current administrator account', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                role: 'admin'
+            })
+            const app = createApp(store, admin.id)
+
+            const response = await app.request(`/api/users/${admin.id}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(400)
+            expect(store.users.getUserById(admin.id, 'default')?.username).toBe('admin')
+        } finally {
+            store.close()
+        }
+    })
+
+    it('rejects deleting the hub owner pseudo-account', async () => {
+        const store = new Store(':memory:')
+        try {
+            const app = createApp(store, OWNER_ID)
+
+            const response = await app.request(`/api/users/${OWNER_ID}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(400)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('rejects deleting non-local bound users', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                role: 'admin'
+            })
+            const telegramUser = store.users.addUser('telegram', 'telegram-1', 'default')
+            const app = createApp(store, admin.id)
+
+            const response = await app.request(`/api/users/${telegramUser.id}`, { method: 'DELETE' })
+
+            expect(response.status).toBe(400)
+            expect(store.users.getUserById(telegramUser.id, 'default')?.platform).toBe('telegram')
         } finally {
             store.close()
         }

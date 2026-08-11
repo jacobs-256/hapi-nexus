@@ -6,15 +6,22 @@ import {
     SpawnSessionRequestSchema
 } from '@hapi/protocol'
 import { Hono, type Context } from 'hono'
+import { RPC_METHODS } from '@hapi/protocol/rpcMethods'
+import { RpcTargetMissingError } from '../../sync/rpcGateway'
 import type { Machine, SyncEngine } from '../../sync/syncEngine'
 import type { StoredProject } from '../../store'
 import type { WebAppEnv } from '../middleware/auth'
-import { requireMachine } from './guards'
-import { findWorkspaceForPath, isPathInsideMachineRoots } from './workspaceAccess'
+import { requireMachine, requireSession } from './guards'
+import { findWorkspaceForPath, isPathInsideMachineRoots, machineAllowsWorkspace } from './workspaceAccess'
+import type { ProjectRole } from '../../store/projectStore'
 
 function canAccessMachinePath(machine: Machine, path: string): boolean {
     const roots = machine.metadata?.workspaceRoots ?? []
     return roots.length === 0 || isPathInsideMachineRoots(machine, path, roots)
+}
+
+function parseBooleanQuery(value: string | undefined): boolean {
+    return value === '1' || value === 'true'
 }
 
 function resolveSpawnProject(
@@ -78,6 +85,67 @@ function resolveSpawnProject(
     return c.json({ error: 'Directory is outside editable project workspaces' }, 403)
 }
 
+function getMachineInNamespace(
+    c: Context<WebAppEnv>,
+    engine: SyncEngine,
+    machineId: string
+): Machine | Response {
+    const machine = engine.getMachine(machineId)
+    if (!machine) {
+        return c.json({ error: 'Machine not found' }, 404)
+    }
+    if (machine.namespace !== c.get('namespace')) {
+        return c.json({ error: 'Machine access denied' }, 403)
+    }
+    return machine
+}
+
+function requireMachineForDiscovery(
+    c: Context<WebAppEnv>,
+    engine: SyncEngine,
+    machineId: string,
+    requiredRole: ProjectRole = 'viewer'
+): Machine | Response {
+    const sessionId = c.req.query('sessionId')?.trim()
+    if (sessionId) {
+        const sessionAccess = requireSession(c, engine, sessionId, { role: requiredRole })
+        if (sessionAccess instanceof Response) return sessionAccess
+        if (sessionAccess.session.metadata?.machineId !== machineId) {
+            return c.json({ error: 'Machine access denied' }, 403)
+        }
+        return getMachineInNamespace(c, engine, machineId)
+    }
+
+    const projectId = c.req.query('projectId')?.trim()
+    if (projectId) {
+        const namespace = c.get('namespace')
+        const userId = c.get('userId')
+        if (typeof userId !== 'number') {
+            return c.json({ error: 'Project access denied' }, 403)
+        }
+
+        const project = engine.getProjectByNamespace(projectId, namespace)
+        if (!project || project.archivedAt !== null) {
+            return c.json({ error: 'Project not found' }, 404)
+        }
+        if (!engine.hasProjectRole(project.id, userId, requiredRole)) {
+            return c.json({ error: 'Project access denied' }, 403)
+        }
+
+        const machine = getMachineInNamespace(c, engine, machineId)
+        if (machine instanceof Response) return machine
+        if (machine.ownerUserId === userId) {
+            return machine
+        }
+        if (!engine.listProjectWorkspaces(project.id).some((workspace) => workspace.machineId === machineId)) {
+            return c.json({ error: 'Machine access denied' }, 403)
+        }
+        return machine
+    }
+
+    return requireMachine(c, engine, machineId, { role: requiredRole })
+}
+
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
@@ -89,9 +157,14 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const namespace = c.get('namespace')
         const userId = c.get('userId')
+        const includeOffline = parseBooleanQuery(c.req.query('includeOffline'))
         const machines = typeof userId === 'number'
-            ? engine.getOnlineMachinesForUser(namespace, userId)
-            : engine.getOnlineMachinesByNamespace(namespace)
+            ? (includeOffline
+                ? engine.getMachinesForUser(namespace, userId)
+                : engine.getOnlineMachinesForUser(namespace, userId))
+            : (includeOffline
+                ? engine.getMachinesByNamespace(namespace)
+                : engine.getOnlineMachinesByNamespace(namespace))
         return c.json({ machines })
     })
 
@@ -128,6 +201,41 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             // Match the session rename contract: contention maps to 409.
             if (message.includes('concurrently') || message.includes('version')) {
                 return c.json({ error: message }, 409)
+            }
+            return c.json({ error: message }, 500)
+        }
+    })
+
+    app.delete('/machines/:id', async (c) => {
+        const engine = getSyncEngine()
+        if (!engine) {
+            return c.json({ error: 'Not connected' }, 503)
+        }
+
+        const machineId = c.req.param('id')
+        const machine = requireMachine(c, engine, machineId, { ownerOnly: true })
+        if (machine instanceof Response) {
+            return machine
+        }
+        if (machine.active) {
+            return c.json({
+                error: 'Stop this runner before deleting the machine',
+                code: 'machine_online'
+            }, 409)
+        }
+
+        try {
+            const result = await engine.deleteMachine(machineId, c.get('namespace'))
+            return c.json({
+                ok: true,
+                deletedSessionCount: result.deletedSessionCount,
+                deletedProjectCount: result.deletedProjectCount,
+                deletedProjectWorkspaceCount: result.deletedProjectWorkspaceCount
+            })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to delete machine'
+            if (message === 'Machine not found') {
+                return c.json({ error: message }, 404)
             }
             return c.json({ error: message }, 500)
         }
@@ -187,6 +295,19 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             )
             if (!assigned) {
                 return c.json({ type: 'error', message: 'Session started but project assignment failed' }, 500)
+            }
+            const existingWorkspace = findWorkspaceForPath(
+                machine,
+                engine.listProjectWorkspaces(spawnProject.project.id),
+                parsed.data.directory
+            )
+            if (!existingWorkspace && machine.ownerUserId === c.get('userId') && machineAllowsWorkspace(machine, parsed.data.directory)) {
+                engine.addProjectWorkspace(
+                    spawnProject.project.id,
+                    machine.id,
+                    parsed.data.directory,
+                    c.get('userId')
+                )
             }
         }
         return c.json(result)
@@ -262,7 +383,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = requireMachineForDiscovery(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -271,6 +392,9 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             const result = await engine.listCodexModelsForMachine(machineId)
             return c.json(result)
         } catch (error) {
+            if (error instanceof RpcTargetMissingError && error.method === `${machineId}:${RPC_METHODS.ListCodexModels}`) {
+                return c.json({ success: true, models: [] })
+            }
             return c.json({
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to list Codex models'

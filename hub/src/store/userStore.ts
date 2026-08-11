@@ -12,6 +12,7 @@ import {
     getUsersByPlatformAndNamespace,
     listUsersByNamespace,
     regenerateUserAccessToken,
+    removeLocalUserById,
     removeUser,
     updateUser,
     updateLocalUsername,
@@ -78,6 +79,10 @@ export class UserStore {
 
     regenerateUserAccessToken(userId: number, namespace: string): StoredUser | null {
         return regenerateUserAccessToken(this.db, userId, namespace)
+    }
+
+    removeLocalUserById(userId: number, namespace: string, replacementOwnerUserId: number): StoredUser | null {
+        return removeLocalUserById(this.db, userId, namespace, replacementOwnerUserId)
     }
 
     removeUser(platform: string, platformUserId: string): boolean {

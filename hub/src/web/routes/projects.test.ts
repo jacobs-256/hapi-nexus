@@ -48,7 +48,12 @@ function createApp(store: Store, userId: number, machines: Machine[]) {
                 return { ok: false as const, reason: 'access-denied' as const }
             }
             return { ok: true as const, machine }
-        }
+        },
+        getSessionsByNamespace: (namespace: string) => store.sessions.getSessionsByNamespace(namespace) as unknown[],
+        assignSessionProject: (sessionId: string, namespace: string, projectId: string, createdByUserId: number) =>
+            store.sessions.assignSessionProject(sessionId, namespace, projectId, createdByUserId),
+        addProjectWorkspace: (projectId: string, machineId: string, rootPath: string, createdByUserId: number) =>
+            store.projects.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
     } as Partial<SyncEngine>
     const app = new Hono<WebAppEnv>()
     app.use('*', async (c, next) => {
@@ -56,7 +61,9 @@ function createApp(store: Store, userId: number, machines: Machine[]) {
         c.set('userId', userId)
         await next()
     })
-    app.route('/api', createProjectsRoutes(store, () => engine as SyncEngine))
+    app.route('/api', createProjectsRoutes(store, () => engine as SyncEngine, {
+        getOwnerUserId: async () => 1
+    }))
     return app
 }
 
@@ -191,6 +198,120 @@ describe('projects routes', () => {
         }
     })
 
+    it('moves a workspace between projects when the actor can administer both', async () => {
+        const store = new Store(':memory:')
+        try {
+            const machine = createMachine(store)
+            const sourceProject = store.projects.createProject('default', 'Source Project', 1)
+            const targetProject = store.projects.createProject('default', 'Target Project', 1)
+            const workspace = store.projects.addProjectWorkspace(sourceProject.id, machine.id, '/srv/projects/app', 1)
+            const session = store.sessions.getOrCreateSession(
+                'session-tag',
+                { path: '/srv/projects/app/src', host: 'workstation', machineId: machine.id },
+                null,
+                'default',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { projectId: sourceProject.id, createdByUserId: 1 }
+            )
+            const app = createApp(store, 1, [machine])
+
+            const response = await app.request(`/api/projects/${sourceProject.id}/workspaces/${workspace.id}/move`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ targetProjectId: targetProject.id })
+            })
+
+            expect(response.status).toBe(200)
+            const body = await response.json() as { workspace: { projectId: string; machineId: string; rootPath: string } }
+            expect(body.workspace).toEqual(expect.objectContaining({
+                projectId: targetProject.id,
+                machineId: machine.id,
+                rootPath: '/srv/projects/app'
+            }))
+            expect(store.projects.listProjectWorkspaces(sourceProject.id)).toHaveLength(0)
+            expect(store.projects.listProjectWorkspaces(targetProject.id)).toEqual([
+                expect.objectContaining({ rootPath: '/srv/projects/app' })
+            ])
+            expect(store.sessions.getSession(session.id)?.projectId).toBe(targetProject.id)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('moves a directory between projects even when neither project has a workspace yet', async () => {
+        const store = new Store(':memory:')
+        try {
+            const machine = createMachine(store)
+            const sourceProject = store.projects.createProject('default', 'Source Project', 1)
+            const targetProject = store.projects.createProject('default', 'Target Project', 1)
+            const session = store.sessions.getOrCreateSession(
+                'session-tag',
+                { path: '/srv/projects/app', host: 'workstation', machineId: machine.id },
+                null,
+                'default',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                { projectId: sourceProject.id, createdByUserId: 1 }
+            )
+            const app = createApp(store, 1, [machine])
+
+            const response = await app.request(`/api/projects/${sourceProject.id}/directories/move`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    targetProjectId: targetProject.id,
+                    machineId: machine.id,
+                    rootPath: '/srv/projects/app'
+                })
+            })
+
+            expect(response.status).toBe(200)
+            const body = await response.json() as { workspace: { projectId: string; machineId: string; rootPath: string } }
+            expect(body.workspace).toEqual(expect.objectContaining({
+                projectId: targetProject.id,
+                machineId: machine.id,
+                rootPath: '/srv/projects/app'
+            }))
+            expect(store.projects.listProjectWorkspaces(sourceProject.id)).toHaveLength(0)
+            expect(store.projects.listProjectWorkspaces(targetProject.id)).toEqual([
+                expect.objectContaining({ rootPath: '/srv/projects/app' })
+            ])
+            expect(store.sessions.getSession(session.id)?.projectId).toBe(targetProject.id)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('does not move a workspace into a project the actor cannot administer', async () => {
+        const store = new Store(':memory:')
+        try {
+            const machine = createMachine(store)
+            const sourceProject = store.projects.createProject('default', 'Source Project', 1)
+            const targetProject = store.projects.createProject('default', 'Target Project', 2)
+            store.projects.addProjectMember(sourceProject.id, 2, 'admin')
+            store.projects.addProjectMember(targetProject.id, 1, 'viewer')
+            const workspace = store.projects.addProjectWorkspace(sourceProject.id, machine.id, '/srv/projects/app', 1)
+            const app = createApp(store, 1, [machine])
+
+            const response = await app.request(`/api/projects/${sourceProject.id}/workspaces/${workspace.id}/move`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ targetProjectId: targetProject.id })
+            })
+
+            expect(response.status).toBe(403)
+            expect(store.projects.listProjectWorkspaces(sourceProject.id)).toHaveLength(1)
+            expect(store.projects.listProjectWorkspaces(targetProject.id)).toHaveLength(0)
+        } finally {
+            store.close()
+        }
+    })
+
     it('rejects direct member grants for unknown users', async () => {
         const store = new Store(':memory:')
         try {
@@ -225,6 +346,50 @@ describe('projects routes', () => {
 
             expect(response.status).toBe(200)
             expect(store.projects.getProjectMemberRole(project.id, member.id)).toBe('editor')
+        } finally {
+            store.close()
+        }
+    })
+
+    it('lists project member candidates for project admins without access tokens', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin-user',
+                passwordHash: 'hash',
+                displayName: 'Admin User',
+                role: 'user'
+            })
+            const candidate = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'candidate',
+                passwordHash: 'hash',
+                displayName: 'Candidate User',
+                role: 'user'
+            })
+            const otherNamespace = store.users.createLocalUser({
+                namespace: 'other',
+                username: 'outside',
+                passwordHash: 'hash',
+                displayName: 'Outside User',
+                role: 'user'
+            })
+            const project = store.projects.createProject('default', 'Shared Project', 1)
+            store.projects.addProjectMember(project.id, admin.id, 'admin')
+            const app = createApp(store, admin.id, [])
+
+            const response = await app.request(`/api/projects/${project.id}/member-candidates`)
+
+            expect(response.status).toBe(200)
+            const body = await response.json() as {
+                users: Array<{ id: number; username: string | null; accessToken?: string | null }>
+            }
+            expect(body.users.map((user) => user.id)).toContain(1)
+            expect(body.users.map((user) => user.id)).toContain(candidate.id)
+            expect(body.users.map((user) => user.id)).toContain(admin.id)
+            expect(body.users.map((user) => user.id)).not.toContain(otherNamespace.id)
+            expect(body.users.some((user) => 'accessToken' in user)).toBe(false)
         } finally {
             store.close()
         }

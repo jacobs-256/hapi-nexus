@@ -42,6 +42,10 @@ export type SessionSummaryMetadata = {
 
 export type SessionSummary = {
     id: string
+    namespace?: string
+    projectId?: string | null
+    createdByUserId?: number | null
+    createdAt?: number
     active: boolean
     thinking: boolean
     activeAt: number
@@ -134,6 +138,10 @@ export function toSessionSummary(session: Session): SessionSummary {
 
     return {
         id: session.id,
+        namespace: session.namespace,
+        projectId: session.projectId ?? null,
+        createdByUserId: session.createdByUserId ?? null,
+        createdAt: session.createdAt,
         active: session.active,
         thinking: session.thinking,
         activeAt: session.activeAt,

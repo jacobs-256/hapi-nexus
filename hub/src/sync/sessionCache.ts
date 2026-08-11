@@ -109,11 +109,14 @@ export class SessionCache {
     refreshSession(sessionId: string): Session | null {
         let stored = this.store.sessions.getSession(sessionId)
         if (!stored) {
+            const existing = this.sessions.get(sessionId)
             const existed = this.sessions.delete(sessionId)
             this.pendingThinkingUntilBySessionId.delete(sessionId)
             this.runtimeConfigUpdatedAtBySessionId.delete(sessionId)
+            this.deduplicateInProgress.delete(sessionId)
+            this.deduplicatePending.delete(sessionId)
             if (existed) {
-                this.publisher.emit({ type: 'session-removed', sessionId })
+                this.publisher.emit({ type: 'session-removed', sessionId, namespace: existing?.namespace })
             }
             return null
         }
@@ -194,6 +197,19 @@ export class SessionCache {
         this.sessions.set(sessionId, session)
         this.publisher.emit({ type: existing ? 'session-updated' : 'session-added', sessionId, data: session })
         return session
+    }
+
+    forgetDeletedSession(sessionId: string, namespace: string): void {
+        const existed = this.sessions.delete(sessionId)
+        this.lastBroadcastAtBySessionId.delete(sessionId)
+        this.todoBackfillAttemptedSessionIds.delete(sessionId)
+        this.pendingThinkingUntilBySessionId.delete(sessionId)
+        this.runtimeConfigUpdatedAtBySessionId.delete(sessionId)
+        this.deduplicateInProgress.delete(sessionId)
+        this.deduplicatePending.delete(sessionId)
+        if (existed) {
+            this.publisher.emit({ type: 'session-removed', sessionId, namespace })
+        }
     }
 
     reloadAll(): void {

@@ -93,6 +93,12 @@ export type CursorChatStoreStatusResult =
     | { type: 'success'; status: CursorChatStoreStatus }
     | { type: 'error'; message: string; code: 'session_not_found' | 'access_denied' | 'resume_unavailable' | 'no_machine_online' | 'probe_failed' }
 
+export type DeleteMachineCascadeResult = {
+    deletedSessionCount: number
+    deletedProjectCount: number
+    deletedProjectWorkspaceCount: number
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
         ? value as Record<string, unknown>
@@ -309,6 +315,15 @@ export class SyncEngine {
         return this.store.projects.listProjectWorkspacesForUser(namespace, userId, role)
     }
 
+    addProjectWorkspace(
+        projectId: string,
+        machineId: string,
+        rootPath: string,
+        createdByUserId: number
+    ) {
+        return this.store.projects.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
+    }
+
     getFutureScheduledMessageCounts(sessionIds: string[], now: number = Date.now()): Map<string, number> {
         return this.store.messages.countFutureScheduledBySessionIds(sessionIds, now)
     }
@@ -424,8 +439,12 @@ export class SyncEngine {
     }
 
     getOnlineMachinesForUser(namespace: string, userId: number): Machine[] {
+        return this.getMachinesForUser(namespace, userId).filter((machine) => machine.active)
+    }
+
+    getMachinesForUser(namespace: string, userId: number): Machine[] {
         const rootsByMachine = this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, 'viewer')
-        return this.machineCache.getOnlineMachinesByNamespace(namespace)
+        return this.machineCache.getMachinesByNamespace(namespace)
             .filter((machine) => machine.ownerUserId === userId || rootsByMachine.has(machine.id))
             .map((machine) => machine.ownerUserId === userId
                 ? machine
@@ -488,6 +507,36 @@ export class SyncEngine {
 
     async renameMachine(machineId: string, displayName: string): Promise<void> {
         return this.machineCache.renameMachine(machineId, displayName)
+    }
+
+    async deleteMachine(machineId: string, namespace: string): Promise<DeleteMachineCascadeResult> {
+        const result = this.store.machines.deleteMachineByNamespace(machineId, namespace)
+        if (!result.machineDeleted) {
+            throw new Error('Machine not found')
+        }
+
+        for (const sessionId of result.deletedSessionIds) {
+            this.sessionCache.forgetDeletedSession(sessionId, namespace)
+        }
+        this.machineCache.refreshMachine(machineId)
+
+        void import('../scratchlistAttachments/storage').then(async ({
+            deleteScratchlistSessionAttachmentDir,
+            getHapiHomeDir,
+        }) => {
+            const hapiHome = getHapiHomeDir()
+            await Promise.all(
+                result.deletedSessionIds.map((sessionId) => (
+                    deleteScratchlistSessionAttachmentDir(hapiHome, namespace, sessionId)
+                ))
+            )
+        })
+
+        return {
+            deletedSessionCount: result.deletedSessionIds.length,
+            deletedProjectCount: result.deletedProjectCount,
+            deletedProjectWorkspaceCount: result.deletedProjectWorkspaceCount
+        }
     }
 
     getMessagesPage(

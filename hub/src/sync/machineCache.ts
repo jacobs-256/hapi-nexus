@@ -142,9 +142,10 @@ export class MachineCache {
     refreshMachine(machineId: string): Machine | null {
         const stored = this.store.machines.getMachine(machineId)
         if (!stored) {
+            const existing = this.machines.get(machineId)
             const existed = this.machines.delete(machineId)
             if (existed) {
-                this.publisher.emit({ type: 'machine-updated', machineId, data: null })
+                this.publisher.emit({ type: 'machine-updated', machineId, data: null, namespace: existing?.namespace })
             }
             return null
         }
