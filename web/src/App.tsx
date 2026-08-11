@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Outlet, useLocation, useMatchRoute, useRouter } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import * as Popover from '@radix-ui/react-popover'
+import { Outlet, useLocation, useMatchRoute, useNavigate, useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { getTelegramWebApp, isTelegramApp } from '@/hooks/useTelegram'
 import { initializeChatSurfaceColors } from '@/hooks/useChatSurfaceColors'
@@ -15,7 +16,7 @@ import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useVisibilityReporter } from '@/hooks/useVisibilityReporter'
 import { useAppearance, useTheme } from '@/hooks/useTheme'
 import { queryKeys } from '@/lib/query-keys'
-import { AppContextProvider } from '@/lib/app-context'
+import { AppContextProvider, useAppContext } from '@/lib/app-context'
 import { clearMessageWindow, syncTailMessages } from '@/lib/message-window-store'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
 import { useTranslation } from '@/lib/use-translation'
@@ -35,6 +36,7 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher'
 import { ToastContainer } from '@/components/ToastContainer'
 import { PwaUpdateProvider } from '@/lib/pwa-update-context'
 import { ToastProvider, useToast } from '@/lib/toast-context'
+import { getVisibleSettingsCategories, settingsCategoryGroups } from '@/routes/settings/categories'
 import type { AuthResponse, SyncEvent } from '@/types/api'
 
 type ToastEvent = Extract<SyncEvent, { type: 'toast' }>
@@ -77,6 +79,24 @@ function IconMoon() {
     )
 }
 
+function IconChevronRight(props: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className} aria-hidden="true">
+            <path d="m9 18 6-6-6-6" />
+        </svg>
+    )
+}
+
+function IconLogOut(props: { className?: string }) {
+    return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className} aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+    )
+}
+
 function TrafficLights() {
     return (
         <>
@@ -92,57 +112,145 @@ function getUserLabel(user: AuthResponse['user'], fallback: string): string {
     return user.displayName?.trim() || fullName || user.username?.trim() || fallback
 }
 
-function AppTitleBar(props: { user: AuthResponse['user'] }) {
+function AppTitleBar() {
     const { t } = useTranslation()
+    const { token, user, clearAuth } = useAppContext()
+    const navigate = useNavigate()
+    const queryClient = useQueryClient()
     const { colorScheme } = useTheme()
     const { setAppearance } = useAppearance()
+    const [userMenuOpen, setUserMenuOpen] = useState(false)
     const isDark = colorScheme === 'dark' || colorScheme === 'oled'
-    const userLabel = getUserLabel(props.user, t('app.user.fallback'))
+    const userLabel = getUserLabel(user, t('app.user.fallback'))
     const userInitial = Array.from(userLabel)[0]?.toUpperCase() ?? 'A'
     const nextThemeLabel = isDark ? t('login.theme.light') : t('login.theme.dark')
+    const visibleCategories = useMemo(() => getVisibleSettingsCategories({ token, user }), [token, user])
+    const visibleById = useMemo(() => new Map(visibleCategories.map((category) => [category.id, category])), [visibleCategories])
+    const roleLabel = user.role ? t(`settings.users.role.${user.role}`) : null
+    const userMeta = [roleLabel, user.platform].filter(Boolean).join(' · ')
+    const handleSignOut = useCallback(() => {
+        setUserMenuOpen(false)
+        queryClient.clear()
+        clearAuth()
+    }, [clearAuth, queryClient])
 
     return (
-        <div className="relative flex h-11 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--toolbar)] pl-4 pr-3 text-[var(--foreground)] sm:pl-20 sm:pr-4">
-            <div className="absolute left-3.5 hidden gap-[7px] sm:flex">
-                <TrafficLights />
-            </div>
-
-            <div className="flex min-w-0 items-center gap-1.5">
-                <div
-                    className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-white"
-                    style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
-                >
-                    <IconCode />
+        <header className="shrink-0 border-b border-[var(--border)] bg-[var(--toolbar)] pt-[var(--app-shell-safe-area-top)] text-[var(--foreground)]">
+            <div className="relative flex h-11 items-center gap-3 px-3 sm:pl-20 sm:pr-4">
+                <div className="absolute left-3.5 hidden gap-[7px] sm:flex">
+                    <TrafficLights />
                 </div>
-                <span className="truncate text-[13px] font-semibold tracking-[-0.2px]">HAPI</span>
-                <span className="hidden font-mono text-[11px] text-[var(--muted-foreground)] sm:inline">
-                    - {t('app.title.context')}
-                </span>
-            </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                <LanguageSwitcher variant="toolbar" />
-                <button
-                    type="button"
-                    onClick={() => setAppearance(isDark ? 'light' : 'dark')}
-                    className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border)] bg-[var(--card)] px-0 font-mono text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] sm:w-auto sm:px-2.5"
-                    title={nextThemeLabel}
-                    aria-label={nextThemeLabel}
-                >
-                    {isDark ? <IconSun /> : <IconMoon />}
-                    <span className="hidden sm:inline">
-                        {isDark ? t('settings.display.appearance.light') : t('settings.display.appearance.dark')}
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <div
+                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-white"
+                        style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                    >
+                        <IconCode />
+                    </div>
+                    <span className="truncate text-[13px] font-semibold tracking-[-0.2px]">HAPI</span>
+                    <span className="hidden font-mono text-[11px] text-[var(--muted-foreground)] sm:inline">
+                        - {t('app.title.context')}
                     </span>
-                </button>
-                <div
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
-                    title={userLabel}
-                >
-                    {userInitial}
+                </div>
+
+                <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <LanguageSwitcher variant="toolbar" />
+                    <button
+                        type="button"
+                        onClick={() => setAppearance(isDark ? 'light' : 'dark')}
+                        className="flex h-8 w-8 items-center justify-center gap-1.5 rounded-[7px] border border-[var(--border)] bg-[var(--card)] px-0 font-mono text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] sm:w-auto sm:px-2.5"
+                        title={nextThemeLabel}
+                        aria-label={nextThemeLabel}
+                    >
+                        {isDark ? <IconSun /> : <IconMoon />}
+                        <span className="hidden sm:inline">
+                            {isDark ? t('settings.display.appearance.light') : t('settings.display.appearance.dark')}
+                        </span>
+                    </button>
+                    <Popover.Root open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+                        <Popover.Trigger asChild>
+                            <button
+                                type="button"
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--toolbar)]"
+                                style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                                title={userLabel}
+                                aria-label={t('app.user.menu')}
+                            >
+                                {userInitial}
+                            </button>
+                        </Popover.Trigger>
+                        <Popover.Portal>
+                            <Popover.Content
+                                side="bottom"
+                                align="end"
+                                sideOffset={8}
+                                collisionPadding={8}
+                                className="z-50 max-h-[calc(100vh-64px)] w-72 overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-1.5 text-[var(--app-fg)] shadow-2xl outline-none"
+                            >
+                                <div className="flex min-w-0 items-center gap-3 px-2.5 py-2.5">
+                                    <div
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
+                                        style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                                        aria-hidden="true"
+                                    >
+                                        {userInitial}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="truncate text-sm font-semibold text-[var(--app-fg)]">{userLabel}</div>
+                                        {userMeta ? (
+                                            <div className="mt-0.5 truncate text-xs text-[var(--app-hint)]">{userMeta}</div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                <div className="my-1 h-px bg-[var(--app-divider)]" />
+                                <div className="px-2 py-1 text-[10px] font-semibold uppercase text-[var(--app-hint)]">
+                                    {t('settings.title')}
+                                </div>
+                                {settingsCategoryGroups.map((group) => {
+                                    const items = group.categoryIds
+                                        .map((id) => visibleById.get(id))
+                                        .filter((category): category is NonNullable<typeof category> => Boolean(category))
+                                    if (items.length === 0) return null
+                                    return (
+                                        <section key={group.id} aria-label={t(group.titleKey)}>
+                                            <div className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase text-[var(--app-hint)]">
+                                                {t(group.titleKey)}
+                                            </div>
+                                            <div className="space-y-0.5">
+                                                {items.map((category) => (
+                                                    <button
+                                                        key={category.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setUserMenuOpen(false)
+                                                            navigate({ to: category.path })
+                                                        }}
+                                                        className="flex min-h-8 w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left text-[13px] font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)]"
+                                                    >
+                                                        <span className="truncate">{t(category.titleKey)}</span>
+                                                        <IconChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--app-hint)]" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    )
+                                })}
+                                <div className="my-1 h-px bg-[var(--app-divider)]" />
+                                <button
+                                    type="button"
+                                    onClick={handleSignOut}
+                                    className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[13px] font-medium text-red-600 transition-colors hover:bg-red-500/10 dark:text-red-400"
+                                >
+                                    <IconLogOut className="h-4 w-4 shrink-0" />
+                                    <span className="truncate">{t('settings.account.logout')}</span>
+                                </button>
+                            </Popover.Content>
+                        </Popover.Portal>
+                    </Popover.Root>
                 </div>
             </div>
-        </div>
+        </header>
     )
 }
 
@@ -150,13 +258,15 @@ function AppStatusBar() {
     const { t } = useTranslation()
 
     return (
-        <div className="flex h-[22px] shrink-0 items-center gap-4 bg-[var(--primary)] px-3 font-mono text-[10.5px] text-white/90">
-            <span className="opacity-80">{t('app.status.product')}</span>
-            <span className="hidden sm:inline">◉ {t('app.status.language')}</span>
-            <span className="hidden sm:inline">{t('app.status.encoding')}</span>
-            <span className="ml-auto">{t('app.status.connected')}</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-[#30d158]" />
-        </div>
+        <footer className="shrink-0 bg-[var(--primary)] pb-[var(--app-shell-safe-area-bottom)]">
+            <div className="flex h-[22px] items-center gap-4 px-3 font-mono text-[10.5px] text-white/90">
+                <span className="opacity-80">{t('app.status.product')}</span>
+                <span className="hidden sm:inline">◉ {t('app.status.language')}</span>
+                <span className="hidden sm:inline">{t('app.status.encoding')}</span>
+                <span className="ml-auto">{t('app.status.connected')}</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+            </div>
+        </footer>
     )
 }
 
@@ -444,6 +554,13 @@ function AppInner() {
     )
     const sseEnabled = Boolean(api && token)
     const showReconnectingBanner = sseDisconnected && !isSyncing
+    const telegramApp = isTelegramApp()
+    const appShellStyle = {
+        '--app-shell-safe-area-top': telegramApp ? '0px' : 'env(safe-area-inset-top)',
+        '--app-shell-safe-area-bottom': telegramApp ? '0px' : 'env(safe-area-inset-bottom)',
+        '--app-page-safe-area-top': telegramApp ? 'env(safe-area-inset-top)' : '0px',
+        '--app-page-safe-area-bottom': telegramApp ? 'env(safe-area-inset-bottom)' : '0px',
+    } as CSSProperties
 
     const { subscriptionId: globalSubscriptionId } = useSSE({
         enabled: sseEnabled,
@@ -574,12 +691,15 @@ function AppInner() {
                     isHubConnected={globalSubscriptionId !== null}
                     isReconnecting={showReconnectingBanner}
                 />
-                <div className="flex h-full min-h-0 flex-col bg-[var(--background)] text-[var(--foreground)]">
-                    {!isTelegramApp() ? <AppTitleBar user={user} /> : null}
+                <div
+                    className="flex h-full min-h-0 flex-col bg-[var(--background)] text-[var(--foreground)]"
+                    style={appShellStyle}
+                >
+                    {!telegramApp ? <AppTitleBar /> : null}
                     <div className="min-h-0 flex-1">
                         <Outlet />
                     </div>
-                    {!isTelegramApp() ? <AppStatusBar /> : null}
+                    {!telegramApp ? <AppStatusBar /> : null}
                 </div>
                 <ToastContainer />
                 <InstallPrompt />

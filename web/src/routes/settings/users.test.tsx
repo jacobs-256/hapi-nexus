@@ -9,6 +9,7 @@ const apiMock = {
     getUsers: vi.fn(),
     createUser: vi.fn(),
     updateUser: vi.fn(),
+    deleteUser: vi.fn(),
     resetUserPassword: vi.fn(),
     regenerateUserAccessToken: vi.fn()
 }
@@ -61,6 +62,7 @@ describe('SettingsUsersPage', () => {
         currentUser = { id: 1, username: 'admin', role: 'admin' }
         apiMock.getUsers.mockResolvedValue({ users: [makeLocalUser()] })
         apiMock.createUser.mockResolvedValue({ user: makeLocalUser({ id: 3, username: 'bob' }) })
+        apiMock.deleteUser.mockResolvedValue({ ok: true })
     })
 
     afterEach(() => {
@@ -82,6 +84,28 @@ describe('SettingsUsersPage', () => {
             displayName: null,
             role: 'user'
         }))
+    })
+
+    it('deletes local users after confirmation', async () => {
+        renderPage()
+
+        expect(await screen.findByText('Alice')).toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Delete user' }))
+        expect(screen.getByText('Delete Alice? This cannot be undone.')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+        await waitFor(() => expect(apiMock.deleteUser).toHaveBeenCalledWith(2))
+    })
+
+    it('shows delete for local users when the owner has the same numeric id', async () => {
+        currentUser = { id: 1, username: 'admin', role: 'admin', platform: 'owner' }
+        apiMock.getUsers.mockResolvedValue({ users: [makeLocalUser({ id: 1, username: 'jacobs', displayName: 'Jacobs' })] })
+
+        renderPage()
+
+        expect(await screen.findByText('Jacobs')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Delete user' })).toBeEnabled()
     })
 
     it('blocks non-admin users from the management list', () => {

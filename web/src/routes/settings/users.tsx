@@ -7,6 +7,7 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { queryKeys } from '@/lib/query-keys'
 import { useTranslation } from '@/lib/use-translation'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 const ACCESS_TOKEN_PREFIX = 'hapi_access_token::'
 const USER_ROLES: UserRole[] = ['user', 'admin']
@@ -145,15 +146,21 @@ function UserRow(props: {
     api: ApiClient
     baseUrl: string
     currentUserId: number
+    currentUserPlatform?: string
     user: EnterpriseUser
 }) {
     const { t } = useTranslation()
     const queryClient = useQueryClient()
     const [displayName, setDisplayName] = useState(props.user.displayName ?? '')
     const [password, setPassword] = useState('')
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const isOwner = props.user.platform === 'owner'
-    const isSelf = props.user.id === props.currentUserId
+    const isSelf = props.currentUserPlatform
+        ? props.user.platform === props.currentUserPlatform && props.user.id === props.currentUserId
+        : props.user.id === props.currentUserId
     const canManageLocalSecret = props.user.platform === 'local'
+    const showDeleteUser = canManageLocalSecret && !isOwner
+    const userLabel = props.user.displayName || props.user.username || props.user.platformUserId
 
     function invalidateUsers() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.users })
@@ -175,6 +182,11 @@ function UserRow(props: {
             setPassword('')
             invalidateUsers()
         }
+    })
+
+    const deleteMutation = useMutation({
+        mutationFn: async () => await props.api.deleteUser(props.user.id),
+        onSuccess: invalidateUsers
     })
 
     const regenerateMutation = useMutation({
@@ -205,6 +217,16 @@ function UserRow(props: {
                     <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
                         {t('settings.users.disabled')}
                     </span>
+                ) : null}
+                {showDeleteUser ? (
+                    <button
+                        type="button"
+                        onClick={() => setDeleteDialogOpen(true)}
+                        disabled={isSelf || deleteMutation.isPending}
+                        className="shrink-0 rounded-md border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+                    >
+                        {deleteMutation.isPending ? t('settings.users.delete.deleting') : t('settings.users.delete.action')}
+                    </button>
                 ) : null}
             </div>
 
@@ -285,6 +307,20 @@ function UserRow(props: {
                     {rowError instanceof Error ? rowError.message : t('settings.users.update.error')}
                 </div>
             ) : null}
+
+            <ConfirmDialog
+                isOpen={deleteDialogOpen}
+                onClose={() => setDeleteDialogOpen(false)}
+                title={t('settings.users.delete.title')}
+                description={t('settings.users.delete.description', { name: userLabel })}
+                confirmLabel={t('settings.users.delete.confirm')}
+                confirmingLabel={t('settings.users.delete.deleting')}
+                onConfirm={async () => {
+                    await deleteMutation.mutateAsync()
+                }}
+                isPending={deleteMutation.isPending}
+                destructive
+            />
         </div>
     )
 }
@@ -332,6 +368,7 @@ export default function SettingsUsersPage() {
                             api={api}
                             baseUrl={baseUrl}
                             currentUserId={user.id}
+                            currentUserPlatform={user.platform}
                             user={account}
                         />
                     ))

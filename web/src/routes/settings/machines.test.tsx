@@ -2,23 +2,35 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/lib/i18n-context'
-import type { Machine } from '@/types/api'
+import type { Machine, ProjectWithDetails } from '@/types/api'
 import SettingsMachinesPage from '@/routes/settings/machines'
 
 const renameMachineMock = vi.fn()
+const deleteMachineMock = vi.fn()
 const machinesMock = vi.fn()
+const projectsMock = vi.fn()
 
 vi.mock('@/lib/app-context', () => ({
-    useAppContext: () => ({ api: { renameMachine: renameMachineMock } }),
+    useAppContext: () => ({
+        api: { renameMachine: renameMachineMock, deleteMachine: deleteMachineMock },
+        user: { id: 1, username: 'admin', role: 'admin' }
+    }),
 }))
 
 vi.mock('@/hooks/queries/useMachines', () => ({
     useMachines: () => ({ machines: machinesMock(), isLoading: false, error: null, refetch: vi.fn() }),
 }))
 
+vi.mock('@/hooks/queries/useProjects', () => ({
+    useProjects: () => ({ projects: projectsMock(), isLoading: false, error: null, refetch: vi.fn() }),
+}))
+
 function makeMachine(overrides?: Partial<Machine>): Machine {
     return {
         id: 'machine-1',
+        namespace: 'default',
+        ownerUserId: 1,
+        teamId: 'default-team:default',
         seq: 1,
         createdAt: 1,
         updatedAt: 1,
@@ -29,8 +41,49 @@ function makeMachine(overrides?: Partial<Machine>): Machine {
             platform: 'linux',
             happyCliVersion: '1.0.0',
         },
+        metadataVersion: 1,
+        runnerState: null,
+        runnerStateVersion: 1,
         ...overrides,
     } as Machine
+}
+
+function makeProject(overrides?: Partial<ProjectWithDetails>): ProjectWithDetails {
+    return {
+        id: 'project-1',
+        namespace: 'default',
+        name: 'Shared Project',
+        repoUrl: null,
+        createdByUserId: 2,
+        createdAt: 1,
+        archivedAt: null,
+        role: 'editor',
+        members: [
+            { projectId: 'project-1', userId: 2, role: 'owner', createdAt: 1 },
+            { projectId: 'project-1', userId: 1, role: 'editor', createdAt: 2 }
+        ],
+        workspaces: [{
+            id: 'workspace-1',
+            projectId: 'project-1',
+            machineId: 'machine-1',
+            rootPath: '/srv/projects/app',
+            createdByUserId: 2,
+            createdAt: 1
+        }],
+        createdByUser: {
+            id: 2,
+            platform: 'local',
+            platformUserId: '2',
+            namespace: 'default',
+            username: 'jacobs',
+            displayName: 'Jacobs',
+            role: 'user',
+            disabledAt: null,
+            createdAt: 1,
+            updatedAt: null
+        },
+        ...overrides,
+    } as ProjectWithDetails
 }
 
 function renderPage() {
@@ -53,7 +106,9 @@ describe('SettingsMachinesPage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         renameMachineMock.mockResolvedValue(undefined)
+        deleteMachineMock.mockResolvedValue({ ok: true, deletedSessionCount: 0, deletedProjectCount: 0, deletedProjectWorkspaceCount: 0 })
         machinesMock.mockReturnValue([makeMachine()])
+        projectsMock.mockReturnValue([])
     })
 
     afterEach(() => {
@@ -174,10 +229,47 @@ describe('SettingsMachinesPage', () => {
         expect(screen.getByRole('textbox')).toBeTruthy()
     })
 
-    it('renders an empty state when no machines are online', () => {
+    it('shows online machines as online and disables deletion while connected', () => {
+        renderPage()
+
+        expect(screen.getByText('Online')).toBeTruthy()
+        expect((screen.getByRole('button', { name: 'Delete workstation.local' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it('shows offline machines with the last offline time and deletes after confirmation', async () => {
+        machinesMock.mockReturnValue([makeMachine({
+            active: false,
+            activeAt: new Date('2026-08-10T08:00:00Z').getTime(),
+        })])
+        renderPage()
+
+        expect(screen.getByText('Offline')).toBeTruthy()
+        expect(screen.getByText(/^Last offline:/)).toBeTruthy()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Delete workstation.local' }))
+        expect(screen.getByText(/projects that only belong to this machine/)).toBeTruthy()
+        fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+
+        await waitFor(() => expect(deleteMachineMock).toHaveBeenCalledWith('machine-1'))
+    })
+
+    it('marks who shared the machine and does not allow rename or delete', () => {
+        machinesMock.mockReturnValue([makeMachine({
+            ownerUserId: 2,
+            active: false,
+        })])
+        projectsMock.mockReturnValue([makeProject()])
+        renderPage()
+
+        expect(screen.getByText('Shared by Jacobs (@jacobs)')).toBeTruthy()
+        expect(screen.queryByRole('button', { name: 'Rename workstation.local' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Delete workstation.local' })).toBeNull()
+    })
+
+    it('renders an empty state when no machines are registered', () => {
         machinesMock.mockReturnValue([])
         renderPage()
 
-        expect(screen.getByText('No machines online.')).toBeTruthy()
+        expect(screen.getByText('No machines registered.')).toBeTruthy()
     })
 })

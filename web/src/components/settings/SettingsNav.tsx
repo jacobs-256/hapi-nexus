@@ -4,30 +4,10 @@ import { useAppearance } from '@/hooks/useTheme'
 import { useFontScale } from '@/hooks/useFontScale'
 import { useComposerEnterBehavior } from '@/hooks/useComposerEnterBehavior'
 import { useAppContext } from '@/lib/app-context'
-import { settingsCategories } from '@/routes/settings/categories'
+import { getVisibleSettingsCategories, settingsCategoryGroups, type SettingsCategoryId } from '@/routes/settings/categories'
 import { ChevronRightIcon } from './SettingsPrimitives'
 
-type CategoryId = typeof settingsCategories[number]['id']
-
-const categoryGroups: Array<{ id: string; titleKey: string; categoryIds: CategoryId[] }> = [
-    { id: 'workspace', titleKey: 'settings.nav.workspace', categoryIds: ['general', 'display', 'chat', 'voice'] },
-    { id: 'enterprise', titleKey: 'settings.nav.enterprise', categoryIds: ['account', 'users', 'projects', 'machines'] },
-    { id: 'system', titleKey: 'settings.nav.system', categoryIds: ['storage', 'about'] },
-]
-
-function getNamespace(token: string): string | null {
-    try {
-        const payload = token.split('.')[1]
-        if (!payload) return null
-        const base64 = payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '=')
-        const decoded = JSON.parse(atob(base64)) as { ns?: unknown }
-        return typeof decoded.ns === 'string' ? decoded.ns : null
-    } catch {
-        return null
-    }
-}
-
-function CategoryIcon(props: { id: CategoryId; active: boolean }) {
+function CategoryIcon(props: { id: SettingsCategoryId; active: boolean }) {
     const common = 'h-4 w-4'
     const stroke = props.active ? '2.2' : '1.8'
     switch (props.id) {
@@ -74,16 +54,12 @@ export function SettingsNav(props: { activeId?: string; mobile?: boolean }) {
         storage: t('settings.storage.summary'),
         about: `v${__APP_VERSION__}`,
     }
-    const visibleCategories = settingsCategories.filter((category) => {
-        if (category.id === 'storage') return getNamespace(token) === 'default'
-        if (category.id === 'users') return user?.role === 'admin'
-        return true
-    })
+    const visibleCategories = getVisibleSettingsCategories({ token, user })
     const visibleById = new Map(visibleCategories.map((category) => [category.id, category]))
 
     return (
         <nav aria-label={t('settings.title')} className={props.mobile ? 'space-y-5 px-3 py-3' : 'space-y-5 p-4'}>
-            {categoryGroups.map((group) => {
+            {settingsCategoryGroups.map((group) => {
                 const items = group.categoryIds
                     .map((id) => visibleById.get(id))
                     .filter((category): category is NonNullable<typeof category> => Boolean(category))

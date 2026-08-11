@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import * as Popover from '@radix-ui/react-popover'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApiClient } from '@/api/client'
-import type { Machine, ProjectMember, ProjectRole, ProjectWithDetails, ProjectWorkspace } from '@/types/api'
+import type { EnterpriseUser, Machine, ProjectMember, ProjectRole, ProjectWithDetails, ProjectWorkspace } from '@/types/api'
 import { useAppContext } from '@/lib/app-context'
 import { useTranslation } from '@/lib/use-translation'
 import { useMachines } from '@/hooks/queries/useMachines'
@@ -10,6 +11,7 @@ import { getMachineTitle } from '@/hooks/useMachineLabels'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { queryKeys } from '@/lib/query-keys'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
+import { WorkspaceBrowser } from '@/components/WorkspaceBrowser'
 
 const MEMBER_ROLES: ProjectRole[] = ['viewer', 'editor', 'admin', 'owner']
 const INVITE_ROLES: ProjectRole[] = ['editor', 'viewer', 'admin']
@@ -39,6 +41,46 @@ function buildInviteUrl(token: string, baseUrl: string): string {
     return url.toString()
 }
 
+function normalizeSearch(value: string | null | undefined): string {
+    return (value ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function fuzzyMatch(value: string, query: string): boolean {
+    if (!query) return true
+    if (value.includes(query)) return true
+
+    let queryIndex = 0
+    for (const character of value) {
+        if (character === query[queryIndex]) {
+            queryIndex += 1
+            if (queryIndex === query.length) return true
+        }
+    }
+    return false
+}
+
+function getUserLabel(user: EnterpriseUser): string {
+    const displayName = user.displayName?.trim()
+    const username = user.username?.trim()
+    if (displayName && username && displayName !== username) {
+        return `${displayName} (@${username})`
+    }
+    return displayName || (username ? `@${username}` : `User ${user.id}`)
+}
+
+function getUserSearchText(user: EnterpriseUser): string {
+    return normalizeSearch([
+        user.username,
+        user.displayName
+    ].filter(Boolean).join(' '))
+}
+
+function userMatchesQuery(user: EnterpriseUser, query: string): boolean {
+    const normalizedQuery = normalizeSearch(query)
+    if (!normalizedQuery) return true
+    return fuzzyMatch(getUserSearchText(user), normalizedQuery)
+}
+
 function RoleBadge(props: { role: ProjectRole }) {
     const { t } = useTranslation()
     return (
@@ -57,6 +99,203 @@ function MachineOption(props: { machine: Machine }) {
         <option value={props.machine.id}>
             {suffix ? `${label} (${suffix})` : label}
         </option>
+    )
+}
+
+function ProjectDirectoryPicker(props: {
+    api: ApiClient
+    machine: Machine | null
+    disabled: boolean
+    onChange: (path: string) => void
+}) {
+    const { t } = useTranslation()
+    const [open, setOpen] = useState(false)
+    const workspaceRoots = props.machine?.metadata?.workspaceRoots ?? []
+    const browseDisabled = props.disabled || !props.machine || workspaceRoots.length === 0
+
+    return (
+        <Popover.Root open={open} onOpenChange={setOpen}>
+            <Popover.Trigger asChild>
+                <button
+                    type="button"
+                    disabled={browseDisabled}
+                    aria-label={t('settings.projects.workspace.browseAria')}
+                    title={workspaceRoots.length === 0
+                        ? t('settings.projects.workspace.noRoots')
+                        : t('settings.projects.workspace.browseAria')}
+                    className="shrink-0 rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] px-3 py-2 text-sm text-[var(--app-fg)] transition-colors hover:bg-[var(--app-secondary-bg)] disabled:opacity-50"
+                >
+                    {t('settings.projects.workspace.browse')}
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content
+                    side="bottom"
+                    align="end"
+                    sideOffset={6}
+                    collisionPadding={8}
+                    className="z-50 flex h-[24rem] w-[min(32rem,calc(100vw-2rem))] flex-col rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] shadow-lg"
+                >
+                    <WorkspaceBrowser
+                        api={props.api}
+                        machines={props.machine ? [props.machine] : []}
+                        machinesLoading={false}
+                        initialMachineId={props.machine?.id}
+                        actionLabel={t('settings.projects.workspace.select')}
+                        onStartSession={(_, directory) => {
+                            props.onChange(directory)
+                            setOpen(false)
+                        }}
+                    />
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
+    )
+}
+
+function MemberUserSelect(props: {
+    users: EnterpriseUser[]
+    selectedUserIds: number[]
+    existingMemberIds: Set<number>
+    onChange: (userIds: number[]) => void
+    disabled: boolean
+    isLoading: boolean
+    error: string | null
+}) {
+    const { t } = useTranslation()
+    const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState('')
+    const usersById = useMemo(
+        () => new Map(props.users.map((user) => [user.id, user])),
+        [props.users]
+    )
+    const selectedUsers = props.selectedUserIds
+        .map((userId) => usersById.get(userId))
+        .filter((user): user is EnterpriseUser => Boolean(user))
+    const availableUsers = useMemo(
+        () => props.users
+            .filter((user) => user.disabledAt === null)
+            .filter((user) => !props.existingMemberIds.has(user.id))
+            .sort((left, right) => getUserLabel(left).localeCompare(getUserLabel(right))),
+        [props.existingMemberIds, props.users]
+    )
+    const filteredUsers = useMemo(
+        () => availableUsers.filter((user) => userMatchesQuery(user, query)),
+        [availableUsers, query]
+    )
+
+    function toggleUser(userId: number) {
+        const selected = props.selectedUserIds.includes(userId)
+        props.onChange(selected
+            ? props.selectedUserIds.filter((id) => id !== userId)
+            : [...props.selectedUserIds, userId]
+        )
+    }
+
+    function removeUser(userId: number) {
+        props.onChange(props.selectedUserIds.filter((id) => id !== userId))
+    }
+
+    return (
+        <div className="space-y-2">
+            <Popover.Root open={open} onOpenChange={setOpen}>
+                <Popover.Trigger asChild>
+                    <button
+                        type="button"
+                        disabled={props.disabled}
+                        aria-label={t('settings.projects.member.selectUsers')}
+                        className="flex w-full min-w-0 items-center justify-between gap-2 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-left text-sm text-[var(--app-fg)] outline-none transition-colors hover:bg-[var(--app-subtle-bg)] focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                    >
+                        <span className={selectedUsers.length > 0 ? 'truncate' : 'truncate text-[var(--app-hint)]'}>
+                            {selectedUsers.length > 0
+                                ? t('settings.projects.member.selectedCount', { count: selectedUsers.length })
+                                : t('settings.projects.member.searchPlaceholder')}
+                        </span>
+                        <span aria-hidden="true" className="shrink-0 text-xs text-[var(--app-hint)]">v</span>
+                    </button>
+                </Popover.Trigger>
+                <Popover.Portal>
+                    <Popover.Content
+                        side="bottom"
+                        align="start"
+                        sideOffset={6}
+                        collisionPadding={8}
+                        className="z-50 w-[var(--radix-popover-trigger-width)] min-w-[18rem] rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-2 shadow-lg"
+                    >
+                        <input
+                            autoFocus
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={t('settings.projects.member.searchPlaceholder')}
+                            className="mb-2 w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm text-[var(--app-fg)] outline-none focus:ring-2 focus:ring-[var(--app-link)]"
+                        />
+                        <div className="max-h-56 overflow-y-auto">
+                            {props.isLoading ? (
+                                <div className="px-2 py-3 text-sm text-[var(--app-hint)]">{t('settings.projects.member.usersLoading')}</div>
+                            ) : props.error ? (
+                                <div className="px-2 py-3 text-sm text-red-600">{props.error}</div>
+                            ) : filteredUsers.length === 0 ? (
+                                <div className="px-2 py-3 text-sm text-[var(--app-hint)]">
+                                    {query.trim()
+                                        ? t('settings.projects.member.noResults')
+                                        : t('settings.projects.member.noUsers')}
+                                </div>
+                            ) : (
+                                filteredUsers.map((user) => {
+                                    const checked = props.selectedUserIds.includes(user.id)
+                                    const label = getUserLabel(user)
+                                    const username = user.username?.trim()
+                                    return (
+                                        <label
+                                            key={user.id}
+                                            className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 text-sm hover:bg-[var(--app-subtle-bg)]"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleUser(user.id)}
+                                                className="mt-0.5 h-4 w-4 accent-[var(--app-link)]"
+                                            />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block truncate font-medium text-[var(--app-fg)]">{label}</span>
+                                                <span className="block truncate text-xs text-[var(--app-hint)]">
+                                                    {[username ? `@${username}` : null, `ID ${user.id}`].filter(Boolean).join(' · ')}
+                                                </span>
+                                            </span>
+                                        </label>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </Popover.Content>
+                </Popover.Portal>
+            </Popover.Root>
+
+            {selectedUsers.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                    {selectedUsers.map((user) => {
+                        const label = getUserLabel(user)
+                        return (
+                            <span
+                                key={user.id}
+                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--app-subtle-bg)] px-2 py-1 text-xs text-[var(--app-fg)]"
+                            >
+                                <span className="max-w-[12rem] truncate">{label}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => removeUser(user.id)}
+                                    disabled={props.disabled}
+                                    aria-label={t('settings.projects.member.removeSelected', { name: label })}
+                                    className="rounded-full px-1 text-[var(--app-hint)] hover:bg-[var(--app-secondary-bg)] hover:text-[var(--app-fg)] disabled:opacity-50"
+                                >
+                                    x
+                                </button>
+                            </span>
+                        )
+                    })}
+                </div>
+            ) : null}
+        </div>
     )
 }
 
@@ -107,6 +346,7 @@ function WorkspaceList(props: {
 
 function MemberList(props: {
     project: ProjectWithDetails
+    usersById: Map<number, EnterpriseUser>
     canManage: boolean
     updatingUserId: number | null
     removingUserId: number | null
@@ -122,6 +362,9 @@ function MemberList(props: {
     return (
         <div className="space-y-1">
             {props.project.members.map((member) => {
+                const user = props.usersById.get(member.userId)
+                const label = user ? getUserLabel(user) : t('settings.projects.userId', { id: member.userId })
+                const username = user?.username?.trim()
                 const onlyOwner = member.role === 'owner' && ownerCount <= 1
                 const canChangeOwner = actorIsOwner || member.role !== 'owner'
                 const canChange = props.canManage && canChangeOwner && !onlyOwner
@@ -133,8 +376,13 @@ function MemberList(props: {
                         key={`${member.projectId}:${member.userId}`}
                         className="flex min-w-0 items-center gap-2 rounded-md bg-[var(--app-subtle-bg)] px-2 py-1.5"
                     >
-                        <span className="min-w-0 flex-1 truncate text-xs text-[var(--app-fg)]">
-                            {t('settings.projects.userId', { id: member.userId })}
+                        <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs text-[var(--app-fg)]">{label}</span>
+                            {user ? (
+                                <span className="block truncate text-xs text-[var(--app-hint)]">
+                                    {[username ? `@${username}` : null, `ID ${member.userId}`].filter(Boolean).join(' · ')}
+                                </span>
+                            ) : null}
                         </span>
                         {props.canManage ? (
                             <select
@@ -183,6 +431,11 @@ function CreateProjectForm(props: { api: ApiClient; machines: Machine[] }) {
             setMachineId(props.machines[0].id)
         }
     }, [machineId, props.machines])
+
+    const selectedMachine = useMemo(
+        () => props.machines.find((machine) => machine.id === machineId) ?? null,
+        [machineId, props.machines]
+    )
 
     const createMutation = useMutation({
         mutationFn: async () => {
@@ -241,13 +494,21 @@ function CreateProjectForm(props: { api: ApiClient; machines: Machine[] }) {
             </div>
             <label className="block min-w-0">
                 <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.rootPath')}</span>
-                <input
-                    value={rootPath}
-                    onChange={(event) => setRootPath(event.target.value)}
-                    disabled={createMutation.isPending || props.machines.length === 0}
-                    placeholder={t('settings.projects.create.rootPathPlaceholder')}
-                    className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                />
+                <div className="flex gap-2">
+                    <input
+                        value={rootPath}
+                        onChange={(event) => setRootPath(event.target.value)}
+                        disabled={createMutation.isPending || props.machines.length === 0}
+                        placeholder={t('settings.projects.create.rootPathPlaceholder')}
+                        className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                    />
+                    <ProjectDirectoryPicker
+                        api={props.api}
+                        machine={selectedMachine}
+                        disabled={createMutation.isPending || props.machines.length === 0}
+                        onChange={setRootPath}
+                    />
+                </div>
             </label>
             {createMutation.error ? (
                 <div className="text-xs text-red-600">
@@ -279,7 +540,7 @@ function ProjectRow(props: {
     const [nameDraft, setNameDraft] = useState(props.project.name)
     const [workspaceMachineId, setWorkspaceMachineId] = useState('')
     const [workspaceRoot, setWorkspaceRoot] = useState('')
-    const [memberUserId, setMemberUserId] = useState('')
+    const [selectedMemberUserIds, setSelectedMemberUserIds] = useState<number[]>([])
     const [memberRole, setMemberRole] = useState<ProjectRole>('editor')
     const [inviteRole, setInviteRole] = useState<ProjectRole>('editor')
     const [inviteUrl, setInviteUrl] = useState<string | null>(null)
@@ -291,6 +552,25 @@ function ProjectRow(props: {
     const inviteRoleOptions = useMemo(
         () => props.project.role === 'owner' ? [...INVITE_ROLES, 'owner' as const] : INVITE_ROLES,
         [props.project.role]
+    )
+    const usersQuery = useQuery({
+        queryKey: queryKeys.projectMemberCandidates(props.project.id),
+        queryFn: async () => await props.api.getProjectMemberCandidates(props.project.id),
+        enabled: manageable
+    })
+    const users = usersQuery.data?.users ?? []
+    const usersById = useMemo(
+        () => new Map(users.map((user) => [user.id, user])),
+        [users]
+    )
+    const usersError = usersQuery.error instanceof Error
+        ? usersQuery.error.message
+        : usersQuery.error
+            ? t('settings.projects.member.usersError')
+            : null
+    const existingMemberIds = useMemo(
+        () => new Set(props.project.members.map((member) => member.userId)),
+        [props.project.members]
     )
 
     function invalidateProjectQueries() {
@@ -309,11 +589,20 @@ function ProjectRow(props: {
         }
     }, [props.machines, workspaceMachineId])
 
+    const selectedWorkspaceMachine = useMemo(
+        () => props.machines.find((machine) => machine.id === workspaceMachineId) ?? null,
+        [props.machines, workspaceMachineId]
+    )
+
     useEffect(() => {
         if (!memberRoleOptions.includes(memberRole)) {
             setMemberRole(memberRoleOptions.includes('editor') ? 'editor' : memberRoleOptions[0])
         }
     }, [memberRole, memberRoleOptions])
+
+    useEffect(() => {
+        setSelectedMemberUserIds((userIds) => userIds.filter((userId) => !existingMemberIds.has(userId)))
+    }, [existingMemberIds])
 
     useEffect(() => {
         if (!inviteRoleOptions.includes(inviteRole)) {
@@ -361,14 +650,15 @@ function ProjectRow(props: {
 
     const addMemberMutation = useMutation({
         mutationFn: async () => {
-            const userId = Number(memberUserId)
-            if (!Number.isSafeInteger(userId) || userId <= 0) {
+            if (selectedMemberUserIds.length === 0) {
                 throw new Error(t('settings.projects.member.required'))
             }
-            await props.api.addProjectMember(props.project.id, { userId, role: memberRole })
+            await Promise.all(selectedMemberUserIds.map((userId) =>
+                props.api.addProjectMember(props.project.id, { userId, role: memberRole })
+            ))
         },
         onSuccess: () => {
-            setMemberUserId('')
+            setSelectedMemberUserIds([])
             invalidateProjectQueries()
         }
     })
@@ -504,6 +794,7 @@ function ProjectRow(props: {
                     <div className="mb-1 text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.members')}</div>
                     <MemberList
                         project={props.project}
+                        usersById={usersById}
                         canManage={manageable}
                         updatingUserId={updatingUserId}
                         removingUserId={removingUserId}
@@ -545,13 +836,21 @@ function ProjectRow(props: {
                                 <MachineOption key={machine.id} machine={machine} />
                             ))}
                         </select>
-                        <input
-                            value={workspaceRoot}
-                            onChange={(event) => setWorkspaceRoot(event.target.value)}
-                            disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
-                            placeholder={t('settings.projects.workspace.rootPlaceholder')}
-                            className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                        />
+                        <div className="flex gap-2">
+                            <input
+                                value={workspaceRoot}
+                                onChange={(event) => setWorkspaceRoot(event.target.value)}
+                                disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
+                                placeholder={t('settings.projects.workspace.rootPlaceholder')}
+                                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                            />
+                            <ProjectDirectoryPicker
+                                api={props.api}
+                                machine={selectedWorkspaceMachine}
+                                disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
+                                onChange={setWorkspaceRoot}
+                            />
+                        </div>
                         {addWorkspaceMutation.error ? (
                             <div className="text-xs text-red-600">
                                 {addWorkspaceMutation.error instanceof Error ? addWorkspaceMutation.error.message : t('settings.projects.workspace.error')}
@@ -574,22 +873,23 @@ function ProjectRow(props: {
                         }}
                     >
                         <div className="text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.member.add')}</div>
-                        <div className="flex gap-2">
-                            <input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                value={memberUserId}
-                                onChange={(event) => setMemberUserId(event.target.value)}
-                                disabled={addMemberMutation.isPending}
-                                placeholder={t('settings.projects.member.userIdPlaceholder')}
-                                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                            />
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                            <div className="min-w-0 flex-1">
+                                <MemberUserSelect
+                                    users={users}
+                                    selectedUserIds={selectedMemberUserIds}
+                                    existingMemberIds={existingMemberIds}
+                                    onChange={setSelectedMemberUserIds}
+                                    disabled={addMemberMutation.isPending}
+                                    isLoading={usersQuery.isLoading}
+                                    error={usersError}
+                                />
+                            </div>
                             <select
                                 value={memberRole}
                                 onChange={(event) => setMemberRole(event.target.value as ProjectRole)}
                                 disabled={addMemberMutation.isPending}
-                                className="w-28 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50 sm:w-28"
                             >
                                 {memberRoleOptions.map((role) => (
                                     <option key={role} value={role}>{t(`settings.projects.role.${role}`)}</option>
@@ -603,7 +903,7 @@ function ProjectRow(props: {
                         ) : null}
                         <button
                             type="submit"
-                            disabled={addMemberMutation.isPending || !memberUserId.trim()}
+                            disabled={addMemberMutation.isPending || selectedMemberUserIds.length === 0}
                             className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
                         >
                             {addMemberMutation.isPending ? t('settings.projects.member.adding') : t('settings.projects.member.submit')}

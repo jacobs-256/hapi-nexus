@@ -2,14 +2,16 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import type { SessionSummary } from '@/types/api'
+import type { ApiClient } from '@/api/client'
+import type { AuthResponse, Machine, ProjectWithDetails, SessionSummary } from '@/types/api'
 import { I18nProvider } from '@/lib/i18n-context'
 import { ToastProvider } from '@/lib/toast-context'
-import { SessionList } from './SessionList'
+import { SESSION_GROUP_ALIAS_STORAGE_KEY, SessionList } from './SessionList'
 
 afterEach(() => {
     cleanup()
     localStorage.removeItem('hapi-session-preview-limit')
+    localStorage.removeItem(SESSION_GROUP_ALIAS_STORAGE_KEY)
 })
 
 function makeSession(overrides: Partial<SessionSummary> & { id: string }): SessionSummary {
@@ -51,7 +53,61 @@ function renderWithProviders(children: ReactNode) {
     )
 }
 
+function makeMachine(overrides: Partial<Machine> & { id: string }): Machine {
+    return {
+        namespace: 'default',
+        ownerUserId: 1,
+        teamId: 'team-1',
+        seq: 1,
+        createdAt: 100,
+        updatedAt: 100,
+        active: true,
+        activeAt: 100,
+        metadata: {
+            host: 'Workstation',
+            platform: 'darwin',
+            happyCliVersion: '1.0.0',
+            workspaceRoots: ['/Users/mac/Documents/wwwroot']
+        },
+        metadataVersion: 1,
+        runnerState: null,
+        runnerStateVersion: 1,
+        ...overrides
+    }
+}
+
+function makeProject(overrides: Partial<ProjectWithDetails> & { id: string; name: string }): ProjectWithDetails {
+    const createdByUserId = overrides.createdByUserId ?? 1
+    return {
+        namespace: 'default',
+        repoUrl: null,
+        createdByUserId,
+        createdAt: 100,
+        archivedAt: null,
+        role: 'owner',
+        members: [
+            { projectId: overrides.id, userId: createdByUserId ?? 1, role: 'owner', createdAt: 100 }
+        ],
+        workspaces: [],
+        ...overrides
+    }
+}
+
+function makeCurrentUser(overrides: Partial<AuthResponse['user']> & { id: number }): AuthResponse['user'] {
+    return {
+        username: `user-${overrides.id}`,
+        displayName: `User ${overrides.id}`,
+        platform: 'local',
+        role: 'user',
+        ...overrides
+    }
+}
+
 describe('SessionList directory action', () => {
+    function openGroupActions() {
+        fireEvent.click(screen.getByRole('button', { name: 'Group actions' }))
+    }
+
     it('starts a new session with the project machine and directory', () => {
         const onNewSessionInDirectory = vi.fn()
         const session = makeSession({
@@ -80,7 +136,8 @@ describe('SessionList directory action', () => {
             />
         )
 
-        fireEvent.click(screen.getByRole('button', { name: 'New session in this directory' }))
+        openGroupActions()
+        fireEvent.click(screen.getByRole('menuitem', { name: 'New session in this directory' }))
 
         expect(onNewSessionInDirectory).toHaveBeenCalledWith({
             machineId: 'machine-1',
@@ -142,7 +199,211 @@ describe('SessionList directory action', () => {
             />
         )
 
-        expect(screen.queryByRole('button', { name: 'New session in this directory' })).toBeNull()
+        expect(screen.queryByRole('button', { name: 'Group actions' })).toBeNull()
+        expect(screen.queryByRole('menuitem', { name: 'New session in this directory' })).toBeNull()
+    })
+
+    it('renames a directory group locally and keeps the original path available', () => {
+        const session = makeSession({
+            id: 'session-1',
+            updatedAt: Date.now(),
+            metadata: {
+                path: '/Users/mac/Documents/wwwroot/OA1000',
+                name: 'Auth task',
+                flavor: 'codex',
+            }
+        })
+
+        renderWithProviders(
+            <SessionList
+                sessions={[session]}
+                selectedSessionId={null}
+                onSelect={vi.fn()}
+                onNewSession={vi.fn()}
+                onRefresh={vi.fn()}
+                isLoading={false}
+                renderHeader={false}
+                api={null}
+            />
+        )
+
+        expect(screen.getByText('wwwroot/OA1000')).toBeInTheDocument()
+        expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
+
+        openGroupActions()
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Rename group' }))
+
+        const input = screen.getByRole('textbox', { name: 'Group display name' }) as HTMLInputElement
+        expect(input.value).toBe('wwwroot/OA1000')
+
+        fireEvent.change(input, { target: { value: 'OA1000' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        expect(screen.getByText('OA1000')).toBeInTheDocument()
+        expect(screen.queryByText('wwwroot/OA1000')).toBeNull()
+        expect(JSON.parse(localStorage.getItem(SESSION_GROUP_ALIAS_STORAGE_KEY) ?? '{}')).toEqual({
+            [`__unknown__::${session.metadata?.path}`]: 'OA1000',
+        })
+
+        cleanup()
+
+        renderWithProviders(
+            <SessionList
+                sessions={[session]}
+                selectedSessionId={null}
+                onSelect={vi.fn()}
+                onNewSession={vi.fn()}
+                onRefresh={vi.fn()}
+                isLoading={false}
+                renderHeader={false}
+                api={null}
+            />
+        )
+
+        expect(screen.getByText('OA1000')).toBeInTheDocument()
+        expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
+    })
+
+    it('marks a shared project group and shows who shared it without project or machine details', async () => {
+        const machine = makeMachine({ id: 'machine-1' })
+        const sharedProject = makeProject({
+            id: 'project-shared',
+            name: 'Shared OA',
+            createdByUserId: 2,
+            role: 'editor',
+            createdByUser: {
+                id: 2,
+                platform: 'local',
+                platformUserId: 'local:alice',
+                namespace: 'default',
+                username: 'alice',
+                displayName: 'Alice',
+                role: 'user',
+                disabledAt: null,
+                createdAt: 100,
+                updatedAt: null,
+            },
+            workspaces: [{
+                id: 'workspace-shared',
+                projectId: 'project-shared',
+                machineId: machine.id,
+                rootPath: '/Users/mac/Documents/wwwroot/OA1000',
+                createdByUserId: 2,
+                createdAt: 150,
+            }]
+        })
+        const api = {
+            getProjects: vi.fn(async () => ({ projects: [sharedProject] }))
+        } as unknown as ApiClient
+        const session = makeSession({
+            id: 'session-1',
+            projectId: sharedProject.id,
+            createdAt: 200,
+            updatedAt: 300,
+            metadata: {
+                path: '/Users/mac/Documents/wwwroot/OA1000',
+                machineId: machine.id,
+                name: 'Shared task',
+                flavor: 'codex',
+            }
+        })
+
+        renderWithProviders(
+            <SessionList
+                sessions={[session]}
+                selectedSessionId={null}
+                onSelect={vi.fn()}
+                onNewSession={vi.fn()}
+                onRefresh={vi.fn()}
+                isLoading={false}
+                renderHeader={false}
+                api={api}
+                currentUser={makeCurrentUser({ id: 1, username: 'bob', displayName: 'Bob' })}
+                machineLabelsById={{ [machine.id]: 'Mac Studio' }}
+                machinesById={{ [machine.id]: machine }}
+            />
+        )
+
+        openGroupActions()
+        fireEvent.click(await screen.findByRole('menuitem', { name: 'View group details' }))
+
+        expect(await screen.findByText('Shared')).toBeInTheDocument()
+        expect(screen.getByText('Shared by')).toBeInTheDocument()
+        expect(screen.getByText('Alice (@alice)')).toBeInTheDocument()
+        expect(screen.queryByText('Machine')).toBeNull()
+        expect(screen.queryByText('Project')).toBeNull()
+        expect(screen.queryByText('Move to project')).toBeNull()
+    })
+
+    it('moves an owned directory group to another project even when projects have no directories yet', async () => {
+        const machine = makeMachine({ id: 'machine-1' })
+        const sourceProject = makeProject({
+            id: 'project-source',
+            name: 'Source',
+            role: 'owner',
+            workspaces: []
+        })
+        const targetProject = makeProject({
+            id: 'project-target',
+            name: 'Target',
+            role: 'admin',
+            workspaces: []
+        })
+        const moveProjectDirectory = vi.fn(async () => ({
+            workspace: {
+                id: 'workspace-target',
+                projectId: 'project-target',
+                machineId: machine.id,
+                rootPath: '/Users/mac/Documents/wwwroot/OA1000',
+                createdByUserId: 1,
+                createdAt: 160,
+            }
+        }))
+        const api = {
+            getProjects: vi.fn(async () => ({ projects: [sourceProject, targetProject] })),
+            moveProjectDirectory
+        } as unknown as ApiClient
+        const session = makeSession({
+            id: 'session-1',
+            projectId: sourceProject.id,
+            createdAt: 200,
+            updatedAt: 300,
+            metadata: {
+                path: '/Users/mac/Documents/wwwroot/OA1000',
+                machineId: machine.id,
+                name: 'Owned task',
+                flavor: 'codex',
+            }
+        })
+
+        renderWithProviders(
+            <SessionList
+                sessions={[session]}
+                selectedSessionId={null}
+                onSelect={vi.fn()}
+                onNewSession={vi.fn()}
+                onRefresh={vi.fn()}
+                isLoading={false}
+                renderHeader={false}
+                api={api}
+                currentUser={makeCurrentUser({ id: 1, username: 'owner', displayName: 'Owner' })}
+                machineLabelsById={{ [machine.id]: 'Mac Studio' }}
+                machinesById={{ [machine.id]: machine }}
+            />
+        )
+
+        openGroupActions()
+        fireEvent.click(await screen.findByRole('menuitem', { name: 'View group details' }))
+        fireEvent.change(await screen.findByDisplayValue('Select project'), { target: { value: targetProject.id } })
+        fireEvent.click(screen.getByRole('button', { name: 'Move' }))
+
+        await waitFor(() => {
+            expect(moveProjectDirectory).toHaveBeenCalledWith(sourceProject.id, {
+                targetProjectId: targetProject.id,
+                machineId: machine.id,
+                rootPath: '/Users/mac/Documents/wwwroot/OA1000'
+            })
+        })
     })
 })
 

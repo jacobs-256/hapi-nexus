@@ -469,6 +469,21 @@ export function useSSE(options: {
         }
 
         const upsertMachine = (machine: Machine) => {
+            queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machinesAll, (previous) => {
+                if (!previous) {
+                    return previous
+                }
+
+                const nextMachines = previous.machines.slice()
+                const index = nextMachines.findIndex((item) => item.id === machine.id)
+                if (index >= 0) {
+                    nextMachines[index] = machine
+                } else {
+                    nextMachines.push(machine)
+                }
+                return { ...previous, machines: nextMachines }
+            })
+
             queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machines, (previous) => {
                 if (!previous) {
                     return previous
@@ -493,8 +508,48 @@ export function useSSE(options: {
             })
         }
 
-        const removeMachine = (machineId: string) => {
+        const patchMachine = (
+            machineId: string,
+            patch: { active?: boolean; activeAt?: number; updatedAt?: number }
+        ): boolean => {
+            let patched = false
+            queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machinesAll, (previous) => {
+                if (!previous) {
+                    return previous
+                }
+                const index = previous.machines.findIndex((item) => item.id === machineId)
+                if (index < 0) {
+                    return previous
+                }
+                const nextMachines = previous.machines.slice()
+                nextMachines[index] = { ...nextMachines[index], ...patch }
+                patched = true
+                return { ...previous, machines: nextMachines }
+            })
+
             queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machines, (previous) => {
+                if (!previous) {
+                    return previous
+                }
+                const index = previous.machines.findIndex((item) => item.id === machineId)
+                if (index < 0) {
+                    return previous
+                }
+                const nextMachines = previous.machines.slice()
+                if (patch.active === false) {
+                    nextMachines.splice(index, 1)
+                } else {
+                    nextMachines[index] = { ...nextMachines[index], ...patch }
+                }
+                patched = true
+                return { ...previous, machines: nextMachines }
+            })
+
+            return patched
+        }
+
+        const removeMachine = (machineId: string) => {
+            const removeFromCache = (previous: MachinesResponse | undefined) => {
                 if (!previous) {
                     return previous
                 }
@@ -503,7 +558,9 @@ export function useSSE(options: {
                     return previous
                 }
                 return { ...previous, machines: nextMachines }
-            })
+            }
+            queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machines, removeFromCache)
+            queryClient.setQueryData<MachinesResponse | undefined>(queryKeys.machinesAll, removeFromCache)
         }
 
         const handleSyncEvent = (event: SyncEvent) => {
@@ -608,9 +665,7 @@ export function useSSE(options: {
                     removeMachine(event.machineId)
                 } else {
                     const patch = getMachinePatch(event.data)
-                    if (patch?.active === false) {
-                        removeMachine(event.machineId)
-                    } else {
+                    if (!patch || !patchMachine(event.machineId, patch)) {
                         queueMachinesInvalidation()
                     }
                 }

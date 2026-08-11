@@ -612,6 +612,8 @@ function SessionChatInner(props: SessionChatProps) {
     const codexModelsState = useCodexModels({
         api: props.api,
         machineId: props.session.metadata?.machineId ?? null,
+        sessionId: props.session.id,
+        projectId: props.session.projectId ?? null,
         enabled: agentFlavor === 'codex' && props.session.active && !controlledByUser
     })
     const effectiveCodexServiceTier = agentFlavor === 'codex'

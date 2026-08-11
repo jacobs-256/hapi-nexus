@@ -147,6 +147,7 @@ export function WorkspaceBrowser(props: {
     machinesLoading: boolean
     onStartSession: (machineId: string, directory: string) => void
     initialMachineId?: string
+    actionLabel?: string
 }) {
     const { t } = useTranslation()
     const { api, machines, machinesLoading, initialMachineId } = props
@@ -424,7 +425,7 @@ export function WorkspaceBrowser(props: {
                             disabled={!machineId || !currentPath}
                             className="px-4 py-1.5 text-sm rounded-lg bg-[var(--app-button)] text-[var(--app-button-text)] font-medium disabled:opacity-50 transition-colors hover:opacity-90"
                         >
-                            {t('browse.startSession')}
+                            {props.actionLabel ?? t('browse.startSession')}
                         </button>
                     </div>
                 </div>

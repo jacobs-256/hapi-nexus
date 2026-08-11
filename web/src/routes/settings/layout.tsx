@@ -27,7 +27,7 @@ export default function SettingsLayout() {
 
     return (
         <div className="flex h-full min-h-0 flex-col bg-[var(--app-bg)]">
-            <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-dialog-bg)] pt-[env(safe-area-inset-top)]">
+            <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-dialog-bg)] pt-[var(--app-page-safe-area-top)]">
                 <div className="mx-auto flex w-full max-w-[1440px] items-center gap-3 px-3 py-3 sm:px-5 lg:px-6">
                     <button type="button" onClick={goBack} aria-label={t('common.back')} className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)] lg:hidden">
                         <BackIcon />

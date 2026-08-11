@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { SessionSummary } from '@/types/api'
+import * as Popover from '@radix-ui/react-popover'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { AuthResponse, EnterpriseUser, ProjectWithDetails, ProjectWorkspace, SessionSummary } from '@/types/api'
 import type { ApiClient } from '@/api/client'
 import { useLongPress } from '@/hooks/useLongPress'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -28,6 +30,8 @@ import { useSessionListMachineFilter } from '@/hooks/useSessionListMachineFilter
 import { useCursorChatStoreStatus } from '@/hooks/queries/useCursorChatStoreStatus'
 import { SessionRowSummary } from '@/components/SessionRowSummary'
 import { Spinner } from '@/components/Spinner'
+import { useProjects } from '@/hooks/queries/useProjects'
+import { queryKeys } from '@/lib/query-keys'
 
 export { getWorktreeSessionLabel } from '@/lib/sessionWorktreeLabel'
 
@@ -37,6 +41,7 @@ type SessionGroup = {
     displayName: string
     machineId: string | null
     sessions: SessionSummary[]
+    createdAt: number
     latestUpdatedAt: number
     hasActiveSession: boolean
 }
@@ -133,6 +138,10 @@ type MachineGroup = {
     latestUpdatedAt: number
 }
 
+type SessionGroupAliases = Record<string, string>
+
+export const SESSION_GROUP_ALIAS_STORAGE_KEY = 'hapi.sessionGroupAliases.v1'
+
 function getGroupDisplayName(directory: string): string {
     if (directory === 'Other') return directory
     const parts = directory.split(/[\\/]+/).filter(Boolean)
@@ -143,6 +152,144 @@ function getGroupDisplayName(directory: string): string {
 
 export const UNKNOWN_MACHINE_ID = '__unknown__'
 export const GROUP_SESSION_PREVIEW_LIMIT = DEFAULT_SESSION_PREVIEW_LIMIT
+
+function getLocalStorage(): Storage | null {
+    if (typeof window === 'undefined') return null
+    try {
+        return window.localStorage
+    } catch {
+        return null
+    }
+}
+
+export function readSessionGroupAliases(): SessionGroupAliases {
+    const storage = getLocalStorage()
+    if (!storage) return {}
+    const raw = storage.getItem(SESSION_GROUP_ALIAS_STORAGE_KEY)
+    if (!raw) return {}
+
+    try {
+        const parsed = JSON.parse(raw)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+
+        const aliases: SessionGroupAliases = {}
+        for (const [key, value] of Object.entries(parsed)) {
+            if (typeof key !== 'string' || typeof value !== 'string') continue
+            const normalized = value.trim()
+            if (!normalized) continue
+            aliases[key] = normalized
+        }
+        return aliases
+    } catch {
+        return {}
+    }
+}
+
+export function writeSessionGroupAliases(aliases: SessionGroupAliases): void {
+    const storage = getLocalStorage()
+    if (!storage) return
+
+    const normalized: SessionGroupAliases = {}
+    for (const [key, value] of Object.entries(aliases)) {
+        const label = value.trim()
+        if (!label) continue
+        normalized[key] = label
+    }
+
+    try {
+        if (Object.keys(normalized).length === 0) {
+            storage.removeItem(SESSION_GROUP_ALIAS_STORAGE_KEY)
+            return
+        }
+        storage.setItem(SESSION_GROUP_ALIAS_STORAGE_KEY, JSON.stringify(normalized))
+    } catch {
+        // Ignore storage failures; the UI can still use the in-memory name.
+    }
+}
+
+function normalizeComparablePath(value: string, caseInsensitive: boolean): string {
+    let normalized = value.trim().replace(/\\/g, '/').replace(/\/+/g, '/')
+    if (normalized.length > 1) {
+        normalized = normalized.replace(/\/+$/g, '')
+    }
+    return caseInsensitive ? normalized.toLowerCase() : normalized
+}
+
+function isWindowsPathContext(machine: Machine | undefined, ...paths: Array<string | null | undefined>): boolean {
+    if (machine?.metadata?.platform === 'win32') return true
+    if (machine?.metadata?.workspaceRoots?.some((root) => /^[a-zA-Z]:[\\/]/.test(root))) return true
+    return paths.some((path) => typeof path === 'string' && /^[a-zA-Z]:[\\/]/.test(path))
+}
+
+function isPathInsideRoot(candidate: string, root: string, caseInsensitive: boolean): boolean {
+    const normalizedCandidate = normalizeComparablePath(candidate, caseInsensitive)
+    const normalizedRoot = normalizeComparablePath(root, caseInsensitive)
+    return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}/`)
+}
+
+function isExactWorkspacePath(candidate: string, root: string, caseInsensitive: boolean): boolean {
+    return normalizeComparablePath(candidate, caseInsensitive) === normalizeComparablePath(root, caseInsensitive)
+}
+
+function getUserLabel(user: Pick<EnterpriseUser, 'id' | 'username' | 'displayName'> | null | undefined): string {
+    if (!user) return ''
+    const displayName = user.displayName?.trim()
+    const username = user.username?.trim()
+    if (displayName && username && displayName !== username) {
+        return `${displayName} (@${username})`
+    }
+    return displayName || (username ? `@${username}` : `User ${user.id}`)
+}
+
+function getProjectOwnerLabel(project: ProjectWithDetails | null): string {
+    const createdBy = getUserLabel(project?.createdByUser)
+    if (createdBy) return createdBy
+    const owner = project?.members.find((member) => member.role === 'owner')
+    return owner ? `User ${owner.userId}` : ''
+}
+
+function canManageProject(project: ProjectWithDetails): boolean {
+    return project.role === 'owner' || project.role === 'admin'
+}
+
+function isSharedProject(project: ProjectWithDetails | null, currentUserId: number | null): boolean {
+    if (!project || currentUserId === null || project.createdByUserId == null) return false
+    return project.createdByUserId !== currentUserId
+}
+
+function getPrimaryProjectId(group: SessionGroup): string | null {
+    const ids = group.sessions
+        .map((session) => session.projectId ?? null)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    return ids[0] ?? null
+}
+
+function findWorkspaceForGroup(
+    group: SessionGroup,
+    projects: ProjectWithDetails[],
+    machinesById: Record<string, Machine>
+): { project: ProjectWithDetails; workspace: ProjectWorkspace; exact: boolean } | null {
+    if (!group.machineId || group.directory === 'Other') return null
+    const machine = machinesById[group.machineId]
+    const windows = isWindowsPathContext(machine, group.directory)
+    let containing: { project: ProjectWithDetails; workspace: ProjectWorkspace; exact: boolean } | null = null
+
+    for (const project of projects) {
+        for (const workspace of project.workspaces) {
+            if (workspace.machineId !== group.machineId) continue
+            if (isExactWorkspacePath(group.directory, workspace.rootPath, windows)) {
+                return { project, workspace, exact: true }
+            }
+            if (isPathInsideRoot(group.directory, workspace.rootPath, windows)) {
+                if (!containing || workspace.rootPath.length > containing.workspace.rootPath.length) {
+                    containing = { project, workspace, exact: false }
+                }
+            }
+        }
+    }
+
+    return containing
+}
 
 export function getSessionDedupKey(session: SessionSummary): string | null {
     const agentId = session.metadata?.agentSessionId?.trim()
@@ -260,6 +407,13 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
                 (max, s) => (s.updatedAt > max ? s.updatedAt : max),
                 -Infinity
             )
+            const createdAt = group.sessions.reduce(
+                (min, s) => {
+                    const value = s.createdAt ?? s.updatedAt
+                    return value < min ? value : min
+                },
+                Infinity
+            )
             const hasActiveSession = group.sessions.some(s => s.active)
             const displayName = getGroupDisplayName(group.directory)
 
@@ -269,6 +423,7 @@ function groupSessionsByDirectory(sessions: SessionSummary[]): SessionGroup[] {
                 displayName,
                 machineId: group.machineId,
                 sessions: sortedSessions,
+                createdAt: Number.isFinite(createdAt) ? createdAt : latestUpdatedAt,
                 latestUpdatedAt,
                 hasActiveSession
             }
@@ -327,13 +482,31 @@ function groupByMachine(
     })
 }
 
-function CopyPathButton({ path, className }: { path: string; className?: string }) {
+function MoreVerticalIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className={props.className}
+        >
+            <circle cx="12" cy="5" r="2" />
+            <circle cx="12" cy="12" r="2" />
+            <circle cx="12" cy="19" r="2" />
+        </svg>
+    )
+}
+
+function CopyPathMenuItem({ path }: { path: string }) {
+    const { t } = useTranslation()
     const [copied, setCopied] = useState(false)
     const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation()
-        navigator.clipboard.writeText(path)
+        void navigator.clipboard?.writeText(path)
         setCopied(true)
         clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => setCopied(false), 1500)
@@ -344,15 +517,264 @@ function CopyPathButton({ path, className }: { path: string; className?: string 
     return (
         <button
             type="button"
-            className={`shrink-0 p-0.5 rounded transition-colors ${copied ? 'text-[var(--app-badge-success-text)]' : 'text-[var(--app-hint)] hover:text-[var(--app-fg)]'} ${className ?? ''}`}
-            title={copied ? 'Copied!' : `Copy: ${path}`}
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] focus:bg-[var(--app-subtle-bg)] focus:outline-none"
+            title={path}
             onClick={handleClick}
         >
             {copied
-                ? <CheckIcon className="h-3.5 w-3.5" />
-                : <CopyIcon className="h-3.5 w-3.5" />
+                ? <CheckIcon className="h-3.5 w-3.5 shrink-0 text-[var(--app-badge-success-text)]" />
+                : <CopyIcon className="h-3.5 w-3.5 shrink-0 text-[var(--app-hint)]" />
             }
+            <span className="min-w-0 truncate">
+                {copied ? t('sessions.group.copyPathCopied') : t('sessions.group.copyPath')}
+            </span>
         </button>
+    )
+}
+
+function formatTimestamp(value: number | null | undefined): string {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+    return new Date(value).toLocaleString()
+}
+
+function DetailRow(props: { label: string; value: string }) {
+    return (
+        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-3 py-1.5 text-xs">
+            <dt className="text-[var(--app-hint)]">{props.label}</dt>
+            <dd className="min-w-0 truncate text-[var(--app-fg)]" title={props.value}>{props.value}</dd>
+        </div>
+    )
+}
+
+function SessionGroupDetailsPanel(props: {
+    title: string
+    group: SessionGroup
+    project: ProjectWithDetails | null
+    workspace: ProjectWorkspace | null
+    exactWorkspace: boolean
+    isShared: boolean
+    sharedByLabel: string
+    machineLabel: string
+    moveTargets: ProjectWithDetails[]
+    selectedMoveTargetId: string
+    moveError: string | null
+    isMoving: boolean
+    onMoveTargetChange: (projectId: string) => void
+    onMove: () => void
+}) {
+    const { t } = useTranslation()
+    const canShowMove = !props.isShared && props.project && props.group.machineId && canManageProject(props.project)
+    const moveUnavailableText = !props.project
+        ? t('sessions.group.details.moveNoProject')
+        : !props.group.machineId
+            ? t('sessions.group.details.moveNoMachine')
+            : !canManageProject(props.project)
+                ? t('sessions.group.details.moveNoPermission')
+                : props.moveTargets.length === 0
+                    ? t('sessions.group.details.moveNoTargets')
+                    : null
+
+    return (
+        <>
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+                <div className="min-w-0 flex-1 truncate text-sm font-semibold" title={props.title}>
+                    {props.title}
+                </div>
+                {props.isShared ? (
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--app-border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--app-hint)]">
+                        <ShareIcon className="h-3 w-3" />
+                        {t('sessions.group.shared')}
+                    </span>
+                ) : null}
+            </div>
+            <dl className="border-t border-[var(--app-divider)] pt-2">
+                {props.isShared ? (
+                    <>
+                        <DetailRow label={t('sessions.group.details.sharedBy')} value={props.sharedByLabel || t('sessions.group.details.unknown')} />
+                        <DetailRow label={t('sessions.group.details.createdAt')} value={formatTimestamp(props.workspace?.createdAt ?? props.group.createdAt)} />
+                        <DetailRow label={t('sessions.group.details.path')} value={props.group.directory} />
+                        <DetailRow label={t('sessions.group.details.sessions')} value={String(props.group.sessions.length)} />
+                        <DetailRow label={t('sessions.group.details.updatedAt')} value={formatTimestamp(props.group.latestUpdatedAt)} />
+                    </>
+                ) : (
+                    <>
+                        <DetailRow label={t('sessions.group.details.createdAt')} value={formatTimestamp(props.workspace?.createdAt ?? props.group.createdAt)} />
+                        <DetailRow label={t('sessions.group.details.machine')} value={props.machineLabel} />
+                        <DetailRow label={t('sessions.group.details.project')} value={props.project?.name ?? t('sessions.group.details.none')} />
+                        <DetailRow label={t('sessions.group.details.path')} value={props.group.directory} />
+                        <DetailRow label={t('sessions.group.details.sessions')} value={String(props.group.sessions.length)} />
+                        <DetailRow label={t('sessions.group.details.updatedAt')} value={formatTimestamp(props.group.latestUpdatedAt)} />
+                    </>
+                )}
+            </dl>
+            {!props.isShared ? (
+                <div className="mt-3 border-t border-[var(--app-divider)] pt-3">
+                    <div className="mb-1.5 text-xs font-medium text-[var(--app-fg)]">
+                        {t('sessions.group.details.moveTitle')}
+                    </div>
+                    {canShowMove && props.moveTargets.length > 0 ? (
+                        <div className="flex gap-2">
+                            <select
+                                value={props.selectedMoveTargetId}
+                                onChange={(event) => props.onMoveTargetChange(event.target.value)}
+                                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-1.5 text-xs text-[var(--app-fg)] outline-none focus:ring-2 focus:ring-[var(--app-link)]"
+                            >
+                                <option value="">{t('sessions.group.details.movePlaceholder')}</option>
+                                {props.moveTargets.map((project) => (
+                                    <option key={project.id} value={project.id}>{project.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                disabled={!props.selectedMoveTargetId || props.isMoving}
+                                onClick={props.onMove}
+                                className="shrink-0 rounded-md bg-[var(--app-button)] px-2.5 py-1.5 text-xs font-medium text-[var(--app-button-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {props.isMoving ? t('sessions.group.details.moving') : t('sessions.group.details.move')}
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-xs text-[var(--app-hint)]">{moveUnavailableText}</div>
+                    )}
+                    {props.moveError ? (
+                        <div className="mt-2 text-xs text-red-600">{props.moveError}</div>
+                    ) : null}
+                </div>
+            ) : null}
+        </>
+    )
+}
+
+function GroupActionMenuItem(props: {
+    icon: React.ReactNode
+    label: string
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+    return (
+        <button
+            type="button"
+            role="menuitem"
+            onClick={props.onClick}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] focus:bg-[var(--app-subtle-bg)] focus:outline-none"
+        >
+            <span className="shrink-0 text-[var(--app-hint)]">{props.icon}</span>
+            <span className="min-w-0 truncate">{props.label}</span>
+        </button>
+    )
+}
+
+function SessionGroupActionMenu(props: {
+    title: string
+    group: SessionGroup
+    project: ProjectWithDetails | null
+    workspace: ProjectWorkspace | null
+    exactWorkspace: boolean
+    isShared: boolean
+    sharedByLabel: string
+    machineLabel: string
+    moveTargets: ProjectWithDetails[]
+    selectedMoveTargetId: string
+    moveError: string | null
+    isMoving: boolean
+    canStartInGroupDirectory: boolean
+    onRename: () => void
+    onNewSessionInDirectory?: () => void
+    onMoveTargetChange: (projectId: string) => void
+    onMove: () => void
+}) {
+    const { t } = useTranslation()
+    const [open, setOpen] = useState(false)
+    const [panel, setPanel] = useState<'menu' | 'details'>('menu')
+
+    const closeMenu = () => {
+        setOpen(false)
+        setPanel('menu')
+    }
+
+    return (
+        <Popover.Root open={open} onOpenChange={(nextOpen) => {
+            setOpen(nextOpen)
+            if (!nextOpen) setPanel('menu')
+        }}>
+            <Popover.Trigger asChild>
+                <button
+                    type="button"
+                    onClick={(event) => event.stopPropagation()}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] opacity-70 transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                    title={t('sessions.group.actions.open')}
+                    aria-label={t('sessions.group.actions.open')}
+                >
+                    <MoreVerticalIcon className="h-3.5 w-3.5" />
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content
+                    side="bottom"
+                    align="end"
+                    sideOffset={6}
+                    collisionPadding={10}
+                    className={cn(
+                        'z-50 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-2 text-[var(--app-fg)] shadow-xl outline-none',
+                        panel === 'details' ? 'w-80' : 'w-56'
+                    )}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    {panel === 'details' ? (
+                        <div className="p-1">
+                            <SessionGroupDetailsPanel
+                                title={props.title}
+                                group={props.group}
+                                project={props.project}
+                                workspace={props.workspace}
+                                exactWorkspace={props.exactWorkspace}
+                                isShared={props.isShared}
+                                sharedByLabel={props.sharedByLabel}
+                                machineLabel={props.machineLabel}
+                                moveTargets={props.moveTargets}
+                                selectedMoveTargetId={props.selectedMoveTargetId}
+                                moveError={props.moveError}
+                                isMoving={props.isMoving}
+                                onMoveTargetChange={props.onMoveTargetChange}
+                                onMove={props.onMove}
+                            />
+                        </div>
+                    ) : (
+                        <div role="menu" aria-label={t('sessions.group.actions.open')} className="flex flex-col gap-1">
+                            <GroupActionMenuItem
+                                icon={<InfoIcon className="h-3.5 w-3.5" />}
+                                label={t('sessions.group.details.open')}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    setPanel('details')
+                                }}
+                            />
+                            <GroupActionMenuItem
+                                icon={<PencilIcon className="h-3.5 w-3.5" />}
+                                label={t('sessions.group.rename')}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    closeMenu()
+                                    props.onRename()
+                                }}
+                            />
+                            <CopyPathMenuItem path={props.group.directory} />
+                            {props.onNewSessionInDirectory && props.canStartInGroupDirectory ? (
+                                <GroupActionMenuItem
+                                    icon={<PlusIcon className="h-3.5 w-3.5" />}
+                                    label={t('sessions.group.new')}
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        closeMenu()
+                                        props.onNewSessionInDirectory?.()
+                                    }}
+                                />
+                            ) : null}
+                        </div>
+                    )}
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
     )
 }
 
@@ -413,6 +835,70 @@ function PlusIcon(props: { className?: string }) {
         >
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    )
+}
+
+function PencilIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+        </svg>
+    )
+}
+
+function InfoIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" />
+            <path d="M12 8h.01" />
+        </svg>
+    )
+}
+
+function ShareIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <path d="m8.6 13.5 6.8 4" />
+            <path d="m15.4 6.5-6.8 4" />
         </svg>
     )
 }
@@ -969,6 +1455,7 @@ export function SessionList(props: {
     renderHeader?: boolean
     headerActions?: React.ReactNode
     api: ApiClient | null
+    currentUser?: AuthResponse['user'] | null
     machineLabelsById?: Record<string, string>
     machinesById?: Record<string, Machine>
     selectedSessionId?: string | null
@@ -979,6 +1466,8 @@ export function SessionList(props: {
     const { sessionListStatusMode } = useSessionListStatusMode()
     const { showActiveSessionsOnly } = useShowActiveSessionsOnly()
     const { machineFilter, setMachineFilter } = useSessionListMachineFilter()
+    const queryClient = useQueryClient()
+    const { projects } = useProjects(api, Boolean(api))
     const showDetailedStatus = sessionListStatusMode === 'detailed'
     const [searchQuery, setSearchQuery] = useState('')
     const [searchExpanded, setSearchExpanded] = useState(false)
@@ -988,6 +1477,52 @@ export function SessionList(props: {
     const normalizedQuery = normalizeSearch(searchQuery)
     const timeRange = getSessionTimeRange(customStart, customEnd)
     const isFiltering = normalizedQuery.length > 0 || timeRange !== null
+    const [groupAliases, setGroupAliases] = useState<SessionGroupAliases>(() => readSessionGroupAliases())
+    const [editingGroup, setEditingGroup] = useState<{ key: string; draft: string } | null>(null)
+    const editingGroupKey = editingGroup?.key ?? null
+    const editInputRef = useRef<HTMLInputElement>(null)
+    const skipNextGroupAliasBlurRef = useRef(false)
+    const [moveTargetProjectIds, setMoveTargetProjectIds] = useState<Record<string, string>>({})
+    const [moveErrors, setMoveErrors] = useState<Record<string, string | null>>({})
+    const currentUserId = props.currentUser?.id ?? null
+    const projectsById = useMemo(
+        () => new Map(projects.map((project) => [project.id, project])),
+        [projects]
+    )
+    const moveDirectoryMutation = useMutation({
+        mutationFn: async (input: {
+            groupKey: string
+            projectId: string
+            machineId: string
+            rootPath: string
+            sourceWorkspaceId?: string
+            targetProjectId: string
+        }) => {
+            if (!api) throw new Error('API unavailable')
+            return await api.moveProjectDirectory(input.projectId, {
+                targetProjectId: input.targetProjectId,
+                machineId: input.machineId,
+                rootPath: input.rootPath,
+                sourceWorkspaceId: input.sourceWorkspaceId
+            })
+        },
+        onMutate: (input) => {
+            setMoveErrors(prev => ({ ...prev, [input.groupKey]: null }))
+        },
+        onSuccess: async (_result, input) => {
+            setMoveTargetProjectIds(prev => ({ ...prev, [input.groupKey]: '' }))
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: queryKeys.projects }),
+                queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+            ])
+        },
+        onError: (error, input) => {
+            setMoveErrors(prev => ({
+                ...prev,
+                [input.groupKey]: error instanceof Error ? error.message : t('dialog.error.default')
+            }))
+        }
+    })
 
     useEffect(() => {
         // 中文注释：监听导入标记变化，让列表在“导入完成”或“用户已在 Hapi 中继续会话”后立即刷新时间文案。
@@ -995,6 +1530,55 @@ export function SessionList(props: {
             setCodexImportedSessionsVersion((value) => value + 1)
         })
     }, [])
+
+    useEffect(() => {
+        if (!editingGroupKey) return
+        editInputRef.current?.focus()
+        editInputRef.current?.select()
+    }, [editingGroupKey])
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return
+        const handleStorage = (event: StorageEvent) => {
+            if (event.key === SESSION_GROUP_ALIAS_STORAGE_KEY) {
+                setGroupAliases(readSessionGroupAliases())
+            }
+        }
+        window.addEventListener('storage', handleStorage)
+        return () => window.removeEventListener('storage', handleStorage)
+    }, [])
+
+    const startRenamingGroup = (group: SessionGroup, displayName: string) => {
+        skipNextGroupAliasBlurRef.current = false
+        setEditingGroup({
+            key: group.key,
+            draft: groupAliases[group.key] ?? displayName
+        })
+    }
+
+    const updateGroupAliasDraft = (value: string) => {
+        setEditingGroup(prev => prev ? { ...prev, draft: value } : prev)
+    }
+
+    const commitGroupAlias = (group: SessionGroup, draft: string) => {
+        const alias = draft.trim()
+        setGroupAliases(prev => {
+            const next = { ...prev }
+            if (!alias || alias === group.displayName) {
+                delete next[group.key]
+            } else {
+                next[group.key] = alias
+            }
+            writeSessionGroupAliases(next)
+            return next
+        })
+        setEditingGroup(null)
+    }
+
+    const cancelGroupAliasEdit = () => {
+        skipNextGroupAliasBlurRef.current = true
+        setEditingGroup(null)
+    }
 
     const resolveMachineLabel = (machineId: string | null): string => {
         if (machineId && machineLabelsById[machineId]) {
@@ -1406,37 +1990,131 @@ export function SessionList(props: {
                     const canStartInGroupDirectory = group.directory !== 'Other'
                     // With multiple machines in the unfiltered view, disambiguate
                     // same-named directories by suffixing the machine label.
-                    const groupTitle = showMachineFilterBar && activeMachineFilter === null
-                        ? `${group.displayName} · ${resolveMachineLabel(group.machineId)}`
-                        : group.displayName
+                    const groupDisplayName = groupAliases[group.key] ?? group.displayName
+                    const groupMachineSuffix = showMachineFilterBar && activeMachineFilter === null
+                        ? resolveMachineLabel(group.machineId)
+                        : null
+                    const groupTitle = groupMachineSuffix
+                        ? `${groupDisplayName} · ${groupMachineSuffix}`
+                        : groupDisplayName
+                    const activeGroupEdit = editingGroup?.key === group.key ? editingGroup : null
+                    const primaryProjectId = getPrimaryProjectId(group)
+                    const workspaceMatch = findWorkspaceForGroup(group, projects, machinesById)
+                    const groupProject = primaryProjectId
+                        ? projectsById.get(primaryProjectId) ?? workspaceMatch?.project ?? null
+                        : workspaceMatch?.project ?? null
+                    const workspaceForGroup = workspaceMatch && workspaceMatch.project.id === groupProject?.id
+                        ? workspaceMatch.workspace
+                        : null
+                    const exactWorkspace = Boolean(workspaceMatch && workspaceMatch.project.id === groupProject?.id && workspaceMatch.exact)
+                    const shared = isSharedProject(groupProject, currentUserId)
+                    const sharedByLabel = shared ? getProjectOwnerLabel(groupProject) : ''
+                    const moveTargets = !shared && groupProject && group.machineId && canManageProject(groupProject)
+                        ? projects
+                            .filter((project) => project.id !== groupProject.id)
+                            .filter((project) => canManageProject(project))
+                            .filter((project) => !isSharedProject(project, currentUserId))
+                        : []
+                    const selectedMoveTargetId = moveTargetProjectIds[group.key] ?? ''
+                    const isMovingGroup = moveDirectoryMutation.isPending
+                        && moveDirectoryMutation.variables?.groupKey === group.key
                     return (
                         <div key={group.key}>
                             <div
                                 className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
-                                onClick={() => toggleGroup(group.key, isCollapsed)}
+                                onClick={() => {
+                                    if (activeGroupEdit) return
+                                    toggleGroup(group.key, isCollapsed)
+                                }}
                                 title={group.directory}
                             >
                                 <ChevronIcon className="h-3.5 w-3.5 text-[var(--app-hint)] shrink-0" collapsed={isCollapsed} />
-                                <span className="font-medium text-sm truncate flex-1">
-                                    {groupTitle}
-                                </span>
-                                <CopyPathButton path={group.directory} className="opacity-0 group-hover/project:opacity-100 transition-opacity duration-150" />
-                                {onNewSessionInDirectory && canStartInGroupDirectory ? (
-                                    <button
-                                        type="button"
-                                        onClick={(event) => {
-                                            event.stopPropagation()
-                                            onNewSessionInDirectory({
+                                {activeGroupEdit ? (
+                                    <>
+                                        <input
+                                            ref={editInputRef}
+                                            value={activeGroupEdit.draft}
+                                            onClick={(event) => event.stopPropagation()}
+                                            onChange={(event) => updateGroupAliasDraft(event.target.value)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === 'Enter') {
+                                                    event.preventDefault()
+                                                    event.stopPropagation()
+                                                    commitGroupAlias(group, activeGroupEdit.draft)
+                                                } else if (event.key === 'Escape') {
+                                                    event.preventDefault()
+                                                    event.stopPropagation()
+                                                    cancelGroupAliasEdit()
+                                                }
+                                            }}
+                                            onBlur={() => {
+                                                if (skipNextGroupAliasBlurRef.current) {
+                                                    skipNextGroupAliasBlurRef.current = false
+                                                    return
+                                                }
+                                                commitGroupAlias(group, activeGroupEdit.draft)
+                                            }}
+                                            className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-1.5 py-0.5 text-sm font-medium text-[var(--app-fg)] outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary)]/20"
+                                            aria-label={t('sessions.group.renameInput')}
+                                            placeholder={t('sessions.group.renamePlaceholder')}
+                                        />
+                                        {groupMachineSuffix ? (
+                                            <span className="shrink-0 text-sm font-medium text-[var(--app-hint)]">
+                                                · {groupMachineSuffix}
+                                            </span>
+                                        ) : null}
+                                    </>
+                                ) : (
+                                    <span className="font-medium text-sm truncate flex-1">
+                                        {groupTitle}
+                                    </span>
+                                )}
+                                {!activeGroupEdit && shared ? (
+                                    <span
+                                        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] text-[var(--app-hint)]"
+                                        title={t('sessions.group.shared')}
+                                        aria-label={t('sessions.group.shared')}
+                                    >
+                                        <ShareIcon className="h-3 w-3" />
+                                    </span>
+                                ) : null}
+                                {!activeGroupEdit ? (
+                                    <SessionGroupActionMenu
+                                        title={groupTitle}
+                                        group={group}
+                                        project={groupProject}
+                                        workspace={workspaceForGroup}
+                                        exactWorkspace={exactWorkspace}
+                                        isShared={shared}
+                                        sharedByLabel={sharedByLabel}
+                                        machineLabel={resolveMachineLabel(group.machineId)}
+                                        moveTargets={moveTargets}
+                                        selectedMoveTargetId={selectedMoveTargetId}
+                                        moveError={moveErrors[group.key] ?? null}
+                                        isMoving={isMovingGroup}
+                                        canStartInGroupDirectory={canStartInGroupDirectory}
+                                        onRename={() => startRenamingGroup(group, groupDisplayName)}
+                                        onNewSessionInDirectory={onNewSessionInDirectory
+                                            ? () => onNewSessionInDirectory({
                                                 machineId: group.machineId,
                                                 directory: group.directory
                                             })
+                                            : undefined}
+                                        onMoveTargetChange={(projectId) => {
+                                            setMoveTargetProjectIds(prev => ({ ...prev, [group.key]: projectId }))
                                         }}
-                                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] opacity-70 transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
-                                        title={t('sessions.group.new')}
-                                        aria-label={t('sessions.group.new')}
-                                    >
-                                        <PlusIcon className="h-3.5 w-3.5" />
-                                    </button>
+                                        onMove={() => {
+                                            if (!groupProject || !group.machineId || !selectedMoveTargetId) return
+                                            moveDirectoryMutation.mutate({
+                                                groupKey: group.key,
+                                                projectId: groupProject.id,
+                                                machineId: group.machineId,
+                                                rootPath: group.directory,
+                                                ...(exactWorkspace && workspaceForGroup ? { sourceWorkspaceId: workspaceForGroup.id } : {}),
+                                                targetProjectId: selectedMoveTargetId
+                                            })
+                                        }}
+                                    />
                                 ) : null}
                                 <span className="text-[11px] tabular-nums text-[var(--app-hint)] shrink-0">
                                     ({group.sessions.length})

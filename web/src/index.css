@@ -106,6 +106,10 @@
     --app-chat-font-size: 0.9375rem;
     --app-chat-line-height: 1.75rem;
     --app-message-action-size: 1.125rem;
+    --app-shell-safe-area-top: 0px;
+    --app-shell-safe-area-bottom: 0px;
+    --app-page-safe-area-top: env(safe-area-inset-top);
+    --app-page-safe-area-bottom: env(safe-area-inset-bottom);
 }
 
 [data-theme="dark"] {

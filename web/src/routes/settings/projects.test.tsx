@@ -2,17 +2,19 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/lib/i18n-context'
-import type { Machine, ProjectWithDetails } from '@/types/api'
+import type { EnterpriseUser, Machine, ProjectWithDetails } from '@/types/api'
 import SettingsProjectsPage from '@/routes/settings/projects'
 
 const apiMock = {
+    getProjectMemberCandidates: vi.fn(),
     createProject: vi.fn(),
     updateProject: vi.fn(),
     addProjectMember: vi.fn(),
     removeProjectMember: vi.fn(),
     addProjectWorkspace: vi.fn(),
     removeProjectWorkspace: vi.fn(),
-    createProjectInvite: vi.fn()
+    createProjectInvite: vi.fn(),
+    listMachineDirectory: vi.fn()
 }
 const projectsMock = vi.fn()
 const machinesMock = vi.fn()
@@ -90,6 +92,22 @@ function makeProject(): ProjectWithDetails {
     }
 }
 
+function makeUser(overrides: Partial<EnterpriseUser> & { id: number }): EnterpriseUser {
+    return {
+        id: overrides.id,
+        platform: overrides.platform ?? 'local',
+        platformUserId: overrides.platformUserId ?? String(overrides.id),
+        namespace: overrides.namespace ?? 'default',
+        username: overrides.username ?? `user-${overrides.id}`,
+        displayName: overrides.displayName ?? null,
+        role: overrides.role ?? 'user',
+        disabledAt: overrides.disabledAt ?? null,
+        createdAt: overrides.createdAt ?? 1,
+        updatedAt: overrides.updatedAt ?? null,
+        accessToken: overrides.accessToken ?? null
+    }
+}
+
 function renderPage() {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     return render(
@@ -104,6 +122,14 @@ function renderPage() {
 describe('SettingsProjectsPage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        apiMock.getProjectMemberCandidates.mockResolvedValue({
+            users: [
+                makeUser({ id: 1, username: 'owner', displayName: 'Owner User', role: 'admin' }),
+                makeUser({ id: 2, username: 'existing', displayName: 'Existing Member' }),
+                makeUser({ id: 3, username: 'alice', displayName: 'Alice Morgan' }),
+                makeUser({ id: 4, username: 'bruno', displayName: 'Bruno Lee' })
+            ]
+        })
         apiMock.createProject.mockResolvedValue({ project: makeProject() })
         apiMock.updateProject.mockResolvedValue({ project: makeProject() })
         apiMock.addProjectMember.mockResolvedValue({ member: { projectId: 'project-1', userId: 3, role: 'editor', createdAt: 3 } })
@@ -129,6 +155,15 @@ describe('SettingsProjectsPage', () => {
             },
             token: 'invite-token'
         })
+        apiMock.listMachineDirectory.mockImplementation(async (_machineId: string, path: string) => ({
+            success: true,
+            entries: path === '/srv/projects'
+                ? [
+                    { name: 'app', type: 'directory' },
+                    { name: 'lib', type: 'directory', isGitRepo: true }
+                ]
+                : []
+        }))
         projectsMock.mockReturnValue([makeProject()])
         machinesMock.mockReturnValue([makeMachine()])
     })
@@ -163,26 +198,61 @@ describe('SettingsProjectsPage', () => {
         await waitFor(() => expect(apiMock.removeProjectMember).toHaveBeenCalledWith('project-1', 2))
     })
 
-    it('adds a direct member by user ID', async () => {
+    it('adds multiple direct members from searchable users', async () => {
         renderPage()
 
-        fireEvent.change(screen.getByPlaceholderText('User ID'), { target: { value: '3' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Select users' }))
+        const search = await screen.findByPlaceholderText('Search username or display name')
+
+        fireEvent.change(search, { target: { value: 'morg' } })
+        expect(await screen.findByText('Alice Morgan (@alice)')).toBeTruthy()
+        expect(screen.queryByText('Bruno Lee (@bruno)')).toBeNull()
+
+        fireEvent.click(screen.getByText('Alice Morgan (@alice)'))
+        fireEvent.change(search, { target: { value: 'bruno' } })
+        fireEvent.click(await screen.findByText('Bruno Lee (@bruno)'))
         fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
 
         await waitFor(() => expect(apiMock.addProjectMember).toHaveBeenCalledWith('project-1', {
             userId: 3,
             role: 'editor'
         }))
+        expect(apiMock.addProjectMember).toHaveBeenCalledWith('project-1', {
+            userId: 4,
+            role: 'editor'
+        })
     })
 
-    it('removes workspaces and creates invites', async () => {
+    it('removes project directories and creates invites', async () => {
         renderPage()
 
-        fireEvent.click(screen.getByRole('button', { name: 'Remove workspace /srv/projects/app' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Remove project directory /srv/projects/app' }))
         await waitFor(() => expect(apiMock.removeProjectWorkspace).toHaveBeenCalledWith('project-1', 'workspace-1'))
 
         fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
         await waitFor(() => expect(apiMock.createProjectInvite).toHaveBeenCalledWith('project-1', { role: 'editor' }))
         expect(screen.getByDisplayValue(/invite-token/)).toBeTruthy()
+    })
+
+    it('selects a project directory from the machine browser', async () => {
+        renderPage()
+
+        let browseButton: HTMLElement | null = null
+        await waitFor(() => {
+            browseButton = screen.getAllByRole('button', { name: 'Browse project directory' })[1]
+            expect(browseButton?.hasAttribute('disabled')).toBe(false)
+        })
+        fireEvent.click(browseButton!)
+        fireEvent.click(await screen.findByRole('button', { name: /lib/ }))
+        await waitFor(() => expect(apiMock.listMachineDirectory).toHaveBeenCalledWith('machine-1', '/srv/projects/lib'))
+
+        fireEvent.click(screen.getByRole('button', { name: 'Select directory' }))
+        expect(screen.getByDisplayValue('/srv/projects/lib')).toBeTruthy()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Add directory' }))
+        await waitFor(() => expect(apiMock.addProjectWorkspace).toHaveBeenCalledWith('project-1', {
+            machineId: 'machine-1',
+            rootPath: '/srv/projects/lib'
+        }))
     })
 })

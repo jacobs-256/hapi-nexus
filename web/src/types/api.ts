@@ -16,6 +16,8 @@ export type {
     CursorModelsResponse,
     CursorModelSummary,
     CursorChatStoreStatus,
+    DeleteMachineResponse,
+    DeleteUserResponse,
     DeleteUploadResponse,
     DirectoryEntry,
     FileReadResponse,
@@ -40,8 +42,11 @@ export type {
     PiThinkingLevelMap,
     ProjectInviteAcceptResponse,
     ProjectInviteCreateResponse,
+    ProjectMemberCandidatesResponse,
+    ProjectDirectoryMoveResponse,
     ProjectResponse,
     ProjectWithDetails,
+    ProjectWorkspaceMoveResponse,
     ProjectsResponse,
     RegenerateUserTokenResponse,
     SlashCommand,
@@ -187,9 +192,12 @@ export type CodexDesktopScriptResponse = {
     codexClientAvailable?: boolean
     // 中文注释：多选导入时返回实际处理完成的 Codex 会话数量，用于前端提示本次导入条数。
     syncedCount?: number
+    matchedCount?: number
     // 中文注释：这里存放本次导入对应的 Codex thread ID 列表，方便日志和排查 direct import 结果。
     sessionIds?: string[]
     hapiSessionIds?: string[]
+    latestCodexSessionId?: string
+    latestHapiSessionId?: string
 }
 
 export type CodexLocalSessionSummary = {
@@ -237,6 +245,18 @@ export type CodexDesktopSyncRequest = {
     model?: string | null
     modelReasoningEffort?: string | null
     serviceTier?: string | null
+    collaborationMode?: CodexCollaborationMode
+    yolo?: boolean
+}
+
+export type CodexFolderSyncRequest = {
+    cwd: string
+    projectId?: string | null
+    machineId?: string | null
+    includeSubdirs?: boolean
+    model?: string | null
+    modelReasoningEffort?: string | null
+    serviceTier?: 'fast' | 'standard' | null
     collaborationMode?: CodexCollaborationMode
     yolo?: boolean
 }
