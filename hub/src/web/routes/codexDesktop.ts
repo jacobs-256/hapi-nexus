@@ -9,6 +9,7 @@ import { Hono } from 'hono'
 import type { Machine, SyncEngine } from '../../sync/syncEngine'
 import type { Store, StoredMessage, StoredProject } from '../../store'
 import type { WebAppEnv } from '../middleware/auth'
+import { findWorkspaceForPath, machineAllowsWorkspace } from './workspaceAccess'
 
 type ScriptLogKind = 'sync' | 'restart'
 
@@ -29,8 +30,11 @@ type ScriptLaunchResponse = {
     codexDesktopRunning?: boolean
     codexClientAvailable?: boolean
     syncedCount?: number
+    matchedCount?: number
     sessionIds?: string[]
     hapiSessionIds?: string[]
+    latestCodexSessionId?: string
+    latestHapiSessionId?: string
 } | {
     success: false
     error: string
@@ -40,8 +44,11 @@ type ScriptLaunchResponse = {
     codexDesktopRunning?: boolean
     codexClientAvailable?: boolean
     syncedCount?: number
+    matchedCount?: number
     sessionIds?: string[]
     hapiSessionIds?: string[]
+    latestCodexSessionId?: string
+    latestHapiSessionId?: string
 }
 
 type CodexDesktopStatus = {
@@ -138,6 +145,11 @@ type SyncSessionRequestParseResult = {
     collaborationMode?: CodexCollaborationMode
     yolo?: boolean
     error?: string
+}
+
+type SyncFolderRequestParseResult = Omit<SyncSessionRequestParseResult, 'sessionIds'> & {
+    cwd?: string | null
+    includeSubdirs: boolean
 }
 
 type CodexDuplicateSessionGroup = {
@@ -1221,6 +1233,37 @@ function resolveImportProject(
         .find((project) => store.projects.hasProjectRole(project.id, userId, 'editor')) ?? null
 }
 
+function ensureImportedProjectDirectory(options: {
+    engine: SyncEngine | null
+    namespace: string
+    userId?: number
+    project: StoredProject | null
+    machineId: unknown
+    cwd: string | null | undefined
+}): void {
+    if (
+        !options.engine
+        || typeof options.userId !== 'number'
+        || !options.project
+        || typeof options.machineId !== 'string'
+        || !options.cwd
+    ) {
+        return
+    }
+    const machine = options.engine.getMachineByNamespace(options.machineId, options.namespace)
+    if (!machine || machine.ownerUserId !== options.userId || !machineAllowsWorkspace(machine, options.cwd)) {
+        return
+    }
+    const existingWorkspace = findWorkspaceForPath(
+        machine,
+        options.engine.listProjectWorkspaces(options.project.id),
+        options.cwd
+    )
+    if (!existingWorkspace) {
+        options.engine.addProjectWorkspace(options.project.id, machine.id, options.cwd, options.userId)
+    }
+}
+
 function listDuplicateCodexSessionGroups(
     store: Store,
     namespace: string,
@@ -1785,6 +1828,87 @@ function parseSyncSessionRequest(body: unknown): SyncSessionRequestParseResult {
     }
 }
 
+function parseSyncFolderRequest(body: unknown): SyncFolderRequestParseResult {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return { includeSubdirs: false, error: 'Invalid request body' }
+    }
+
+    const bodyRecord = body as {
+        cwd?: unknown
+        machineId?: unknown
+        projectId?: unknown
+        includeSubdirs?: unknown
+        model?: unknown
+        modelReasoningEffort?: unknown
+        serviceTier?: unknown
+        collaborationMode?: unknown
+        yolo?: unknown
+    }
+    const cwd = typeof bodyRecord.cwd === 'string' && bodyRecord.cwd.trim()
+        ? bodyRecord.cwd.trim()
+        : null
+    if (!cwd) {
+        return { includeSubdirs: false, error: 'cwd is required' }
+    }
+
+    const hasModel = Object.prototype.hasOwnProperty.call(bodyRecord, 'model')
+    const hasModelReasoningEffort = Object.prototype.hasOwnProperty.call(bodyRecord, 'modelReasoningEffort')
+    const hasServiceTier = Object.prototype.hasOwnProperty.call(bodyRecord, 'serviceTier')
+    const hasCollaborationMode = Object.prototype.hasOwnProperty.call(bodyRecord, 'collaborationMode')
+    if (hasServiceTier && bodyRecord.serviceTier !== null && bodyRecord.serviceTier !== 'fast' && bodyRecord.serviceTier !== 'standard') {
+        return { includeSubdirs: false, error: 'Invalid serviceTier' }
+    }
+    if (hasCollaborationMode && bodyRecord.collaborationMode !== 'default' && bodyRecord.collaborationMode !== 'plan') {
+        return { includeSubdirs: false, error: 'Invalid collaborationMode' }
+    }
+
+    return {
+        cwd,
+        machineId: typeof bodyRecord.machineId === 'string' && bodyRecord.machineId.trim() ? bodyRecord.machineId.trim() : null,
+        projectId: typeof bodyRecord.projectId === 'string' && bodyRecord.projectId.trim() ? bodyRecord.projectId.trim() : null,
+        includeSubdirs: bodyRecord.includeSubdirs === true,
+        model: hasModel ? (typeof bodyRecord.model === 'string' && bodyRecord.model.trim() ? bodyRecord.model.trim() : null) : undefined,
+        modelReasoningEffort: hasModelReasoningEffort ? (typeof bodyRecord.modelReasoningEffort === 'string' && bodyRecord.modelReasoningEffort.trim() ? bodyRecord.modelReasoningEffort.trim() : null) : undefined,
+        serviceTier: hasServiceTier ? bodyRecord.serviceTier as 'fast' | 'standard' | null : undefined,
+        collaborationMode: hasCollaborationMode ? bodyRecord.collaborationMode as CodexCollaborationMode : undefined,
+        yolo: bodyRecord.yolo === true
+    }
+}
+
+function codexSessionMatchesFolder(
+    session: CodexLocalSessionSummary | RemoteCodexSession,
+    cwd: string,
+    includeSubdirs: boolean
+): boolean {
+    if (!session.cwd?.trim()) return false
+    if (includeSubdirs) {
+        return isPathInsideWorkspaceRoot(session.cwd, cwd)
+    }
+    const caseInsensitive = shouldCompareCaseInsensitive(session.cwd, cwd)
+    return normalizeComparablePath(session.cwd, { caseInsensitive })
+        === normalizeComparablePath(cwd, { caseInsensitive })
+}
+
+function createSyncFolderEmptyResponse(
+    parsed: SyncFolderRequestParseResult,
+    codexStatus: CodexDesktopStatus
+): ScriptLaunchResponse {
+    return {
+        success: true,
+        message: 'No Codex sessions found for this folder',
+        pid: 0,
+        command: DIRECT_IMPORT_COMMAND,
+        cwd: parsed.cwd ?? getDirectImportRouteContext().workspace,
+        output: `No Codex sessions found for folder: ${parsed.cwd ?? ''}`,
+        codexDesktopRunning: codexStatus.running,
+        codexClientAvailable: codexStatus.clientAvailable,
+        syncedCount: 0,
+        matchedCount: 0,
+        sessionIds: [],
+        hapiSessionIds: []
+    }
+}
+
 function combineSyncOutputs(results: ScriptLaunchResponse[]): string | undefined {
     const output = results
         .map((result, index) => {
@@ -1917,6 +2041,14 @@ function importSingleCodexSession(options: {
             options.machineId ?? resolveImportMachineId(transcript.cwd, options.namespace, engine) ?? undefined,
             options.yolo ? 'yolo' : undefined
         )
+        ensureImportedProjectDirectory({
+            engine,
+            namespace: options.namespace,
+            userId: options.userId,
+            project: importProject,
+            machineId: metadata.machineId,
+            cwd: transcript.cwd
+        })
 
         let sessionId = existingStored?.id ?? null
         let created = false
@@ -2226,6 +2358,95 @@ export function createCodexDesktopRoutes(options: {
             ...result,
             codexDesktopRunning: codexStatus.running,
             codexClientAvailable: codexStatus.clientAvailable
+        })
+    })
+
+    app.post('/codex/sync-folder', async (c) => {
+        const codexStatus = getCodexDesktopStatus()
+        const body = await c.req.json().catch(() => null)
+        const parsed = parseSyncFolderRequest(body)
+        if (parsed.error || !parsed.cwd) {
+            const { workspace } = getDirectImportRouteContext()
+            appendScriptLog(workspace, 'sync', `FAILED: ${parsed.error ?? 'cwd is required'}`)
+            return c.json({
+                success: false,
+                error: parsed.error ?? 'cwd is required',
+                cwd: workspace,
+                codexDesktopRunning: codexStatus.running,
+                codexClientAvailable: codexStatus.clientAvailable
+            })
+        }
+
+        // 中文注释：先只拉取摘要用于目录过滤；确定 ID 后再按 ID 拉取带消息体的 transcript，避免误把服务器磁盘路径当成本地 Codex 历史。
+        const summaries = await listCodexSessionsViaMachine({
+            engine: options.getSyncEngine(),
+            namespace: c.get('namespace'),
+            cwd: parsed.cwd,
+            machineId: parsed.machineId
+        })
+        if (summaries.error) {
+            const { workspace } = getDirectImportRouteContext()
+            return c.json({
+                success: false,
+                error: summaries.error,
+                cwd: workspace,
+                codexDesktopRunning: codexStatus.running,
+                codexClientAvailable: codexStatus.clientAvailable
+            })
+        }
+
+        const folderSessions = summaries.sessions
+            .filter((session) => codexSessionMatchesFolder(session, parsed.cwd!, parsed.includeSubdirs))
+            .sort((a, b) => b.modifiedAt - a.modifiedAt)
+        const sessionIds = folderSessions.map((session) => session.id)
+        if (sessionIds.length === 0) {
+            return c.json(createSyncFolderEmptyResponse(parsed, codexStatus))
+        }
+
+        const sessionsWithMessages = await listCodexSessionsViaMachine({
+            engine: options.getSyncEngine(),
+            namespace: c.get('namespace'),
+            cwd: parsed.cwd,
+            machineId: summaries.machineId ?? parsed.machineId,
+            sessionIds
+        })
+        if (sessionsWithMessages.error) {
+            const { workspace } = getDirectImportRouteContext()
+            return c.json({
+                success: false,
+                error: sessionsWithMessages.error,
+                cwd: workspace,
+                codexDesktopRunning: codexStatus.running,
+                codexClientAvailable: codexStatus.clientAvailable,
+                sessionIds,
+                matchedCount: sessionIds.length
+            })
+        }
+
+        const result = await importSelectedCodexSessions({
+            codexSessionIds: sessionIds,
+            store: options.store,
+            namespace: c.get('namespace'),
+            userId: c.get('userId'),
+            getSyncEngine: options.getSyncEngine,
+            localSessions: sessionsWithMessages.sessions,
+            machineId: sessionsWithMessages.machineId ?? summaries.machineId ?? null,
+            projectId: parsed.projectId,
+            model: parsed.model,
+            modelReasoningEffort: parsed.modelReasoningEffort,
+            serviceTier: parsed.serviceTier,
+            collaborationMode: parsed.collaborationMode,
+            yolo: parsed.yolo
+        })
+        const latestCodexSessionId = sessionIds[0]
+        const latestHapiSessionId = result.success ? result.hapiSessionIds?.[0] : undefined
+        return c.json({
+            ...result,
+            codexDesktopRunning: codexStatus.running,
+            codexClientAvailable: codexStatus.clientAvailable,
+            matchedCount: sessionIds.length,
+            latestCodexSessionId,
+            ...(latestHapiSessionId ? { latestHapiSessionId } : {})
         })
     })
 

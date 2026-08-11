@@ -121,13 +121,14 @@ export function NewSession(props: {
     const [isCreating, setIsCreating] = useState(false)
     const createInFlightRef = useRef(false)
     const [isBulkImportingCodexSessions, setIsBulkImportingCodexSessions] = useState(false)
+    const [isSyncingCodexFolder, setIsSyncingCodexFolder] = useState(false)
     const [isRestartingCodexDesktop, setIsRestartingCodexDesktop] = useState(false)
     const [pendingDuplicateSessionIds, setPendingDuplicateSessionIds] = useState<string[]>([])
     const [pendingDuplicateHapiSessionIds, setPendingDuplicateHapiSessionIds] = useState<string[]>([])
     const [duplicateSessionGroups, setDuplicateSessionGroups] = useState<CodexDuplicateSessionGroup[]>([])
     const [isDuplicateMergeConfirmOpen, setIsDuplicateMergeConfirmOpen] = useState(false)
     const [isMergingDuplicateSessions, setIsMergingDuplicateSessions] = useState(false)
-    const isFormDisabled = Boolean(isCreating || isPending || props.isLoading || isImportingCodexSession || isBulkImportingCodexSessions)
+    const isFormDisabled = Boolean(isCreating || isPending || props.isLoading || isImportingCodexSession || isBulkImportingCodexSessions || isSyncingCodexFolder)
     const worktreeInputRef = useRef<HTMLInputElement>(null)
     const preserveRestoredDraftRef = useRef(false)
 
@@ -246,10 +247,18 @@ export function NewSession(props: {
         () => (machineId ? props.machines.find((machine) => machine.id === machineId) ?? null : null),
         [machineId, props.machines]
     )
+    const selectedMachineIsOwnedByCurrentUser = Boolean(
+        props.currentUserId
+        && selectedMachine?.ownerUserId !== null
+        && selectedMachine?.ownerUserId === props.currentUserId
+    )
     const codexModelsState = useCodexModels({
         api: props.api,
         machineId,
-        enabled: agent === 'codex' && Boolean(machineId)
+        projectId,
+        enabled: agent === 'codex'
+            && Boolean(machineId)
+            && (selectedMachineIsOwnedByCurrentUser || Boolean(projectId))
     })
     const runnerSpawnError = useMemo(
         () => formatRunnerSpawnError(selectedMachine),
@@ -475,11 +484,7 @@ export function NewSession(props: {
         ),
         [editableProjects, selectedMachine, trimmedDirectory]
     )
-    const isSelectedMachineOwner = Boolean(
-        props.currentUserId
-        && selectedMachine?.ownerUserId !== null
-        && selectedMachine?.ownerUserId === props.currentUserId
-    )
+    const isSelectedMachineOwner = selectedMachineIsOwnedByCurrentUser
 
     useEffect(() => {
         if (editableProjects.length === 0) {
@@ -902,6 +907,83 @@ export function NewSession(props: {
         projectId,
         props.api,
         refetchSessions,
+        t,
+        trimmedDirectory
+    ])
+
+    const handleSyncCodexFolder = useCallback(async () => {
+        if (isSyncingCodexFolder) return
+        if (!machineId) {
+            setCodexImportError(t('codexSync.folder.error.machineRequired'))
+            return
+        }
+        if (!trimmedDirectory) {
+            setCodexImportError(t('codexSync.folder.error.directoryRequired'))
+            return
+        }
+
+        setIsSyncingCodexFolder(true)
+        setCodexImportError(null)
+        try {
+            const result = await props.api.syncCodexFolder({
+                cwd: trimmedDirectory,
+                machineId,
+                projectId,
+                includeSubdirs: false
+            })
+            if (!result.success) {
+                throw new Error(normalizeCodexScriptError(result.error, t('codexSync.failed.body')))
+            }
+
+            const importedCodexSessionIds = result.sessionIds ?? []
+            markCodexSessionsImported(importedCodexSessionIds)
+            setSelectedCodexImportSessionId((current) =>
+                clearBatchImportedCodexSelection(current, importedCodexSessionIds)
+            )
+            await refetchSessions()
+
+            const count = result.matchedCount ?? result.syncedCount ?? importedCodexSessionIds.length
+            addToast({
+                title: t('codexSync.folder.success.title'),
+                body: count === 0
+                    ? t('codexSync.folder.success.empty')
+                    : t('codexSync.folder.success.body', { n: count }),
+                sessionId: result.latestHapiSessionId ?? '',
+                url: result.latestHapiSessionId ? `/sessions/${result.latestHapiSessionId}` : ''
+            })
+
+            if (result.latestHapiSessionId) {
+                addRecentPath(machineId, trimmedDirectory)
+                setLastUsedMachineId(machineId)
+                props.onSuccess(result.latestHapiSessionId)
+            }
+        } catch (syncError) {
+            const reason = normalizeCodexScriptError(
+                syncError instanceof Error ? syncError.message : null,
+                t('codexSync.failed.body')
+            )
+            const body = formatCodexImportFailure(reason)
+            setCodexImportError(body)
+            addToast({
+                title: t('codexSync.folder.failed.title'),
+                body,
+                sessionId: '',
+                url: ''
+            })
+        } finally {
+            setIsSyncingCodexFolder(false)
+        }
+    }, [
+        addRecentPath,
+        addToast,
+        formatCodexImportFailure,
+        isSyncingCodexFolder,
+        machineId,
+        normalizeCodexScriptError,
+        projectId,
+        props,
+        refetchSessions,
+        setLastUsedMachineId,
         t,
         trimmedDirectory
     ])
@@ -1333,12 +1415,15 @@ export function NewSession(props: {
                 <CodexImportActions
                     selectedSession={selectedCodexImportSession}
                     isLoading={isLoadingCodexImportSessions}
+                    isSyncingFolder={isSyncingCodexFolder}
+                    canSyncFolder={Boolean(machineId && trimmedDirectory)}
                     isDisabled={isFormDisabled}
                     error={codexImportError}
                     onChooseHistory={() => {
                         setIsCodexImportDialogOpen(true)
                         void loadCodexImportSessions()
                     }}
+                    onSyncFolder={handleSyncCodexFolder}
                     onClear={() => setSelectedCodexImportSessionId(null)}
                 />
             ) : null}

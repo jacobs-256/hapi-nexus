@@ -5,9 +5,16 @@ export const queryKeys = {
     session: (sessionId: string) => ['session', sessionId] as const,
     messages: (sessionId: string) => ['messages', sessionId] as const,
     projects: ['projects'] as const,
+    projectMemberCandidates: (projectId: string) => ['project-member-candidates', projectId] as const,
     machines: ['machines'] as const,
+    machinesAll: ['machines', 'all'] as const,
     sqliteStorage: ['sqlite-storage'] as const,
-    machineCodexModels: (machineId: string) => ['machine-codex-models', machineId] as const,
+    machineCodexModels: (machineId: string, context?: { sessionId?: string | null; projectId?: string | null }) => [
+        'machine-codex-models',
+        machineId,
+        context?.sessionId ?? null,
+        context?.projectId ?? null
+    ] as const,
     gitStatus: (sessionId: string) => ['git-status', sessionId] as const,
     sessionFiles: (sessionId: string, query: string) => ['session-files', sessionId, query] as const,
     sessionDirectory: (sessionId: string, path: string) => ['session-directory', sessionId, path] as const,

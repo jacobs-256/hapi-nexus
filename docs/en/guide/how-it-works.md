@@ -63,7 +63,7 @@ hapi codex       # Start OpenAI Codex session
 hapi cursor      # Start Cursor Agent session
 hapi grok        # Start Grok Build session
 hapi opencode    # Start OpenCode session
-hapi runner start --workspace-root /path/to/projects # Run background service for remote session spawning
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects # Run background service for remote session spawning
 ```
 
 ### HAPI Hub

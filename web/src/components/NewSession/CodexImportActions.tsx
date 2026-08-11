@@ -4,9 +4,12 @@ import { useTranslation } from '@/lib/use-translation'
 export function CodexImportActions(props: {
     selectedSession: CodexLocalSessionSummary | null
     isLoading: boolean
+    isSyncingFolder: boolean
+    canSyncFolder: boolean
     isDisabled: boolean
     error: string | null
     onChooseHistory: () => void
+    onSyncFolder: () => void
     onClear: () => void
 }) {
     const { t } = useTranslation()
@@ -20,7 +23,7 @@ export function CodexImportActions(props: {
                         {props.selectedSession ? props.selectedSession.title : t('codexSync.newSessionInline.description')}
                     </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {props.selectedSession ? (
                         <button type="button" className="text-xs text-[var(--app-link)]" onClick={props.onClear} disabled={props.isDisabled}>
                             {t('codexSync.newSessionInline.clear')}
@@ -30,9 +33,17 @@ export function CodexImportActions(props: {
                         type="button"
                         className="rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] px-2 py-1.5 text-xs text-[var(--app-fg)] hover:bg-[var(--app-secondary-bg)] disabled:opacity-50"
                         onClick={props.onChooseHistory}
-                        disabled={props.isDisabled || props.isLoading}
+                        disabled={props.isDisabled || props.isLoading || props.isSyncingFolder}
                     >
                         {props.isLoading ? t('codexSync.confirm.loading') : t('codexSync.newSessionInline.choose')}
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] px-2 py-1.5 text-xs text-[var(--app-fg)] hover:bg-[var(--app-secondary-bg)] disabled:opacity-50"
+                        onClick={props.onSyncFolder}
+                        disabled={props.isDisabled || props.isLoading || props.isSyncingFolder || !props.canSyncFolder}
+                    >
+                        {props.isSyncingFolder ? t('codexSync.folder.syncing') : t('codexSync.folder.sync')}
                     </button>
                 </div>
             </div>

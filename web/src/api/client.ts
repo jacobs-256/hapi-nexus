@@ -6,6 +6,7 @@ import type {
     CodexMergeDuplicateSessionsResponse,
     CodexDesktopScriptResponse,
     CodexDesktopSyncRequest,
+    CodexFolderSyncRequest,
     CodexDesktopStatusResponse,
     CodexArchiveSessionResponse,
     CodexCollaborationMode,
@@ -30,6 +31,8 @@ import type {
     CursorMigrateToAcpRequest,
     CursorChatStoreStatus,
     CursorModelsResponse,
+    DeleteMachineResponse,
+    DeleteUserResponse,
     DeleteUploadResponse,
     FileReadResponse,
     GitCommandResponse,
@@ -43,7 +46,10 @@ import type {
     AccountResponse,
     ProjectInviteAcceptResponse,
     ProjectInviteCreateResponse,
+    ProjectDirectoryMoveResponse,
+    ProjectMemberCandidatesResponse,
     ProjectResponse,
+    ProjectWorkspaceMoveResponse,
     ProjectsResponse,
     QueuedStateResponse,
     RegenerateUserTokenResponse,
@@ -233,6 +239,12 @@ export class ApiClient {
         })
     }
 
+    async deleteUser(userId: number): Promise<DeleteUserResponse> {
+        return await this.request<DeleteUserResponse>(`/api/users/${encodeURIComponent(String(userId))}`, {
+            method: 'DELETE'
+        })
+    }
+
     async resetUserPassword(userId: number, password: string): Promise<UserResponse> {
         return await this.request<UserResponse>(`/api/users/${encodeURIComponent(String(userId))}/password`, {
             method: 'POST',
@@ -290,6 +302,12 @@ export class ApiClient {
         })
     }
 
+    async getProjectMemberCandidates(projectId: string): Promise<ProjectMemberCandidatesResponse> {
+        return await this.request<ProjectMemberCandidatesResponse>(
+            `/api/projects/${encodeURIComponent(projectId)}/member-candidates`
+        )
+    }
+
     async addProjectMember(
         projectId: string,
         payload: { userId: number; role: 'owner' | 'admin' | 'editor' | 'viewer' }
@@ -320,6 +338,38 @@ export class ApiClient {
         await this.request(
             `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}`,
             { method: 'DELETE' }
+        )
+    }
+
+    async moveProjectWorkspace(
+        projectId: string,
+        workspaceId: string,
+        targetProjectId: string
+    ): Promise<ProjectWorkspaceMoveResponse> {
+        return await this.request<ProjectWorkspaceMoveResponse>(
+            `/api/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/move`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ targetProjectId })
+            }
+        )
+    }
+
+    async moveProjectDirectory(
+        projectId: string,
+        payload: {
+            targetProjectId: string
+            machineId: string
+            rootPath: string
+            sourceWorkspaceId?: string
+        }
+    ): Promise<ProjectDirectoryMoveResponse> {
+        return await this.request<ProjectDirectoryMoveResponse>(
+            `/api/projects/${encodeURIComponent(projectId)}/directories/move`,
+            {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            }
         )
     }
 
@@ -356,6 +406,13 @@ export class ApiClient {
         return await this.request<CodexDesktopScriptResponse>('/api/codex/sync-session', {
             method: 'POST',
             ...(payload ? { body: JSON.stringify(payload) } : {})
+        })
+    }
+
+    async syncCodexFolder(payload: CodexFolderSyncRequest): Promise<CodexDesktopScriptResponse> {
+        return await this.request<CodexDesktopScriptResponse>('/api/codex/sync-folder', {
+            method: 'POST',
+            body: JSON.stringify(payload)
         })
     }
 
@@ -756,8 +813,9 @@ export class ApiClient {
         })
     }
 
-    async getMachines(): Promise<MachinesResponse> {
-        return await this.request<MachinesResponse>('/api/machines')
+    async getMachines(options?: { includeOffline?: boolean }): Promise<MachinesResponse> {
+        const query = options?.includeOffline ? '?includeOffline=true' : ''
+        return await this.request<MachinesResponse>(`/api/machines${query}`)
     }
 
     /** Pass an empty string to clear the custom name and fall back to the hostname. */
@@ -765,6 +823,12 @@ export class ApiClient {
         await this.request(`/api/machines/${encodeURIComponent(machineId)}`, {
             method: 'PATCH',
             body: JSON.stringify({ displayName })
+        })
+    }
+
+    async deleteMachine(machineId: string): Promise<DeleteMachineResponse> {
+        return await this.request<DeleteMachineResponse>(`/api/machines/${encodeURIComponent(machineId)}`, {
+            method: 'DELETE'
         })
     }
 
@@ -832,9 +896,16 @@ export class ApiClient {
         })
     }
 
-    async getMachineCodexModels(machineId: string): Promise<CodexModelsResponse> {
+    async getMachineCodexModels(
+        machineId: string,
+        options?: { sessionId?: string | null; projectId?: string | null }
+    ): Promise<CodexModelsResponse> {
+        const params = new URLSearchParams()
+        if (options?.sessionId?.trim()) params.set('sessionId', options.sessionId.trim())
+        if (options?.projectId?.trim()) params.set('projectId', options.projectId.trim())
+        const query = params.size ? `?${params.toString()}` : ''
         return await this.request<CodexModelsResponse>(
-            `/api/machines/${encodeURIComponent(machineId)}/codex-models`
+            `/api/machines/${encodeURIComponent(machineId)}/codex-models${query}`
         )
     }
 

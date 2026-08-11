@@ -339,6 +339,34 @@ function createMachine(id: string, workspaceRoots: string[], namespace = 'defaul
     }
 }
 
+function createRemoteCodexSession(id: string, cwd: string, modifiedAt: number) {
+    return {
+        id,
+        title: `Codex ${id}`,
+        lastUserMessage: `Prompt ${id}`,
+        cwd,
+        file: `/home/user/.codex/sessions/${id}.jsonl`,
+        modifiedAt,
+        originator: 'codex_cli_rs',
+        cliVersion: '0.0.0-test',
+        messages: [
+            {
+                role: 'user' as const,
+                content: { type: 'text' as const, text: `Prompt ${id}` },
+                meta: { sentFrom: 'cli' as const }
+            },
+            {
+                role: 'agent' as const,
+                content: {
+                    type: AGENT_MESSAGE_PAYLOAD_TYPE,
+                    data: { type: 'message', message: `Answer ${id}` }
+                },
+                meta: { sentFrom: 'cli' as const }
+            }
+        ]
+    }
+}
+
 function createImportSyncEngine(store: Store, machines: Machine[]): SyncEngine {
     return {
         getOnlineMachinesByNamespace: (namespace: string) => machines.filter((machine) => (
@@ -1089,6 +1117,97 @@ describe('Codex Desktop import routes', () => {
             const response = await app.request('/api/codex/sessions?machineId=offline-machine')
             expect(response.status).toBe(503)
             expect(listCalls).toBe(0)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('syncs every Codex session for the requested folder through the runner', async () => {
+        const store = new Store(':memory:')
+        const remoteSessions = [
+            createRemoteCodexSession('folder-latest', '/work/project', 3000),
+            createRemoteCodexSession('other-folder', '/work/other', 2000),
+            createRemoteCodexSession('folder-older', '/work/project', 1000)
+        ]
+        const machine = createMachine('machine-1', ['/work'])
+        const listCalls: Array<{ machineId: string; cwd?: string | null; sessionIds?: string[] }> = []
+        const engine = {
+            getOnlineMachinesByNamespace: (namespace: string) => namespace === 'default' ? [machine] : [],
+            getSessionsByNamespace: (namespace: string) => (
+                store.sessions.getSessionsByNamespace(namespace) as unknown as ReturnType<SyncEngine['getSessionsByNamespace']>
+            ),
+            getOrCreateSession: (
+                tag: string,
+                metadata: unknown,
+                agentState: unknown,
+                namespace: string
+            ) => (
+                store.sessions.getOrCreateSession(tag, metadata, agentState, namespace) as unknown as ReturnType<SyncEngine['getOrCreateSession']>
+            ),
+            handleRealtimeEvent: () => {},
+            recordSessionActivity: (sessionId: string, updatedAt: number) => {
+                store.sessions.touchSessionUpdatedAt(sessionId, updatedAt, 'default')
+            },
+            listCodexSessionsForMachine: async (machineId: string, cwd?: string | null, sessionIds?: string[]) => {
+                listCalls.push({ machineId, cwd, sessionIds })
+                const requestedIds = sessionIds ? new Set(sessionIds) : null
+                return {
+                    success: true,
+                    sessions: requestedIds
+                        ? remoteSessions.filter((session) => requestedIds.has(session.id))
+                        : remoteSessions
+                }
+            }
+        } as unknown as SyncEngine
+        const app = new Hono<WebAppEnv>()
+        app.use('*', async (c, next) => {
+            c.set('namespace', 'default')
+            await next()
+        })
+        app.route('/api', createCodexDesktopRoutes({ store, getSyncEngine: () => engine }))
+
+        try {
+            const response = await app.request('/api/codex/sync-folder', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ cwd: '/work/project', machineId: 'machine-1' })
+            })
+
+            expect(response.status).toBe(200)
+            const body = await response.json() as {
+                success: boolean
+                matchedCount?: number
+                sessionIds?: string[]
+                latestCodexSessionId?: string
+                latestHapiSessionId?: string
+            }
+            expect(body.success).toBe(true)
+            expect(body.matchedCount).toBe(2)
+            expect(body.sessionIds).toEqual(['folder-latest', 'folder-older'])
+            expect(body.latestCodexSessionId).toBe('folder-latest')
+            expect(body.latestHapiSessionId).toBeTruthy()
+            expect(listCalls).toEqual([
+                { machineId: 'machine-1', cwd: '/work/project', sessionIds: undefined },
+                { machineId: 'machine-1', cwd: '/work/project', sessionIds: ['folder-latest', 'folder-older'] }
+            ])
+
+            const imported = store.sessions.getSessionsByNamespace('default')
+            expect(imported).toHaveLength(2)
+            const metadataByCodexId = new Map(imported.map((session) => [
+                (session.metadata as Record<string, unknown> | null)?.codexSessionId,
+                session
+            ]))
+            expect(metadataByCodexId.has('folder-latest')).toBe(true)
+            expect(metadataByCodexId.has('folder-older')).toBe(true)
+            expect(metadataByCodexId.has('other-folder')).toBe(false)
+            const latest = metadataByCodexId.get('folder-latest')
+            expect(latest?.metadata).toMatchObject({
+                path: '/work/project',
+                machineId: 'machine-1',
+                flavor: 'codex',
+                codexSessionId: 'folder-latest'
+            })
+            expect(store.messages.getMessages(latest!.id)).toHaveLength(2)
         } finally {
             store.close()
         }

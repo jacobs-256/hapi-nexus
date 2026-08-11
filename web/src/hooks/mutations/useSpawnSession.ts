@@ -50,6 +50,7 @@ export function useSpawnSession(api: ApiClient | null): {
         },
         onSuccess: () => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+            void queryClient.invalidateQueries({ queryKey: queryKeys.projects })
         },
     })
 

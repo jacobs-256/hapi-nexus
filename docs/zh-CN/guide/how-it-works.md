@@ -64,7 +64,7 @@ hapi codex       # 启动 OpenAI Codex 会话
 hapi cursor      # 启动 Cursor Agent 会话
 hapi grok        # 启动 Grok Build 会话
 hapi opencode    # 启动 OpenCode 会话
-hapi runner start --workspace-root /path/to/projects # 运行远程启动会话的后台服务
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects # 运行远程启动会话的后台服务
 ```
 
 ### HAPI Hub

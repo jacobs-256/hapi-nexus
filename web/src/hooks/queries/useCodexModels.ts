@@ -6,15 +6,17 @@ import { queryKeys } from '@/lib/query-keys'
 export function useCodexModels(args: {
     api: ApiClient | null
     machineId?: string | null
+    sessionId?: string | null
+    projectId?: string | null
     enabled?: boolean
 }): {
     models: CodexModelSummary[]
     isLoading: boolean
     error: string | null
 } {
-    const { api, machineId } = args
+    const { api, machineId, sessionId, projectId } = args
     const enabled = Boolean(args.enabled && api && machineId)
-    const queryKey = queryKeys.machineCodexModels(machineId ?? 'unknown')
+    const queryKey = queryKeys.machineCodexModels(machineId ?? 'unknown', { sessionId, projectId })
 
     const query = useQuery({
         queryKey,
@@ -23,7 +25,7 @@ export function useCodexModels(args: {
                 throw new Error('API unavailable')
             }
             if (machineId) {
-                return await api.getMachineCodexModels(machineId)
+                return await api.getMachineCodexModels(machineId, { sessionId, projectId })
             }
             throw new Error('Codex models target unavailable')
         },

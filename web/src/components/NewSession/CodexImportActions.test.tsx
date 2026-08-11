@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { CodexImportActions } from './CodexImportActions'
@@ -7,38 +8,48 @@ vi.mock('@/lib/use-translation', () => ({
 }))
 
 describe('CodexImportActions', () => {
-    it('exposes one Codex history entry point', () => {
+    it('exposes Codex history picker and folder sync entry points', () => {
         const onChooseHistory = vi.fn()
+        const onSyncFolder = vi.fn()
 
         render(
             <CodexImportActions
                 selectedSession={null}
                 isLoading={false}
+                isSyncingFolder={false}
+                canSyncFolder={true}
                 isDisabled={false}
                 error={null}
                 onChooseHistory={onChooseHistory}
+                onSyncFolder={onSyncFolder}
                 onClear={vi.fn()}
             />
         )
 
         fireEvent.click(screen.getByRole('button', { name: 'codexSync.newSessionInline.choose' }))
+        fireEvent.click(screen.getByRole('button', { name: 'codexSync.folder.sync' }))
 
         expect(onChooseHistory).toHaveBeenCalledOnce()
-        expect(screen.getAllByRole('button')).toHaveLength(1)
+        expect(onSyncFolder).toHaveBeenCalledOnce()
+        expect(screen.getAllByRole('button')).toHaveLength(2)
     })
 
-    it('disables the import entry point while sessions are loading', () => {
+    it('disables Codex history actions while sessions are loading', () => {
         render(
             <CodexImportActions
                 selectedSession={null}
                 isLoading={true}
+                isSyncingFolder={false}
+                canSyncFolder={true}
                 isDisabled={false}
                 error={null}
                 onChooseHistory={vi.fn()}
+                onSyncFolder={vi.fn()}
                 onClear={vi.fn()}
             />
         )
 
         expect(screen.getByRole('button', { name: 'codexSync.confirm.loading' })).toBeDisabled()
+        expect(screen.getByRole('button', { name: 'codexSync.folder.sync' })).toBeDisabled()
     })
 })
