@@ -28,9 +28,9 @@ Yes, HAPI Nexus is open source and free to use under the AGPL-3.0-only license.
 
 ### Do I need a hub?
 
-HAPI Nexus includes an embedded hub. Run `hapi hub` on your machine - no external hub required.
+HAPI Nexus includes an embedded hub. Run `hapi-server hub` on your machine - no external hub required.
 
-`hapi server` remains supported as an alias.
+The `server` subcommand remains supported as an alias for `hub`.
 
 ### How do I access HAPI from my phone?
 
@@ -39,7 +39,7 @@ For local network access:
 http://<your-computer-ip>:3006
 ```
 
-If your phone cannot connect, make sure the hub is not only listening on `127.0.0.1`. For LAN access, set `listenHost` to `0.0.0.0` in `~/.hapi/settings.json` or set `HAPI_LISTEN_HOST=0.0.0.0`, then restart `hapi hub`.
+If your phone cannot connect, make sure the hub is not only listening on `127.0.0.1`. For LAN access, set `listenHost` to `0.0.0.0` in `~/.hapi/settings.json` or set `HAPI_LISTEN_HOST=0.0.0.0`, then restart `hapi-server hub`.
 
 For internet access:
 - If the hub has a public IP, access it directly (use HTTPS via reverse proxy for production)
@@ -84,7 +84,7 @@ HAPI supports two methods:
 
 Yes, with runner mode:
 
-1. Run `hapi runner start --workspace-root /path/to/projects` on your computer
+1. Run `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects` on your computer
 2. Your machine appears in the "Machines" list in the web app
 3. Tap to spawn new sessions from anywhere
 
@@ -135,7 +135,7 @@ Only if they have valid browser credentials, a valid Web session, or a valid acc
 
 ### "Connection refused" error
 
-- Ensure hub is running: `hapi hub`
+- Ensure hub is running: `hapi-server hub`
 - Check firewall allows port 3006
 - Verify `HAPI_API_URL` is correct
 
@@ -155,7 +155,7 @@ Use one of these:
 export HAPI_LISTEN_HOST=0.0.0.0
 ```
 
-Then restart `hapi hub` and open:
+Then restart `hapi-server hub` and open:
 
 ```bash
 http://<your-computer-ip>:3006
@@ -172,7 +172,7 @@ Also verify your OS firewall allows inbound connections on port `3006`.
 ### "Invalid token" error
 
 - Re-run `hapi auth login`
-- Check the CLI token matches the hub `CLI_API_TOKEN`
+- Check the CLI token is either the current user's personal access token or the hub owner system token
 - Verify `~/.hapi/settings.json` has correct `cliApiToken`
 
 ### Runner won't start

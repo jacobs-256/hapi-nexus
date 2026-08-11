@@ -63,27 +63,46 @@ HAPI Nexus has three components:
 ```
 
 - **CLI**: Start a session with `hapi`. The CLI wraps your AI agent and syncs with the hub.
-- **Hub**: Run `hapi hub`. Stores sessions, handles permissions, enables remote access.
-- **Runner**: Run `hapi runner start --workspace-root /path/to/projects`. Lets you spawn sessions from Web/PWA without keeping a terminal open.
+- **Hub**: Run `hapi-server hub`. Stores sessions, handles permissions, enables remote access.
+- **Runner**: Run `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects`. Lets you spawn sessions from Web/PWA without keeping a terminal open.
 
 ### Typical workflows
 
-**Local only**: `hapi hub` → `hapi` → work in terminal
+**Local only**: `hapi-server hub` -> `hapi` -> work in terminal
 
-**Remote access**: `hapi hub --relay` -> `hapi runner start --workspace-root /path/to/projects` -> control from Web/PWA
+**Remote access**: `hapi-server hub --relay` -> `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects` -> control from Web/PWA
 
 Browser/PWA users sign in with local username/password accounts. The first-start administrator is `admin` / `admin`; change it after first login or set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first hub start.
 
-## Build the CLI
+## Build the binaries
 
-This fork is documented as a source-built private deployment. Build the all-in-one binary from this repository:
+This fork is documented as a source-built private deployment. Build the server and client binaries from this repository:
 
 ```bash
 bun install
 bun run build:single-exe
 ```
 
-The CLI command remains `hapi`. In a source checkout, run it as `./cli/dist/hapi`.
+The build writes two binaries under `cli/dist-exe/<bun-target>/`:
+
+- `hapi-server` - server binary for running the Hub and serving the embedded Web app
+- `hapi` - client binary for auth, runner, and local agent sessions
+
+Common paths:
+
+| Platform | Server binary | Client binary |
+|----------|---------------|---------------|
+| macOS Apple Silicon | `./cli/dist-exe/bun-darwin-arm64/hapi-server` | `./cli/dist-exe/bun-darwin-arm64/hapi` |
+| macOS Intel | `./cli/dist-exe/bun-darwin-x64/hapi-server` | `./cli/dist-exe/bun-darwin-x64/hapi` |
+| Linux x64 | `./cli/dist-exe/bun-linux-x64-baseline/hapi-server` | `./cli/dist-exe/bun-linux-x64-baseline/hapi` |
+| Linux ARM64 | `./cli/dist-exe/bun-linux-arm64/hapi-server` | `./cli/dist-exe/bun-linux-arm64/hapi` |
+
+Set helper variables before running the examples:
+
+```bash
+HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-arm64/hapi-server
+HAPI_BIN=./cli/dist-exe/bun-darwin-arm64/hapi
+```
 
 ## Other install options
 
@@ -100,11 +119,13 @@ This starts the hub and web app concurrently for local development.
 <details>
 <summary>Prebuilt binary from your own release</summary>
 
-After publishing this project on GitHub, attach the built `hapi` binary to your own Releases page.
+After publishing this project on GitHub, attach the built `hapi-server` and `hapi` binaries to your own Releases page.
 
 ```bash
-xattr -d com.apple.quarantine ./hapi
+xattr -d com.apple.quarantine ./hapi-server ./hapi
+chmod +x ./hapi-server
 chmod +x ./hapi
+sudo mv ./hapi-server /usr/local/bin/
 sudo mv ./hapi /usr/local/bin/
 ```
 </details>
@@ -125,12 +146,14 @@ The hub can be deployed on:
 ### Private LAN / VPN / reverse proxy (recommended)
 
 ```bash
-HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_BIN" hub --no-relay
 ```
 
 The terminal displays the hub URL.
 
-`hapi server` remains supported as an alias.
+`HAPI_LISTEN_HOST=0.0.0.0` listens on all interfaces. `HAPI_PUBLIC_URL` must be the real IP or domain that browsers use to reach the hub; do not set it to `0.0.0.0`.
+
+The `server` subcommand remains supported as an alias for `hub`.
 
 - Fits enterprise/private deployments
 - Works well with LAN, VPN, reverse proxy, or a private tunnel
@@ -143,15 +166,15 @@ The terminal displays the hub URL.
 Relay mode still exists in the codebase, but HAPI Nexus does not document upstream public relay as the default private-deployment path. Use it only when you have configured relay infrastructure that matches your deployment.
 
 ```bash
-./cli/dist/hapi hub --relay
+"$HAPI_SERVER_BIN" hub --relay
 ```
 
 ### Local only
 
 ```bash
-./cli/dist/hapi hub
+"$HAPI_SERVER_BIN" hub
 # or
-./cli/dist/hapi hub --no-relay
+"$HAPI_SERVER_BIN" hub --no-relay
 ```
 
 The hub listens on `http://localhost:3006` by default.
@@ -288,7 +311,7 @@ https://tailscale.com/download
 
 ```bash
 sudo tailscale up
-hapi hub
+hapi-server hub
 ```
 
 Access via your Tailscale IP:
@@ -343,7 +366,7 @@ Enable Telegram notifications and Mini App access:
 export TELEGRAM_BOT_TOKEN="your-bot-token"
 export HAPI_PUBLIC_URL="https://your-public-url"
 
-hapi hub
+hapi-server hub
 ```
 
 Then message your bot with `/start`, open the app, and enter your `CLI_API_TOKEN`.
@@ -357,10 +380,10 @@ Normal browser/PWA login does not use `CLI_API_TOKEN`; use the local username/pa
 
 ### Runner setup
 
-Run a background service for remote session spawning:
+Run a background service for remote session spawning. In multi-user deployments, use the runner owner's personal access token from **Settings -> Account**:
 
 ```bash
-hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects
 hapi runner status
 hapi runner logs
 hapi runner stop
@@ -375,7 +398,7 @@ With the runner running:
 `/path/to/projects` is a directory on the runner machine. It should contain the repositories you want to browse or start sessions in. For multiple allowed directories, repeat the flag on the same runner:
 
 ```bash
-hapi runner start --workspace-root /path/a --workspace-root /path/b
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/a --workspace-root /path/b
 ```
 
 Remote users do not need a local copy of the source code. They connect to the hub and use projects shared from the runner machine.
@@ -386,7 +409,7 @@ Remote users do not need a local copy of the source code. They connect to the hu
 If you prefer pm2 for process management:
 
 ```bash
-pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+pm2 start "env CLI_API_TOKEN='<personal-access-token>' hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 pm2 save
 ```
 </details>
@@ -402,10 +425,10 @@ Simple one-liner for quick background runs:
 
 ```bash
 # Hub
-nohup hapi hub --relay > ~/.hapi/logs/hub.log 2>&1 &
+nohup hapi-server hub --relay > ~/.hapi/logs/hub.log 2>&1 &
 
 # Runner
-nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
+CLI_API_TOKEN="<personal-access-token>" nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
 ```
 
 View logs:
@@ -418,7 +441,7 @@ tail -f ~/.hapi/logs/runner.log
 Stop processes:
 
 ```bash
-pkill -f "hapi hub"
+pkill -f "hapi-server hub"
 pkill -f "hapi runner"
 ```
 </details>
@@ -433,8 +456,8 @@ pm2 provides process management with auto-restart on crashes and system reboot.
 npm install -g pm2
 
 # Start hub and runner
-pm2 start "hapi hub --relay" --name hapi-hub
-pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+pm2 start "hapi-server hub --relay" --name hapi-hub
+pm2 start "env CLI_API_TOKEN='<personal-access-token>' hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 
 # View status and logs
 pm2 status
@@ -463,7 +486,7 @@ Create plist files for automatic startup on macOS.
     <string>com.hapi.hub</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/hapi</string>
+        <string>/usr/local/bin/hapi-server</string>
         <string>hub</string>
         <string>--relay</string>
     </array>
@@ -522,7 +545,7 @@ launchctl unload ~/Library/LaunchAgents/com.hapi.runner.plist
 
 > **macOS sleep note:** macOS may suspend background processes when the display sleeps. Use `caffeinate` to prevent this:
 > ```bash
-> caffeinate -dimsu hapi hub --relay
+> caffeinate -dimsu hapi-server hub --relay
 > ```
 > Or run `caffeinate -dimsu` in a separate terminal while HAPI is running.
 </details>
@@ -541,7 +564,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/hapi hub --relay
+ExecStart=/usr/local/bin/hapi-server hub --relay
 Restart=always
 RestartSec=5
 
@@ -559,6 +582,7 @@ After=network.target hapi-hub.service
 [Service]
 Type=simple
 KillMode=process
+Environment=CLI_API_TOKEN=<personal-access-token>
 ExecStart=/usr/local/bin/hapi runner start-sync --workspace-root /path/to/projects
 Restart=always
 RestartSec=5
@@ -603,7 +627,7 @@ Enable voice control:
 
 ```bash
 export ELEVENLABS_API_KEY="your-api-key"
-hapi hub --relay
+hapi-server hub --relay
 ```
 
 See [Voice Assistant](./voice-assistant.md) for usage details.

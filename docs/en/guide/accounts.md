@@ -25,7 +25,7 @@ For unattended deployments, set environment variables before the first hub start
 ```bash
 export HAPI_ADMIN_USERNAME="admin"
 export HAPI_ADMIN_PASSWORD="change-this-password"
-hapi hub
+hapi-server hub
 ```
 
 If a local admin already exists, these environment variables do not replace it.

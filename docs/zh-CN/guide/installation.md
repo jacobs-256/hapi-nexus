@@ -63,27 +63,46 @@ HAPI Nexus 有三个组件：
 ```
 
 - **CLI**：用 `hapi` 启动会话。CLI 包装 AI agent 并与 hub 同步。
-- **Hub**：运行 `hapi hub`。保存会话、处理权限、启用远程访问。
-- **Runner**：运行 `hapi runner start --workspace-root /path/to/projects`。无需保持终端打开，也能从 Web/PWA 远程启动会话。
+- **Hub**：运行 `hapi-server hub`。保存会话、处理权限、启用远程访问。
+- **Runner**：运行 `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects`。无需保持终端打开，也能从 Web/PWA 远程启动会话。
 
 ### 典型工作流
 
-**仅本地**：`hapi hub` -> `hapi` -> 在终端工作
+**仅本地**：`hapi-server hub` -> `hapi` -> 在终端工作
 
-**远程访问**：`hapi hub --relay` -> `hapi runner start --workspace-root /path/to/projects` -> 从 Web/PWA 控制
+**远程访问**：`hapi-server hub --relay` -> `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects` -> 从 Web/PWA 控制
 
 浏览器/PWA 用户使用本地用户名/密码账号登录。首次启动管理员是 `admin` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
 
-## 构建 CLI
+## 构建二进制
 
-本 fork 文档按“从源码构建并私有部署”的方式编写。请从本仓库构建 all-in-one 二进制：
+本 fork 文档按“从源码构建并私有部署”的方式编写。请从本仓库构建服务器端和客户端二进制：
 
 ```bash
 bun install
 bun run build:single-exe
 ```
 
-CLI 命令仍然保留为 `hapi`。在源码 checkout 中，使用 `./cli/dist/hapi` 运行。
+构建产物会输出到 `cli/dist-exe/<bun-target>/`：
+
+- `hapi-server` - 服务器端二进制，用于运行 Hub 并提供内嵌 Web app
+- `hapi` - 客户端二进制，用于 auth、runner 和本地 agent 会话
+
+常见路径：
+
+| 平台 | 服务器端二进制 | 客户端二进制 |
+|----------|---------------|---------------|
+| macOS Apple Silicon | `./cli/dist-exe/bun-darwin-arm64/hapi-server` | `./cli/dist-exe/bun-darwin-arm64/hapi` |
+| macOS Intel | `./cli/dist-exe/bun-darwin-x64/hapi-server` | `./cli/dist-exe/bun-darwin-x64/hapi` |
+| Linux x64 | `./cli/dist-exe/bun-linux-x64-baseline/hapi-server` | `./cli/dist-exe/bun-linux-x64-baseline/hapi` |
+| Linux ARM64 | `./cli/dist-exe/bun-linux-arm64/hapi-server` | `./cli/dist-exe/bun-linux-arm64/hapi` |
+
+运行示例前，可以先设置辅助变量：
+
+```bash
+HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-arm64/hapi-server
+HAPI_BIN=./cli/dist-exe/bun-darwin-arm64/hapi
+```
 
 ## 其他安装方式
 
@@ -100,11 +119,13 @@ bun run dev
 <details>
 <summary>从你自己的 release 安装预构建二进制</summary>
 
-项目发布到 GitHub 后，可以把构建出的 `hapi` 二进制附加到你自己的 Releases 页面。
+项目发布到 GitHub 后，可以把构建出的 `hapi-server` 和 `hapi` 二进制附加到你自己的 Releases 页面。
 
 ```bash
-xattr -d com.apple.quarantine ./hapi
+xattr -d com.apple.quarantine ./hapi-server ./hapi
+chmod +x ./hapi-server
 chmod +x ./hapi
+sudo mv ./hapi-server /usr/local/bin/
 sudo mv ./hapi /usr/local/bin/
 ```
 </details>
@@ -125,12 +146,14 @@ Hub 可以部署在：
 ### 私有 LAN / VPN / 反向代理（推荐）
 
 ```bash
-HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_BIN" hub --no-relay
 ```
 
 终端会显示 Hub URL。
 
-`hapi server` 仍然作为别名保留。
+`HAPI_LISTEN_HOST=0.0.0.0` 表示监听所有网卡。`HAPI_PUBLIC_URL` 必须是真实可被浏览器访问的 IP 或域名，不能写成 `0.0.0.0`。
+
+`server` 子命令仍然作为 `hub` 的别名保留。
 
 - 适合企业/私有部署
 - 可配合 LAN、VPN、反向代理或私有 tunnel 使用
@@ -143,15 +166,15 @@ HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi
 Relay 模式仍保留在代码中，但 HAPI Nexus 不把上游公共 relay 作为私有部署的默认路径。只有当你已经配置了符合自己部署的 relay 基础设施时才使用。
 
 ```bash
-./cli/dist/hapi hub --relay
+"$HAPI_SERVER_BIN" hub --relay
 ```
 
 ### 仅本地
 
 ```bash
-./cli/dist/hapi hub
+"$HAPI_SERVER_BIN" hub
 # or
-./cli/dist/hapi hub --no-relay
+"$HAPI_SERVER_BIN" hub --no-relay
 ```
 
 Hub 默认监听 `http://localhost:3006`。
@@ -287,7 +310,7 @@ https://tailscale.com/download
 
 ```bash
 sudo tailscale up
-hapi hub
+hapi-server hub
 ```
 
 通过你的 Tailscale IP 访问：
@@ -342,7 +365,7 @@ export NODE_TLS_REJECT_UNAUTHORIZED=0
 export TELEGRAM_BOT_TOKEN="your-bot-token"
 export HAPI_PUBLIC_URL="https://your-public-url"
 
-hapi hub
+hapi-server hub
 ```
 
 然后向 bot 发送 `/start`，打开应用，并输入你的 `CLI_API_TOKEN`。
@@ -356,10 +379,10 @@ hapi hub
 
 ### Runner 设置
 
-运行后台服务以支持远程启动会话：
+运行后台服务以支持远程启动会话。多用户部署时，请使用 runner 所属用户在 **Settings -> Account** 中看到的个人 access token：
 
 ```bash
-hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects
 hapi runner status
 hapi runner logs
 hapi runner stop
@@ -374,7 +397,7 @@ Runner 运行后：
 `/path/to/projects` 是 runner 机器上的目录。它应包含你想浏览或启动会话的仓库。多个允许目录时，在同一个 runner 上重复传入参数：
 
 ```bash
-hapi runner start --workspace-root /path/a --workspace-root /path/b
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/a --workspace-root /path/b
 ```
 
 远程用户不需要本地复制源码。他们连接到 hub，并使用 runner 机器共享出来的项目。
@@ -385,7 +408,7 @@ hapi runner start --workspace-root /path/a --workspace-root /path/b
 如果你偏好用 pm2 管理进程：
 
 ```bash
-pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+pm2 start "env CLI_API_TOKEN='<personal-access-token>' hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 pm2 save
 ```
 </details>
@@ -401,10 +424,10 @@ pm2 save
 
 ```bash
 # Hub
-nohup hapi hub --relay > ~/.hapi/logs/hub.log 2>&1 &
+nohup hapi-server hub --relay > ~/.hapi/logs/hub.log 2>&1 &
 
 # Runner
-nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
+CLI_API_TOKEN="<personal-access-token>" nohup hapi runner start-sync --workspace-root /path/to/projects > ~/.hapi/logs/runner.log 2>&1 &
 ```
 
 查看日志：
@@ -417,7 +440,7 @@ tail -f ~/.hapi/logs/runner.log
 停止进程：
 
 ```bash
-pkill -f "hapi hub"
+pkill -f "hapi-server hub"
 pkill -f "hapi runner"
 ```
 </details>
@@ -432,8 +455,8 @@ pm2 提供崩溃自动重启和系统重启后自启动。
 npm install -g pm2
 
 # 启动 hub 和 runner
-pm2 start "hapi hub --relay" --name hapi-hub
-pm2 start "hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
+pm2 start "hapi-server hub --relay" --name hapi-hub
+pm2 start "env CLI_API_TOKEN='<personal-access-token>' hapi runner start-sync --workspace-root /path/to/projects" --name hapi-runner
 
 # 查看状态和日志
 pm2 status
@@ -462,7 +485,7 @@ pm2 save       # 保存当前进程列表
     <string>com.hapi.hub</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/hapi</string>
+        <string>/usr/local/bin/hapi-server</string>
         <string>hub</string>
         <string>--relay</string>
     </array>
@@ -521,7 +544,7 @@ launchctl unload ~/Library/LaunchAgents/com.hapi.runner.plist
 
 > **macOS 睡眠说明：** 显示器睡眠时，macOS 可能挂起后台进程。可用 `caffeinate` 防止：
 > ```bash
-> caffeinate -dimsu hapi hub --relay
+> caffeinate -dimsu hapi-server hub --relay
 > ```
 > 或单独在一个终端中运行 `caffeinate -dimsu`。
 </details>
@@ -540,7 +563,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/hapi hub --relay
+ExecStart=/usr/local/bin/hapi-server hub --relay
 Restart=always
 RestartSec=5
 
@@ -558,6 +581,7 @@ After=network.target hapi-hub.service
 [Service]
 Type=simple
 KillMode=process
+Environment=CLI_API_TOKEN=<personal-access-token>
 ExecStart=/usr/local/bin/hapi runner start-sync --workspace-root /path/to/projects
 Restart=always
 RestartSec=5
@@ -602,7 +626,7 @@ journalctl --user -u hapi-hub -f
 
 ```bash
 export ELEVENLABS_API_KEY="your-api-key"
-hapi hub --relay
+hapi-server hub --relay
 ```
 
 使用详情见[语音助手](./voice-assistant.md)。

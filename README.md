@@ -17,28 +17,52 @@ The CLI command is still `hapi` for compatibility with the existing codebase.
 - **Terminal Anywhere** - Run commands from your phone or browser, directly connected to the working machine.
 - **Voice Control** - Talk to your AI agent hands-free using the built-in voice assistant.
 - **Workspace Browser** - Opt-in via one or more `hapi runner start --workspace-root <path>` flags: browse scoped file trees from the web and start sessions in allowed subdirectories.
+- **Codex Folder History Sync** - Import every Codex CLI transcript for a workspace folder into HAPI Nexus, then continue from the latest imported session through the Web UI or `hapi resume`.
 - **Project Sharing** - Create projects, attach runner workspaces, invite users, and share sessions without copying source code to every device.
 - **Private Hub Accounts** - Browser users sign in with local username/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
 
 ## Getting Started
 
-After cloning this repository, install dependencies and build the all-in-one binary:
+After cloning this repository, install dependencies and build the server and client binaries:
 
 ```bash
 bun install
 bun run build:single-exe
 ```
 
+The build writes two binaries under `cli/dist-exe/<bun-target>/`:
+
+- `hapi-server` - server binary for running the Hub and serving the embedded Web app
+- `hapi` - client binary for auth, runner, and local agent sessions
+
+For example:
+
+```bash
+# macOS Apple Silicon
+HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-arm64/hapi-server
+HAPI_BIN=./cli/dist-exe/bun-darwin-arm64/hapi
+
+# macOS Intel
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-x64/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-darwin-x64/hapi
+
+# Linux x64
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi
+```
+
 Start a private hub:
 
 ```bash
-HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_BIN" hub --no-relay
 ```
 
-Start a runner with one or more allowed workspace roots:
+`HAPI_LISTEN_HOST=0.0.0.0` means "listen on all interfaces". `HAPI_PUBLIC_URL` must be the real browser-accessible IP or domain, not `0.0.0.0`.
+
+Sign in to the Web UI, open **Settings -> Account**, and copy the current user's personal access token. Start a runner with that token and one or more allowed workspace roots:
 
 ```bash
-./cli/dist/hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-root /path/to/projects
 ```
 
 Open the hub URL in a browser. The default browser login is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.

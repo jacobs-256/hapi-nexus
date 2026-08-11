@@ -25,7 +25,7 @@ Hub 首次启动时，如果不存在启用状态的本地管理员，HAPI 会�
 ```bash
 export HAPI_ADMIN_USERNAME="admin"
 export HAPI_ADMIN_PASSWORD="change-this-password"
-hapi hub
+hapi-server hub
 ```
 
 如果本地管理员已经存在，这些环境变量不会覆盖现有账号。

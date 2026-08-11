@@ -28,9 +28,9 @@ HAPI 来自上游 HAPI 项目名，本身是 “Happy” 的中文音译。Nexus
 
 ### 我需要单独的 hub 吗？
 
-不需要。HAPI Nexus 内置 hub。只要在你的机器上运行 `hapi hub` 即可，不需要外部 hub。
+不需要。HAPI Nexus 内置 hub。只要在你的机器上运行 `hapi-server hub` 即可，不需要外部 hub。
 
-`hapi server` 仍然作为别名保留。
+`server` 子命令仍然作为 `hub` 的别名保留。
 
 ### 如何从手机访问 HAPI Nexus？
 
@@ -40,7 +40,7 @@ HAPI 来自上游 HAPI 项目名，本身是 “Happy” 的中文音译。Nexus
 http://<your-computer-ip>:3006
 ```
 
-如果手机无法连接，先确认 hub 不是只监听 `127.0.0.1`。局域网访问时，在 `~/.hapi/settings.json` 中把 `listenHost` 设置为 `0.0.0.0`，或设置 `HAPI_LISTEN_HOST=0.0.0.0`，然后重启 `hapi hub`。
+如果手机无法连接，先确认 hub 不是只监听 `127.0.0.1`。局域网访问时，在 `~/.hapi/settings.json` 中把 `listenHost` 设置为 `0.0.0.0`，或设置 `HAPI_LISTEN_HOST=0.0.0.0`，然后重启 `hapi-server hub`。
 
 公网访问：
 
@@ -87,7 +87,7 @@ HAPI 支持两种方式：
 
 可以，使用 runner 模式：
 
-1. 在电脑上运行 `hapi runner start --workspace-root /path/to/projects`
+1. 在电脑上运行 `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects`
 2. 你的机器会出现在 Web 应用的 “Machines” 列表中
 3. 点击即可从任意位置启动新会话
 
@@ -141,7 +141,7 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 
 ### "Connection refused" 错误
 
-- 确保 hub 正在运行：`hapi hub`
+- 确保 hub 正在运行：`hapi-server hub`
 - 检查防火墙是否允许 3006 端口
 - 验证 `HAPI_API_URL` 是否正确
 
@@ -161,7 +161,7 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 export HAPI_LISTEN_HOST=0.0.0.0
 ```
 
-然后重启 `hapi hub` 并打开：
+然后重启 `hapi-server hub` 并打开：
 
 ```bash
 http://<your-computer-ip>:3006
@@ -178,7 +178,7 @@ http://<your-computer-ip>:3006
 ### "Invalid token" 错误
 
 - 重新运行 `hapi auth login`
-- 检查 CLI token 是否匹配 hub 的 `CLI_API_TOKEN`
+- 检查 CLI token 是否是当前用户的个人 access token，或 hub owner 系统 token
 - 验证 `~/.hapi/settings.json` 中是否有正确的 `cliApiToken`
 
 ### Runner 无法启动

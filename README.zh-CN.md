@@ -17,28 +17,52 @@ HAPI Nexus 是基于 HAPI 的独立二次开发版本。它保留 local-first ag
 - **随处使用终端** - 直接连接到工作机器，在手机或浏览器中运行命令。
 - **语音控制** - 使用内置语音助手，免手操作你的 AI agent。
 - **工作区浏览器** - 通过一个或多个 `hapi runner start --workspace-root <path>` 参数按需启用：在 Web 端浏览受限范围内的文件树，并在允许的子目录中启动会话。
+- **Codex 目录历史同步** - 将某个工作目录下的全部 Codex CLI transcript 导入 HAPI Nexus，并可从最新导入会话继续 Web 或 `hapi resume` 工作流。
 - **项目共享** - 创建项目、绑定 runner 工作区、邀请用户并共享会话，无需把源码复制到每台设备。
 - **私有 Hub 账号** - 浏览器用户使用本地用户名/密码登录。管理员可以创建用户、分配角色、重置密码，并为每个用户签发 companion/CLI 使用的 access token。
 
 ## 快速开始
 
-克隆本仓库后，安装依赖并构建 all-in-one 二进制：
+克隆本仓库后，安装依赖并构建服务器端和客户端二进制：
 
 ```bash
 bun install
 bun run build:single-exe
 ```
 
+构建产物会输出到 `cli/dist-exe/<bun-target>/`：
+
+- `hapi-server` - 服务器端二进制，用于运行 Hub 并提供内嵌 Web app
+- `hapi` - 客户端二进制，用于 auth、runner 和本地 agent 会话
+
+例如：
+
+```bash
+# macOS Apple Silicon
+HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-arm64/hapi-server
+HAPI_BIN=./cli/dist-exe/bun-darwin-arm64/hapi
+
+# macOS Intel
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-x64/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-darwin-x64/hapi
+
+# Linux x64
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi
+```
+
 启动私有 Hub：
 
 ```bash
-HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_BIN" hub --no-relay
 ```
 
-启动 runner，并指定一个或多个允许访问的工作区根目录：
+`HAPI_LISTEN_HOST=0.0.0.0` 表示监听所有网卡。`HAPI_PUBLIC_URL` 必须是真实可被浏览器访问的 IP 或域名，不能写 `0.0.0.0`。
+
+登录 Web UI，打开 **Settings -> Account**，复制当前用户的个人 access token。使用这个 token 启动 runner，并指定一个或多个允许访问的工作区根目录：
 
 ```bash
-./cli/dist/hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-root /path/to/projects
 ```
 
 在浏览器打开 Hub URL。默认浏览器登录账号是 `admin` / `admin`；首次登录后请在 **Settings -> Account** 中修改。

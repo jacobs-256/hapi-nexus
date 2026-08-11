@@ -32,7 +32,7 @@
 
 ```bash
 export ELEVENLABS_API_KEY="your-api-key"
-hapi hub --relay
+hapi-server hub --relay
 ```
 
 首次使用时，hub 会在你的 ElevenLabs 账号中自动创建一个 “Hapi Voice Assistant” agent。

@@ -19,7 +19,7 @@ See `src/configuration.ts` for all options.
 
 ### Required
 
-- `CLI_API_TOKEN` - Base shared secret used by CLI, runner, owner access, and Telegram binding. Clients append `:<namespace>` for advanced namespace isolation. Auto-generated on first run if not set.
+- `CLI_API_TOKEN` - Hub-level system token used for owner/bootstrap compatibility and Telegram binding. Normal multi-user CLI/runner clients should use each user's personal access token from **Settings -> Account** instead. System-token clients can append `:<namespace>` for advanced namespace isolation. Auto-generated on first run if not set.
 
 ### Optional (initial local admin)
 
@@ -57,7 +57,7 @@ Binary (single executable):
 
 ```bash
 export TELEGRAM_BOT_TOKEN="..."
-export CLI_API_TOKEN="shared-secret"
+export CLI_API_TOKEN="system-secret"
 export HAPI_PUBLIC_URL="https://your-domain.example"
 
 hapi hub
@@ -132,6 +132,13 @@ See `src/web/routes/` for all endpoints.
 - `POST /api/machines/:id/spawn` - Spawn new session on machine.
 - `POST /api/machines/:id/list-directory` - List directories inside accessible workspace roots.
 - `POST /api/machines/:id/paths/exists` - Check if path exists.
+
+### Codex Desktop (`src/web/routes/codexDesktop.ts`)
+
+- `GET /api/codex/sessions` - List local Codex transcript summaries through an online runner.
+- `POST /api/codex/sync-session` - Import selected Codex transcript IDs into HAPI sessions.
+- `POST /api/codex/sync-folder` - Import every Codex transcript whose `cwd` matches the requested folder, then return the newest imported HAPI session ID.
+- `POST /api/codex/archive-session` - Archive a local Codex transcript through the runner.
 
 ### Projects (`src/web/routes/projects.ts`)
 

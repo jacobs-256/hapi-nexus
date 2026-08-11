@@ -32,10 +32,10 @@ hapi runner start \
 1. 启动 hub。
    - 首次登录默认是 `admin` / `admin`；请在 **Settings -> Account** 中修改。
    - 管理员可以在 **Settings -> Users** 创建更多用户。
-2. 在有源码的机器上启动 runner：
+2. 在有源码的机器上启动 runner，使用该 runner 所属用户的个人 access token：
 
 ```bash
-hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects
 ```
 
 3. 打开 Web 应用，进入 **Settings -> Projects**。

@@ -16,7 +16,7 @@ Run Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode sessions from your
 ## Typical flow
 
 1. Start the hub and set env vars (see ../hub/README.md).
-2. Set the same CLI_API_TOKEN on this machine or run `hapi auth login`.
+2. Set this user's personal access token as `CLI_API_TOKEN` on this machine or run `hapi auth login`.
 3. Run `hapi` to start a session.
 4. Sign in to the web app with a local username/password account to monitor and control.
 
@@ -49,7 +49,7 @@ hapi resume <session-id>
 ### Authentication
 
 - `hapi auth status` - Show authentication configuration and token source.
-- `hapi auth login` - Interactively enter and save CLI_API_TOKEN.
+- `hapi auth login` - Interactively enter and save the CLI/runner access token.
 - `hapi auth logout` - Clear saved credentials.
 
 See `src/commands/auth.ts`.
@@ -75,7 +75,7 @@ Omitting the flag keeps the legacy behavior: no scoping, no `/browse` feature.
 Use multiple `--workspace-root` flags on one runner when the same machine/namespace has multiple allowed directories:
 
 ```bash
-hapi runner start --workspace-root /path/a --workspace-root /path/b
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/a --workspace-root /path/b
 ```
 
 Run separate runners only for separate namespaces or separate machines. Remote users do not need a local copy of the source code; the runner machine owns the files and agent CLIs.
@@ -92,8 +92,8 @@ See `src/ui/doctor.ts`.
 ### Other
 
 - `hapi mcp` - Start MCP stdio bridge. See `src/codex/happyMcpStdioBridge.ts`.
-- `hapi hub` - Start the bundled hub (single binary workflow).
-- `hapi server` - Alias for `hapi hub`.
+- `hapi-server hub` - Start the bundled hub from the server binary.
+- `hapi-server server` - Alias for `hapi-server hub`.
 
 ## Configuration
 
@@ -101,7 +101,7 @@ See `src/configuration.ts` for all options.
 
 ### Required
 
-- `CLI_API_TOKEN` - Shared secret for CLI/runner hub access; must match the hub. Can be set via env or `~/.hapi/settings.json` (env wins).
+- `CLI_API_TOKEN` - Access token for CLI/runner hub access. In multi-user deployments, use the current user's personal access token from **Settings -> Account**. The hub-level system token is only for owner/bootstrap compatibility. Can be set via env or `~/.hapi/settings.json` (env wins).
 - `HAPI_API_URL` - Hub base URL (default: http://localhost:3006).
 
 ### Optional
@@ -162,14 +162,13 @@ From the repo root:
 ```bash
 bun install
 bun run build:cli
-bun run build:cli:exe
-```
-
-For an all-in-one binary that also embeds the web app:
-
-```bash
 bun run build:single-exe
 ```
+
+`bun run build:single-exe` outputs both release-style binaries:
+
+- `cli/dist-exe/<bun-target>/hapi-server` - Hub/Web server with embedded web assets
+- `cli/dist-exe/<bun-target>/hapi` - client for auth, runner, and local agent sessions
 
 ## Source structure
 

@@ -11,10 +11,23 @@ bun install
 bun run build:single-exe
 ```
 
-为了兼容现有代码，构建后的 CLI 仍保留 `hapi` 命令名。在本仓库中可这样运行：
+构建产物会输出到 `cli/dist-exe/<bun-target>/`：`hapi-server` 用于 Hub/Web 服务器，`hapi` 用于 auth、runner 和本地 agent 会话。请选择匹配当前机器的路径：
 
 ```bash
-./cli/dist/hapi --help
+# macOS Apple Silicon
+HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-arm64/hapi-server
+HAPI_BIN=./cli/dist-exe/bun-darwin-arm64/hapi
+
+# macOS Intel
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-darwin-x64/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-darwin-x64/hapi
+
+# Linux x64
+# HAPI_SERVER_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi-server
+# HAPI_BIN=./cli/dist-exe/bun-linux-x64-baseline/hapi
+
+"$HAPI_SERVER_BIN" --help
+"$HAPI_BIN" --help
 ```
 
 其他安装和部署方式见：[安装](./installation.md)
@@ -24,15 +37,17 @@ bun run build:single-exe
 私有 LAN/VPN/反向代理部署：
 
 ```bash
-HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi hub --no-relay
+HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_BIN" hub --no-relay
 ```
+
+`HAPI_LISTEN_HOST=0.0.0.0` 表示监听所有网卡。`HAPI_PUBLIC_URL` 必须是真实可被浏览器访问的 IP 或域名，不能写成 `0.0.0.0`。
 
 首次运行时，HAPI Nexus 会创建：
 
 - 保存在 `~/.hapi/settings.json` 中的 CLI access token
 - 用户名为 `admin`、密码为 `admin` 的本地 Web 管理员
 
-`hapi server` 仍然作为别名保留。
+`server` 子命令仍然作为 `hub` 的别名保留。
 
 终端会显示 Hub URL。
 
@@ -40,18 +55,24 @@ HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 ./cli/dist/hapi
 
 ## 启动 Runner
 
-Runner 允许 Web 用户在授权目录中启动会话：
+Runner 允许 Web 用户在授权目录中启动会话。多用户部署时，请使用 runner 所属用户在 **Settings -> Account** 中看到的个人 access token：
 
 ```bash
-./cli/dist/hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-root /path/to/projects
 ```
 
 如果需要多个允许访问的根目录，传入多个 `--workspace-root` 参数。
 
+## 同步 Codex 目录历史
+
+runner 在线后，在 Web UI 创建 Codex 会话，选择设备和工作目录，然后点击 **同步目录**。HAPI Nexus 会让 runner 读取该目录对应的本地 Codex transcript，把所有匹配的历史导入为 HAPI 会话，并打开最新导入的会话。
+
+导入后的 Codex 会话会在 HAPI metadata 中保留原始 `codexSessionId`。后续通过 Web 发送消息或在本地执行 `hapi resume <session-id>` 时，可以继续原 Codex thread，而不是从空会话开始。
+
 ## 启动本地编程会话
 
 ```bash
-./cli/dist/hapi
+"$HAPI_BIN"
 ```
 
 这会启动由 HAPI Nexus 包装的 Claude Code。会话会出现在 Web UI 中。
@@ -66,6 +87,7 @@ Runner 允许 Web 用户在授权目录中启动会话：
 
 - [无缝切换](./how-it-works.md#无缝切换) - 在终端和手机之间切换控制权
 - [Hub 设置](./installation.md#hub-设置) - 从任意位置访问 HAPI Nexus
+- [Codex 目录历史同步](#同步-codex-目录历史) - 将已有 Codex CLI 历史带入 HAPI Nexus
 - [账号与访问](./accounts.md) - 管理用户、密码和 access token
 - [设置控制台](./settings.md) - 配置账号、用户、项目、机器和偏好
 - [通知](./installation.md#telegram-设置) - 配置 Telegram 通知

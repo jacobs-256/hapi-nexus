@@ -32,7 +32,7 @@ Set the environment variable before starting the hub:
 
 ```bash
 export ELEVENLABS_API_KEY="your-api-key"
-hapi hub --relay
+hapi-server hub --relay
 ```
 
 The hub automatically creates a "Hapi Voice Assistant" agent in your ElevenLabs account on first use.

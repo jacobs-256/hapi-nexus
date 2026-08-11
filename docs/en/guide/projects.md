@@ -32,10 +32,10 @@ Remote users do not need the source code on their own computers. The runner mach
 1. Start the hub.
    - First login defaults to `admin` / `admin`; change it in **Settings -> Account**.
    - Admins can create more users in **Settings -> Users**.
-2. Start a runner on the machine that has the source code:
+2. Start a runner on the machine that has the source code, using that runner owner's personal access token:
 
 ```bash
-hapi runner start --workspace-root /path/to/projects
+CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects
 ```
 
 3. Open the web app and go to **Settings -> Projects**.
