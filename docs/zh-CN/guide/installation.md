@@ -119,7 +119,10 @@ bun run dev
 <details>
 <summary>从你自己的 release 安装预构建二进制</summary>
 
-项目发布到 GitHub 后，可以把构建出的 `hapi-server` 和 `hapi` 二进制附加到你自己的 Releases 页面。
+GitHub Releases 会把服务器端和客户端分别打包发布：
+
+- `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - 安装到 Hub 服务器
+- `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - 安装到 runner / 客户端机器
 
 ```bash
 xattr -d com.apple.quarantine ./hapi-server ./hapi

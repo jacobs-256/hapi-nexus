@@ -14,7 +14,7 @@
  *   bun run scripts/update-homebrew-formula.ts --version 0.1.0 --push
  *
  * Environment:
- *   HOMEBREW_TAP_REPO - Git URL of the tap repository (default: https://github.com/tiann/homebrew-tap.git)
+ *   HOMEBREW_TAP_REPO - Git URL of the tap repository (default: https://github.com/jacobs-256/homebrew-tap.git)
  */
 
 import { execSync } from 'node:child_process';
@@ -28,9 +28,8 @@ const projectRoot = join(__dirname, '..');
 
 interface PlatformSha {
     darwinArm64: string;
-    darwinX64: string;
     linuxArm64: string;
-    linuxX64: string;
+    linuxAmd64: string;
 }
 
 function parseChecksums(checksumsPath: string): PlatformSha {
@@ -43,17 +42,18 @@ function parseChecksums(checksumsPath: string): PlatformSha {
         const [sha, filename] = line.split('  ');
         if (!sha || !filename) continue;
 
-        if (filename.includes('darwin-arm64')) shas.darwinArm64 = sha;
-        else if (filename.includes('darwin-x64')) shas.darwinX64 = sha;
-        else if (filename.includes('linux-arm64')) shas.linuxArm64 = sha;
-        else if (filename.includes('linux-x64')) shas.linuxX64 = sha;
+        const match = filename.match(/^hapi-nexus-.+-hapi-(darwin-arm64|linux-arm64|linux-amd64)\.tar\.gz$/);
+        if (!match) continue;
+
+        if (match[1] === 'darwin-arm64') shas.darwinArm64 = sha;
+        else if (match[1] === 'linux-arm64') shas.linuxArm64 = sha;
+        else if (match[1] === 'linux-amd64') shas.linuxAmd64 = sha;
     }
 
     const missing: string[] = [];
     if (!shas.darwinArm64) missing.push('darwin-arm64');
-    if (!shas.darwinX64) missing.push('darwin-x64');
     if (!shas.linuxArm64) missing.push('linux-arm64');
-    if (!shas.linuxX64) missing.push('linux-x64');
+    if (!shas.linuxAmd64) missing.push('linux-amd64');
 
     if (missing.length > 0) {
         throw new Error(`Missing SHA256 checksums for: ${missing.join(', ')}`);
@@ -67,28 +67,27 @@ function generateFormula(version: string, shas: PlatformSha): string {
 # frozen_string_literal: true
 
 class Hapi < Formula
-  desc "App for agentic coding - access coding agent anywhere"
-  homepage "https://github.com/tiann/hapi"
+  desc "Private multi-user AI coding agent control CLI"
+  homepage "https://github.com/jacobs-256/hapi-nexus"
   version "${version}"
-  license "MIT"
+  license "AGPL-3.0-only"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/tiann/hapi/releases/download/v#{version}/hapi-darwin-arm64.tar.gz"
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-darwin-arm64.tar.gz"
       sha256 "${shas.darwinArm64}"
     else
-      url "https://github.com/tiann/hapi/releases/download/v#{version}/hapi-darwin-x64.tar.gz"
-      sha256 "${shas.darwinX64}"
+      odie "HAPI Nexus does not publish a macOS Intel Homebrew artifact in this release."
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/tiann/hapi/releases/download/v#{version}/hapi-linux-arm64.tar.gz"
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-linux-arm64.tar.gz"
       sha256 "${shas.linuxArm64}"
     else
-      url "https://github.com/tiann/hapi/releases/download/v#{version}/hapi-linux-x64-baseline.tar.gz"
-      sha256 "${shas.linuxX64}"
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-linux-amd64.tar.gz"
+      sha256 "${shas.linuxAmd64}"
     end
   end
 
@@ -138,7 +137,7 @@ async function main(): Promise<void> {
 
     const version = args[versionIdx + 1];
     const shouldPush = args.includes('--push');
-    const tapRepo = process.env.HOMEBREW_TAP_REPO || 'https://github.com/tiann/homebrew-tap.git';
+    const tapRepo = process.env.HOMEBREW_TAP_REPO || 'https://github.com/jacobs-256/homebrew-tap.git';
     const checksumsPath = join(projectRoot, 'release-artifacts', 'checksums.txt');
 
     if (!existsSync(checksumsPath)) {
@@ -153,9 +152,8 @@ async function main(): Promise<void> {
     const shas = parseChecksums(checksumsPath);
     console.log('SHA256 checksums:');
     console.log(`  darwin-arm64: ${shas.darwinArm64}`);
-    console.log(`  darwin-x64:   ${shas.darwinX64}`);
     console.log(`  linux-arm64:  ${shas.linuxArm64}`);
-    console.log(`  linux-x64:    ${shas.linuxX64}\n`);
+    console.log(`  linux-amd64:  ${shas.linuxAmd64}\n`);
 
     // Generate formula content
     const formulaContent = generateFormula(version, shas);

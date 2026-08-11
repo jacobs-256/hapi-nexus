@@ -119,7 +119,10 @@ This starts the hub and web app concurrently for local development.
 <details>
 <summary>Prebuilt binary from your own release</summary>
 
-After publishing this project on GitHub, attach the built `hapi-server` and `hapi` binaries to your own Releases page.
+GitHub Releases publish separate archives for the server and client binaries:
+
+- `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - install on the hub server
+- `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - install on runner/client machines
 
 ```bash
 xattr -d com.apple.quarantine ./hapi-server ./hapi
