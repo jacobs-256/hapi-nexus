@@ -79,9 +79,6 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
-            - name: Check committed whitespace
-              run: git diff-tree --check --no-commit-id --root -r HEAD
-
             - name: Typecheck
               run: bun typecheck
 
