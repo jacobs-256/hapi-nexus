@@ -33,6 +33,8 @@
     "build:exe:all": "bun run scripts/build-executable.ts --all",
     "build:exe:allinone": "bun run scripts/build-executable.ts --with-web-assets",
     "build:exe:allinone:all": "bun run scripts/build-executable.ts --with-web-assets --all",
+    "build:exe:server-client": "bun run scripts/build-executable.ts --server-and-client",
+    "build:exe:server-client:all": "bun run scripts/build-executable.ts --server-and-client --all",
     "prepare-npm-packages": "bun run scripts/prepare-npm-packages.ts",
     "prepack": "bun run prepare-npm-packages",
     "tools:unpack": "bun run scripts/unpack-tools.ts",
