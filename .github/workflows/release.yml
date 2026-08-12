@@ -199,10 +199,13 @@ jobs:
                       local asset_name="$1"
                       local source_path="$2"
                       local output_name="$3"
+                      local readme_dir="$4"
                       local workdir
                       workdir="$(mktemp -d)"
                       mkdir -p "$workdir/$asset_name"
-                      cp README.md README.zh-CN.md LICENSE NOTICE.md "$workdir/$asset_name/"
+                      cp "$readme_dir/README.md" "$workdir/$asset_name/README.md"
+                      cp "$readme_dir/README.zh-CN.md" "$workdir/$asset_name/README.zh-CN.md"
+                      cp LICENSE NOTICE.md "$workdir/$asset_name/"
                       cp "$source_path" "$workdir/$asset_name/$output_name"
 
                       if [[ "${{ matrix.archive }}" == "zip" ]]; then
@@ -219,11 +222,11 @@ jobs:
                   client_asset="hapi-nexus-${{ needs.prepare.outputs.tag }}-hapi-${{ matrix.platform }}"
 
                   if [[ "${{ matrix.archive }}" == "zip" ]]; then
-                      package_binary "$server_asset" "cli/dist-exe/${{ matrix.target }}/hapi-server.exe" "hapi-server.exe"
-                      package_binary "$client_asset" "cli/dist-exe/${{ matrix.target }}/hapi.exe" "hapi.exe"
+                      package_binary "$server_asset" "cli/dist-exe/${{ matrix.target }}/hapi-server.exe" "hapi-server.exe" "docs/release/hapi-server"
+                      package_binary "$client_asset" "cli/dist-exe/${{ matrix.target }}/hapi.exe" "hapi.exe" "docs/release/hapi-client"
                   else
-                      package_binary "$server_asset" "cli/dist-exe/${{ matrix.target }}/hapi-server" "hapi-server"
-                      package_binary "$client_asset" "cli/dist-exe/${{ matrix.target }}/hapi" "hapi"
+                      package_binary "$server_asset" "cli/dist-exe/${{ matrix.target }}/hapi-server" "hapi-server" "docs/release/hapi-server"
+                      package_binary "$client_asset" "cli/dist-exe/${{ matrix.target }}/hapi" "hapi" "docs/release/hapi-client"
                   fi
 
                   ls -lh "$release_dir"
