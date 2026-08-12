@@ -203,6 +203,28 @@ Hub 默认监听 `http://localhost:3006`。
 ```
 </details>
 
+### 数据库升级
+
+`hapi-server` 会把当前 SQLite 结构版本保存在 `PRAGMA user_version`。当新版服务器启动并发现旧版数据库时，会先执行内置迁移链，然后才开始正常对外服务。
+
+对非空数据库执行迁移前，HAPI Nexus 会自动在下面目录生成备份：
+
+```text
+<hapi.db 所在目录>/backups/
+```
+
+每个迁移步骤都会写入 `schema_migrations` 表，包含来源版本、目标版本、耗时和备份路径。当前版本和目标版本也可以在 **Settings -> Storage** 中查看。
+
+生产环境推荐升级流程：
+
+1. 停止 `hapi-server`。
+2. 备份整个数据目录，或创建 EBS volume snapshot。
+3. 替换新的 `hapi-server` 二进制。
+4. 启动 `hapi-server`；如有需要会自动执行数据库迁移。
+5. 检查日志和 **Settings -> Storage** 中的数据库结构版本。
+
+如果升级失败需要回滚，先停止 `hapi-server`，恢复之前的 `hapi.db` 备份或 volume snapshot，然后启动旧版本 `hapi-server`。
+
 <details>
 <summary>环境变量</summary>
 

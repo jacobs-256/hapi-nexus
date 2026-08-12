@@ -692,6 +692,7 @@ export default {
   'settings.storage.database': 'Database',
   'settings.storage.wal': 'Write-ahead log',
   'settings.storage.shm': 'Shared memory',
+  'settings.storage.schema': 'Database schema',
   'settings.storage.path': 'Path',
   'settings.storage.refresh': 'Refresh',
   'settings.storage.refreshing': 'Refreshing…',

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { Hono } from 'hono'
 import type { WebAppEnv } from '../middleware/auth'
 import { createStorageRoutes } from './storage'
+import type { Store } from '../../store'
 
 const directories: string[] = []
 
@@ -15,11 +16,16 @@ afterEach(async () => {
 describe('GET /api/storage/sqlite', () => {
     function createApp(dbPath: string, namespace = 'default') {
         const app = new Hono<WebAppEnv>()
+        const store = {
+            dbPath,
+            schemaVersion: 18,
+            expectedSchemaVersion: 18,
+        } as Store
         app.use('*', async (c, next) => {
             c.set('namespace', namespace)
             await next()
         })
-        app.route('/api', createStorageRoutes(dbPath))
+        app.route('/api', createStorageRoutes(store))
         return app
     }
 
@@ -43,6 +49,8 @@ describe('GET /api/storage/sqlite', () => {
             walBytes: 20,
             shmBytes: 0,
             totalBytes: 30,
+            schemaVersion: 18,
+            expectedSchemaVersion: 18,
         })
     })
 

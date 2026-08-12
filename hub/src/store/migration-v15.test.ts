@@ -3,7 +3,7 @@ import { Database } from 'bun:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { Store } from './index'
+import { SCHEMA_VERSION, Store } from './index'
 
 /**
  * Tests for V14→V15 schema migration: adds `session_scratchlist.attachments`
@@ -26,7 +26,7 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
             'role',
             'disabled_at'
         ]))
-        expect(getUserVersion(store)).toBe(17)
+        expect(getUserVersion(store)).toBe(SCHEMA_VERSION)
         store.close()
     })
 
@@ -47,7 +47,7 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
             expect(cols).toContain('attachments')
             const userCols = getColumns(store, 'users')
             expect(userCols).toContain('access_token_hash')
-            expect(getUserVersion(store)).toBe(17)
+            expect(getUserVersion(store)).toBe(SCHEMA_VERSION)
         } finally {
             store?.close()
             rmSync(dir, { recursive: true, force: true })
@@ -67,7 +67,7 @@ describe('Store V14→V15 migration: scratchlist attachments column', () => {
             store2 = new Store(dbPath)
             const cols2 = getColumns(store2, 'session_scratchlist')
             expect(cols2).toEqual(cols1)
-            expect(getUserVersion(store2)).toBe(17)
+            expect(getUserVersion(store2)).toBe(SCHEMA_VERSION)
         } finally {
             store2?.close()
             store1?.close()

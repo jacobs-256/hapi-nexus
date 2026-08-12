@@ -203,6 +203,28 @@ Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Ac
 ```
 </details>
 
+### Database upgrades
+
+`hapi-server` stores the current SQLite schema version in `PRAGMA user_version`. When a newer server starts with an older database, it runs the built-in migration chain before accepting traffic.
+
+Before any non-empty database migration, HAPI Nexus writes a backup under:
+
+```text
+<directory-containing-hapi.db>/backups/
+```
+
+Migration steps are recorded in the `schema_migrations` table with the source version, target version, duration, and backup path. The current and expected schema versions are also visible in **Settings -> Storage**.
+
+Recommended production upgrade flow:
+
+1. Stop `hapi-server`.
+2. Back up the whole data directory or EBS volume snapshot.
+3. Replace the `hapi-server` binary.
+4. Start `hapi-server`; database migration runs automatically if needed.
+5. Check logs and **Settings -> Storage** for the schema version.
+
+To roll back after a failed upgrade, stop `hapi-server`, restore the previous `hapi.db` backup or volume snapshot, then start the previous `hapi-server` binary.
+
 <details>
 <summary>Environment variables</summary>
 

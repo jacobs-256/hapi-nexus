@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite'
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
@@ -37,8 +37,9 @@ export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 export { ProjectStore } from './projectStore'
 
-const SCHEMA_VERSION: number = 17
+export const SCHEMA_VERSION: number = 18
 const REQUIRED_TABLES = [
+    'schema_migrations',
     'sessions',
     'machines',
     'messages',
@@ -77,6 +78,14 @@ export class Store {
      */
     get dbPath(): string {
         return this._dbPath
+    }
+
+    get schemaVersion(): number {
+        return this.getUserVersion()
+    }
+
+    get expectedSchemaVersion(): number {
+        return SCHEMA_VERSION
     }
 
     constructor(dbPath: string) {
@@ -171,9 +180,8 @@ export class Store {
     private initSchema(): void {
         const currentVersion = this.getUserVersion()
         // V1/V2/V3 entries cover legacy DBs that pre-date our migration ladder.
-        // Each step is idempotent (column-existence guards inside) so we can
-        // safely run the full V1→V8 chain in the legacy branch where the DB
-        // shape is unknown.
+        // Each step is idempotent (column/table-existence guards inside) so we can
+        // safely run the full chain in the legacy branch where the DB shape is unknown.
         const buildStepMigrations = (legacy: boolean): Record<number, () => void> => ({
             1: () => this.migrateFromV1ToV2(legacy),
             2: () => this.migrateFromV2ToV3(),
@@ -191,10 +199,12 @@ export class Store {
             14: () => this.migrateFromV14ToV15(),
             15: () => this.migrateFromV15ToV16(),
             16: () => this.migrateFromV16ToV17(),
+            17: () => this.migrateFromV17ToV18(),
         })
 
         if (currentVersion === 0) {
             if (this.hasAnyUserTables()) {
+                const backupPath = this.backupDatabaseForMigration(currentVersion, SCHEMA_VERSION)
                 this.migrateLegacySchemaIfNeeded()
                 // Run the full step ladder BEFORE createSchema so legacy tables
                 // pick up every later-version column (e.g. invoked_at) via ALTER
@@ -210,22 +220,24 @@ export class Store {
                 // a partially-built legacy DB may not have yet.
                 this.createSchema()
                 this.setUserVersion(SCHEMA_VERSION)
+                this.recordSchemaMigration(0, SCHEMA_VERSION, Date.now(), backupPath)
                 return
             }
 
             this.createSchema()
             this.setUserVersion(SCHEMA_VERSION)
+            this.recordSchemaMigration(0, SCHEMA_VERSION, Date.now(), null)
             return
         }
 
         const stepMigrations = buildStepMigrations(false)
         if (currentVersion < SCHEMA_VERSION && stepMigrations[currentVersion]) {
+            const backupPath = this.backupDatabaseForMigration(currentVersion, SCHEMA_VERSION)
             for (let v = currentVersion; v < SCHEMA_VERSION; v++) {
                 const step = stepMigrations[v]
                 if (!step) throw this.buildSchemaMismatchError(currentVersion)
-                step()
+                this.runSchemaMigrationStep(v, v + 1, backupPath, step)
             }
-            this.setUserVersion(SCHEMA_VERSION)
             return
         }
 
@@ -455,6 +467,7 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_session_scratchlist_session_created
                 ON session_scratchlist(session_id, created_at DESC);
         `)
+        this.createSchemaMigrationsTable()
     }
 
     private migrateLegacySchemaIfNeeded(): void {
@@ -876,6 +889,94 @@ export class Store {
                 ON users(access_token_hash)
                 WHERE access_token_hash IS NOT NULL;
         `)
+    }
+
+    /**
+     * Persistent migration ledger. SQLite already stores the current schema in
+     * `PRAGMA user_version`; this table records how a production database got
+     * there, including the automatic backup created before an upgrade.
+     */
+    private migrateFromV17ToV18(): void {
+        this.createSchemaMigrationsTable()
+    }
+
+    private createSchemaMigrationsTable(): void {
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                from_version INTEGER NOT NULL,
+                to_version INTEGER NOT NULL,
+                applied_at INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                backup_path TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_schema_migrations_to_version
+                ON schema_migrations(to_version);
+        `)
+    }
+
+    private runSchemaMigrationStep(fromVersion: number, toVersion: number, backupPath: string | null, step: () => void): void {
+        const startedAt = Date.now()
+        try {
+            step()
+            this.setUserVersion(toVersion)
+            this.recordSchemaMigration(fromVersion, toVersion, startedAt, backupPath)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            const backupHint = backupPath ? ` Backup created at: ${backupPath}.` : ''
+            throw new Error(`SQLite schema migration v${fromVersion}->v${toVersion} failed: ${message}.${backupHint}`)
+        }
+    }
+
+    private recordSchemaMigration(fromVersion: number, toVersion: number, startedAt: number, backupPath: string | null): void {
+        this.createSchemaMigrationsTable()
+        const finishedAt = Date.now()
+        this.db.prepare(`
+            INSERT INTO schema_migrations (
+                from_version,
+                to_version,
+                applied_at,
+                duration_ms,
+                backup_path
+            )
+            VALUES (?, ?, ?, ?, ?)
+        `).run(fromVersion, toVersion, finishedAt, Math.max(0, finishedAt - startedAt), backupPath)
+    }
+
+    private backupDatabaseForMigration(fromVersion: number, toVersion: number): string | null {
+        if (this._dbPath === ':memory:' || this._dbPath.startsWith('file::memory:')) return null
+        if (!existsSync(this._dbPath)) return null
+
+        const backupDir = join(dirname(this._dbPath), 'backups')
+        mkdirSync(backupDir, { recursive: true, mode: 0o700 })
+        try {
+            chmodSync(backupDir, 0o700)
+        } catch {
+        }
+
+        this.db.exec('PRAGMA wal_checkpoint(FULL)')
+        const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
+        const prefix = `${basename(this._dbPath)}.v${fromVersion}-to-v${toVersion}.${stamp}`
+        const backupPath = join(backupDir, `${prefix}.bak`)
+        copyFileSync(this._dbPath, backupPath)
+        this.chmodPrivate(backupPath)
+
+        for (const suffix of ['-wal', '-shm']) {
+            const source = `${this._dbPath}${suffix}`
+            if (!existsSync(source)) continue
+            const sidecar = join(backupDir, `${prefix}${suffix}.bak`)
+            copyFileSync(source, sidecar)
+            this.chmodPrivate(sidecar)
+        }
+
+        return backupPath
+    }
+
+    private chmodPrivate(path: string): void {
+        try {
+            chmodSync(path, 0o600)
+        } catch {
+        }
     }
 
     private getSessionColumnNames(): Set<string> {

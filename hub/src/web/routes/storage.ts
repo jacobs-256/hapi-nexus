@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises'
 import type { SqliteStorageUsageResponse } from '@hapi/protocol/apiTypes'
 import { Hono } from 'hono'
 import type { WebAppEnv } from '../middleware/auth'
+import type { Store } from '../../store'
 
 async function fileSize(path: string, required = false): Promise<number> {
     try {
@@ -12,7 +13,7 @@ async function fileSize(path: string, required = false): Promise<number> {
     }
 }
 
-export function createStorageRoutes(dbPath: string): Hono<WebAppEnv> {
+export function createStorageRoutes(store: Store): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
     app.get('/storage/sqlite', async (c) => {
@@ -21,6 +22,7 @@ export function createStorageRoutes(dbPath: string): Hono<WebAppEnv> {
         }
         c.header('Cache-Control', 'no-store')
         try {
+            const dbPath = store.dbPath
             const [databaseBytes, walBytes, shmBytes] = await Promise.all([
                 fileSize(dbPath, true),
                 fileSize(`${dbPath}-wal`),
@@ -32,6 +34,8 @@ export function createStorageRoutes(dbPath: string): Hono<WebAppEnv> {
                 walBytes,
                 shmBytes,
                 totalBytes: databaseBytes + walBytes + shmBytes,
+                schemaVersion: store.schemaVersion,
+                expectedSchemaVersion: store.expectedSchemaVersion,
             }
             return c.json(response)
         } catch (error) {

@@ -696,6 +696,7 @@ export default {
   'settings.storage.database': '数据库',
   'settings.storage.wal': '预写日志',
   'settings.storage.shm': '共享内存',
+  'settings.storage.schema': '数据库结构版本',
   'settings.storage.path': '路径',
   'settings.storage.refresh': '刷新',
   'settings.storage.refreshing': '正在刷新…',

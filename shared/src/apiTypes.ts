@@ -859,4 +859,6 @@ export type SqliteStorageUsageResponse = {
     walBytes: number
     shmBytes: number
     totalBytes: number
+    schemaVersion: number
+    expectedSchemaVersion: number
 }
