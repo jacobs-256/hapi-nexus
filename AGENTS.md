@@ -151,6 +151,16 @@ Before commit/push/PR: use the **`pre-push-review`** skill (`~/.cursor/skills/pr
 - **Permission modes**: `default`, `acceptEdits`, `auto`, `bypassPermissions`, `plan`
 - **Namespaces**: Multi-user isolation via `CLI_API_TOKEN:<namespace>` suffix
 
+## Database upgrade rule
+
+Every update that changes persisted SQLite data must include a database-upgrade check.
+
+- Check `hub/src/store/index.ts` before changing tables, columns, indexes, stored JSON shapes, ownership semantics, or deletion behavior.
+- If persistence changes require a schema update, bump `SCHEMA_VERSION`, add a `migrateFromVxToVy()` step, register it in `buildStepMigrations`, and add focused migration tests.
+- Migrations must preserve existing production data and work when operators upgrade by replacing `hapi-server`.
+- Keep automatic backup and `schema_migrations` behavior intact.
+- Update docs when operators need a new upgrade or rollback procedure.
+
 ## Adding new web features — consider an FUE
 
 When you ship a non-essential feature (the 20% of sessions, not the 80%), consider wrapping its affordance in the generic First-User-Experience primitive so existing users discover it without a giant always-visible UI block.
