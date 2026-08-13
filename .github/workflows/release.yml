@@ -38,17 +38,37 @@ jobs:
                       echo "Release tag must start with v and a version number, got: $tag" >&2
                       exit 1
                   fi
+                  version="${tag#v}"
+
+                  check_versions() {
+                      local cli_version
+                      local app_version
+                      cli_version="$(awk -F\" '/"version":/ { print $4; exit }' cli/package.json)"
+                      app_version="$(sed -n "s/^export const APP_VERSION = '\([^']*\)'.*/\1/p" shared/src/buildInfo.ts)"
+
+                      if [[ "$cli_version" != "$version" ]]; then
+                          echo "cli/package.json version ($cli_version) must match release tag version ($version)." >&2
+                          exit 1
+                      fi
+
+                      if [[ "$app_version" != "$version" ]]; then
+                          echo "shared/src/buildInfo.ts APP_VERSION ($app_version) must match release tag version ($version)." >&2
+                          exit 1
+                      fi
+                  }
 
                   git fetch --force --tags origin
 
                   if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
                       echo "Using existing release tag: $tag"
                       git checkout --detach "refs/tags/$tag"
+                      check_versions
                   else
                       if [[ "${{ github.event_name }}" != "workflow_dispatch" ]]; then
                           echo "Release tag $tag was not found." >&2
                           exit 1
                       fi
+                      check_versions
                       echo "Creating release tag $tag at $(git rev-parse --short HEAD)"
                       git config user.name "github-actions[bot]"
                       git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -57,7 +77,7 @@ jobs:
                   fi
 
                   echo "tag=$tag" >> "$GITHUB_OUTPUT"
-                  echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+                  echo "version=$version" >> "$GITHUB_OUTPUT"
                   echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
     checks:
@@ -145,6 +165,9 @@ jobs:
                     - platform: darwin-arm64
                       target: bun-darwin-arm64
                       archive: tar.gz
+                    - platform: darwin-amd64
+                      target: bun-darwin-x64
+                      archive: tar.gz
                     - platform: linux-arm64
                       target: bun-linux-arm64
                       archive: tar.gz
@@ -187,6 +210,17 @@ jobs:
               run: |
                   cd cli
                   bun run scripts/build-executable.ts --server-and-client --target "${{ matrix.target }}"
+
+            - name: Verify client version output
+              if: ${{ matrix.platform == 'linux-amd64' }}
+              run: |
+                  set -euo pipefail
+                  output="$(cli/dist-exe/${{ matrix.target }}/hapi --version)"
+                  echo "$output"
+                  if [[ "$output" != *"${{ needs.prepare.outputs.version }}"* ]]; then
+                      echo "hapi --version output must include ${{ needs.prepare.outputs.version }}." >&2
+                      exit 1
+                  fi
 
             - name: Package ${{ matrix.platform }}
               run: |
@@ -268,6 +302,17 @@ jobs:
                   sha256sum * > checksums.txt
                   ls -lh
 
+            - name: Verify Homebrew client artifacts
+              run: |
+                  set -euo pipefail
+                  cd cli/release-artifacts
+                  version="${{ needs.prepare.outputs.version }}"
+                  test -f "hapi-nexus-v${version}-hapi-darwin-arm64.tar.gz"
+                  test -f "hapi-nexus-v${version}-hapi-darwin-amd64.tar.gz"
+                  test -f checksums.txt
+                  grep -q "  hapi-nexus-v${version}-hapi-darwin-arm64.tar.gz$" checksums.txt
+                  grep -q "  hapi-nexus-v${version}-hapi-darwin-amd64.tar.gz$" checksums.txt
+
             - name: Upload combined release artifacts
               uses: actions/upload-artifact@v4
               with:
@@ -307,5 +352,6 @@ jobs:
               continue-on-error: true
               env:
                   GITHUB_TOKEN: ${{ env.HOMEBREW_TAP_TOKEN }}
+                  HOMEBREW_TAP_REPO: https://github.com/jacobs-256/homebrew-hapi-nexus.git
               run: |
                   cd cli && bun run update-homebrew-formula --version "${{ needs.prepare.outputs.version }}" --push

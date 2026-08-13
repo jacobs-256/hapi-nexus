@@ -14,7 +14,7 @@
  *   bun run scripts/update-homebrew-formula.ts --version 0.1.0 --push
  *
  * Environment:
- *   HOMEBREW_TAP_REPO - Git URL of the tap repository (default: https://github.com/jacobs-256/homebrew-tap.git)
+ *   HOMEBREW_TAP_REPO - Git URL of the tap repository (default: https://github.com/jacobs-256/homebrew-hapi-nexus.git)
  */
 
 import { execSync } from 'node:child_process';
@@ -28,8 +28,7 @@ const projectRoot = join(__dirname, '..');
 
 interface PlatformSha {
     darwinArm64: string;
-    linuxArm64: string;
-    linuxAmd64: string;
+    darwinAmd64: string;
 }
 
 function parseChecksums(checksumsPath: string): PlatformSha {
@@ -42,18 +41,16 @@ function parseChecksums(checksumsPath: string): PlatformSha {
         const [sha, filename] = line.split('  ');
         if (!sha || !filename) continue;
 
-        const match = filename.match(/^hapi-nexus-.+-hapi-(darwin-arm64|linux-arm64|linux-amd64)\.tar\.gz$/);
+        const match = filename.match(/^hapi-nexus-.+-hapi-(darwin-arm64|darwin-amd64)\.tar\.gz$/);
         if (!match) continue;
 
         if (match[1] === 'darwin-arm64') shas.darwinArm64 = sha;
-        else if (match[1] === 'linux-arm64') shas.linuxArm64 = sha;
-        else if (match[1] === 'linux-amd64') shas.linuxAmd64 = sha;
+        else if (match[1] === 'darwin-amd64') shas.darwinAmd64 = sha;
     }
 
     const missing: string[] = [];
     if (!shas.darwinArm64) missing.push('darwin-arm64');
-    if (!shas.linuxArm64) missing.push('linux-arm64');
-    if (!shas.linuxAmd64) missing.push('linux-amd64');
+    if (!shas.darwinAmd64) missing.push('darwin-amd64');
 
     if (missing.length > 0) {
         throw new Error(`Missing SHA256 checksums for: ${missing.join(', ')}`);
@@ -77,22 +74,27 @@ class Hapi < Formula
       url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-darwin-arm64.tar.gz"
       sha256 "${shas.darwinArm64}"
     else
-      odie "HAPI Nexus does not publish a macOS Intel Homebrew artifact in this release."
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-darwin-amd64.tar.gz"
+      sha256 "${shas.darwinAmd64}"
     end
   end
 
   on_linux do
-    if Hardware::CPU.arm?
-      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-linux-arm64.tar.gz"
-      sha256 "${shas.linuxArm64}"
-    else
-      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-linux-amd64.tar.gz"
-      sha256 "${shas.linuxAmd64}"
-    end
+    odie "Install HAPI Nexus on Linux from GitHub Releases: https://github.com/jacobs-256/hapi-nexus/releases"
   end
 
   def install
-    bin.install "hapi"
+    bin.install Dir["*/hapi"].first => "hapi"
+  end
+
+  def caveats
+    <<~EOS
+      Connect this client to your HAPI Nexus Hub:
+        hapi auth login
+
+      Start a runner for one or more allowed workspace roots:
+        hapi runner start --workspace-root /path/to/projects
+    EOS
   end
 
   test do
@@ -137,7 +139,7 @@ async function main(): Promise<void> {
 
     const version = args[versionIdx + 1];
     const shouldPush = args.includes('--push');
-    const tapRepo = process.env.HOMEBREW_TAP_REPO || 'https://github.com/jacobs-256/homebrew-tap.git';
+    const tapRepo = process.env.HOMEBREW_TAP_REPO || 'https://github.com/jacobs-256/homebrew-hapi-nexus.git';
     const checksumsPath = join(projectRoot, 'release-artifacts', 'checksums.txt');
 
     if (!existsSync(checksumsPath)) {
@@ -152,8 +154,7 @@ async function main(): Promise<void> {
     const shas = parseChecksums(checksumsPath);
     console.log('SHA256 checksums:');
     console.log(`  darwin-arm64: ${shas.darwinArm64}`);
-    console.log(`  linux-arm64:  ${shas.linuxArm64}`);
-    console.log(`  linux-amd64:  ${shas.linuxAmd64}\n`);
+    console.log(`  darwin-amd64: ${shas.darwinAmd64}\n`);
 
     // Generate formula content
     const formulaContent = generateFormula(version, shas);
@@ -168,7 +169,7 @@ async function main(): Promise<void> {
 
         console.log(`Formula generated: ${localFormulaPath}\n`);
         console.log('To push to the tap repository, run with --push flag.');
-        console.log(`Or manually copy to your homebrew-tap repo's Formula/ directory.`);
+        console.log(`Or manually copy to your homebrew-hapi-nexus repo's Formula/ directory.`);
         return;
     }
 
@@ -210,13 +211,13 @@ async function main(): Promise<void> {
         try {
             execSync(`git commit -m "Update hapi to v${version}"`, { cwd: tempDir, stdio: 'pipe' });
             execSync('git push origin main', { cwd: tempDir, stdio: 'pipe' });
-            console.log(`\nSuccessfully pushed hapi v${version} to homebrew-tap`);
+            console.log(`\nSuccessfully pushed hapi v${version} to homebrew-hapi-nexus`);
         } catch {
             console.log('\nNo changes to commit (formula already up to date)');
         }
 
         console.log('\nUsers can now install via:');
-        console.log('  brew install tiann/tap/hapi');
+        console.log('  brew install jacobs-256/hapi-nexus/hapi');
     } finally {
         // Cleanup
         rmSync(tempDir, { recursive: true, force: true });
