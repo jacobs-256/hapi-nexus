@@ -11,7 +11,7 @@
  *   bun run scripts/update-homebrew-formula.ts --version 0.1.0
  *
  *   # Generate and push to tap repository
- *   bun run scripts/update-homebrew-formula.ts --version 0.1.0 --push
+ *   bun run scripts/update-homebrew-formula.ts --version 0.1.0 --release-tag v0.1.0 --push
  *
  * Environment:
  *   HOMEBREW_TAP_REPO - Git URL of the tap repository (default: https://github.com/jacobs-256/homebrew-hapi-nexus.git)
@@ -59,7 +59,7 @@ function parseChecksums(checksumsPath: string): PlatformSha {
     return shas as PlatformSha;
 }
 
-function generateFormula(version: string, shas: PlatformSha): string {
+function generateFormula(version: string, releaseTag: string, shas: PlatformSha): string {
     return `# typed: false
 # frozen_string_literal: true
 
@@ -71,10 +71,10 @@ class Hapi < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-darwin-arm64.tar.gz"
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/${releaseTag}/hapi-nexus-${releaseTag}-hapi-darwin-arm64.tar.gz"
       sha256 "${shas.darwinArm64}"
     else
-      url "https://github.com/jacobs-256/hapi-nexus/releases/download/v#{version}/hapi-nexus-v#{version}-hapi-darwin-amd64.tar.gz"
+      url "https://github.com/jacobs-256/hapi-nexus/releases/download/${releaseTag}/hapi-nexus-${releaseTag}-hapi-darwin-amd64.tar.gz"
       sha256 "${shas.darwinAmd64}"
     end
   end
@@ -110,6 +110,7 @@ function printUsage(): void {
 
 Options:
   --version <version>  Version to update to (required)
+  --release-tag <tag>  GitHub Release tag containing the assets (default: v<version>)
   --push               Clone tap repo, commit and push changes
   --help               Show this help message
 
@@ -118,7 +119,7 @@ Examples:
   bun run scripts/update-homebrew-formula.ts --version 0.1.0
 
   # Push to tap repository
-  bun run scripts/update-homebrew-formula.ts --version 0.1.0 --push
+  bun run scripts/update-homebrew-formula.ts --version 0.1.0 --release-tag v0.1.0-260813 --push
 `);
 }
 
@@ -138,6 +139,8 @@ async function main(): Promise<void> {
     }
 
     const version = args[versionIdx + 1];
+    const releaseTagIdx = args.indexOf('--release-tag');
+    const releaseTag = releaseTagIdx >= 0 && args[releaseTagIdx + 1] ? args[releaseTagIdx + 1] : `v${version}`;
     const shouldPush = args.includes('--push');
     const tapRepo = process.env.HOMEBREW_TAP_REPO || 'https://github.com/jacobs-256/homebrew-hapi-nexus.git';
     const checksumsPath = join(projectRoot, 'release-artifacts', 'checksums.txt');
@@ -148,7 +151,7 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    console.log(`Generating Homebrew formula for v${version}...\n`);
+    console.log(`Generating Homebrew formula for ${releaseTag} (formula version ${version})...\n`);
 
     // Parse checksums
     const shas = parseChecksums(checksumsPath);
@@ -157,7 +160,7 @@ async function main(): Promise<void> {
     console.log(`  darwin-amd64: ${shas.darwinAmd64}\n`);
 
     // Generate formula content
-    const formulaContent = generateFormula(version, shas);
+    const formulaContent = generateFormula(version, releaseTag, shas);
 
     if (!shouldPush) {
         // Just output the formula locally

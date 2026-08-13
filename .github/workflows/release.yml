@@ -7,7 +7,7 @@ on:
     workflow_dispatch:
         inputs:
             tag:
-                description: 'Release tag to create or reuse, for example v0.25.2'
+                description: 'Release tag to create or reuse, for example v1.1.0 or v1.1.0-260813'
                 required: true
                 type: string
 
@@ -34,11 +34,11 @@ jobs:
               run: |
                   set -euo pipefail
                   tag="${{ github.event.inputs.tag || github.ref_name }}"
-                  if [[ ! "$tag" =~ ^v[0-9] ]]; then
-                      echo "Release tag must start with v and a version number, got: $tag" >&2
+                  if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+                      echo "Release tag must look like v1.1.0 or v1.1.0-260813, got: $tag" >&2
                       exit 1
                   fi
-                  version="${tag#v}"
+                  version="${BASH_REMATCH[1]}"
 
                   check_versions() {
                       local cli_version
@@ -306,12 +306,12 @@ jobs:
               run: |
                   set -euo pipefail
                   cd cli/release-artifacts
-                  version="${{ needs.prepare.outputs.version }}"
-                  test -f "hapi-nexus-v${version}-hapi-darwin-arm64.tar.gz"
-                  test -f "hapi-nexus-v${version}-hapi-darwin-amd64.tar.gz"
+                  tag="${{ needs.prepare.outputs.tag }}"
+                  test -f "hapi-nexus-${tag}-hapi-darwin-arm64.tar.gz"
+                  test -f "hapi-nexus-${tag}-hapi-darwin-amd64.tar.gz"
                   test -f checksums.txt
-                  grep -q "  hapi-nexus-v${version}-hapi-darwin-arm64.tar.gz$" checksums.txt
-                  grep -q "  hapi-nexus-v${version}-hapi-darwin-amd64.tar.gz$" checksums.txt
+                  grep -q "  hapi-nexus-${tag}-hapi-darwin-arm64.tar.gz$" checksums.txt
+                  grep -q "  hapi-nexus-${tag}-hapi-darwin-amd64.tar.gz$" checksums.txt
 
             - name: Upload combined release artifacts
               uses: actions/upload-artifact@v4
@@ -354,4 +354,4 @@ jobs:
                   GITHUB_TOKEN: ${{ env.HOMEBREW_TAP_TOKEN }}
                   HOMEBREW_TAP_REPO: https://github.com/jacobs-256/homebrew-hapi-nexus.git
               run: |
-                  cd cli && bun run update-homebrew-formula --version "${{ needs.prepare.outputs.version }}" --push
+                  cd cli && bun run update-homebrew-formula --version "${{ needs.prepare.outputs.version }}" --release-tag "${{ needs.prepare.outputs.tag }}" --push
