@@ -208,7 +208,7 @@ function ensureEmbeddedAssetsManifest(workspaceRoot: string, includeWebAssets: b
     writeStubEmbeddedAssets(workspaceRoot);
 }
 
-async function buildTarget(projectRoot: string, target: string, outdir: string, name: string): Promise<void> {
+async function buildTarget(projectRoot: string, target: string, outdir: string, name: string, binaryKind: 'client' | 'server' = 'client'): Promise<void> {
     const { platform, arch } = parseTarget(target);
     assertArchivesExist(projectRoot, platform, arch);
     const outputName = platform === 'win32' ? `${name}.exe` : name;
@@ -222,6 +222,7 @@ async function buildTarget(projectRoot: string, target: string, outdir: string, 
         '--compile',
         '--no-compile-autoload-dotenv',
         `--feature=${featureFlag}`,
+        `--feature=HAPI_BINARY_${binaryKind.toUpperCase()}`,
         `--target=${target}`,
         `--outfile=${outfile}`,
         join(projectRoot, 'src', 'bootstrap.ts')
@@ -243,9 +244,9 @@ async function buildTarget(projectRoot: string, target: string, outdir: string, 
     }
 }
 
-async function buildTargets(projectRoot: string, targets: string[], outdir: string, name: string): Promise<void> {
+async function buildTargets(projectRoot: string, targets: string[], outdir: string, name: string, binaryKind: 'client' | 'server' = 'client'): Promise<void> {
     for (const targetName of targets) {
-        await buildTarget(projectRoot, targetName, outdir, name);
+        await buildTarget(projectRoot, targetName, outdir, name, binaryKind);
     }
 }
 
@@ -256,11 +257,11 @@ async function buildServerAndClient(projectRoot: string, workspaceRoot: string, 
 
     try {
         console.log('[build:exe] Building server executable(s) with embedded web assets as hapi-server.');
-        await buildTargets(projectRoot, targets, outdir, 'hapi-server');
+        await buildTargets(projectRoot, targets, outdir, 'hapi-server', 'server');
 
-        console.log('[build:exe] Building client executable(s) without embedded web assets as hapi.');
+        console.log('[build:exe] Building client executable(s) without hub/web assets as hapi.');
         writeStubEmbeddedAssets(workspaceRoot);
-        await buildTargets(projectRoot, targets, outdir, 'hapi');
+        await buildTargets(projectRoot, targets, outdir, 'hapi', 'client');
     } finally {
         writeFileSync(manifestPath, embeddedAssetsManifest, 'utf-8');
     }
@@ -270,10 +271,10 @@ async function main(): Promise<void> {
     const args = process.argv.slice(2);
     const target = getArg(args, '--target');
     const outdirArg = getArg(args, '--outdir') ?? 'dist-exe';
-    const name = getArg(args, '--name') ?? 'hapi';
     const buildAll = args.includes('--all');
     const includeWebAssets = args.includes('--with-web-assets');
     const buildServerClient = args.includes('--server-and-client');
+    const name = getArg(args, '--name') ?? (includeWebAssets ? 'hapi-server' : 'hapi');
 
     if (args.includes('--target') && !target) {
         console.error('Usage: bun run scripts/build-executable.ts [--target <bun-platform[-arch[-variant]]>] [--outdir dist-exe] [--name hapi] [--with-web-assets]');
@@ -299,7 +300,8 @@ async function main(): Promise<void> {
     }
 
     ensureEmbeddedAssetsManifest(workspaceRoot, includeWebAssets);
-    await buildTargets(projectRoot, targets, outdir, name);
+    const binaryKind = includeWebAssets || name === 'hapi-server' ? 'server' : 'client';
+    await buildTargets(projectRoot, targets, outdir, name, binaryKind);
 }
 
 main().catch((error) => {

@@ -168,7 +168,9 @@ bun run build:single-exe
 `bun run build:single-exe` outputs both release-style binaries:
 
 - `cli/dist-exe/<bun-target>/hapi-server` - Hub/Web server with embedded web assets
-- `cli/dist-exe/<bun-target>/hapi` - client for auth, runner, and local agent sessions
+- `cli/dist-exe/<bun-target>/hapi` - client for auth, runner, and local agent sessions; it does not include or auto-start the Hub/Web server
+
+Low-level `cli` package builds follow the same split: `--with-web-assets` defaults to a `hapi-server` output, while builds without web assets default to the client `hapi` output.
 
 ## Source structure
 

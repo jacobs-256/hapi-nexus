@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCursorCommandArgs } from './cursor'
+import { parseCursorCommandArgs } from './cursorCommandOptions'
 
 describe('parseCursorCommandArgs', () => {
     it('accepts --mode autoReview', () => {

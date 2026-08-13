@@ -98,9 +98,6 @@ ${chalk.bold('Usage:')}
   hapi mcp               Start MCP stdio bridge
   hapi connect           (not available in direct-connect mode)
   hapi notify            (not available in direct-connect mode)
-  hapi hub               Start the API + web hub
-  hapi hub --relay       Start with public relay
-  hapi server            Alias for hapi hub
   hapi runner            Manage background service that allows
                             to spawn new sessions away from your computer
   hapi doctor            System diagnostics & troubleshooting

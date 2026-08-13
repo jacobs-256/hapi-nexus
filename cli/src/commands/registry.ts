@@ -14,9 +14,9 @@ import { piCommand } from './pi'
 import { hookForwarderCommand } from './hookForwarder'
 import { mcpCommand } from './mcp'
 import { notifyCommand } from './notify'
-import { hubCommand } from './hub'
 import { pingPeerCommand } from './pingPeer'
 import { inspectPeerCommand } from './inspectPeer'
+import { feature } from 'bun:bundle'
 import type { CommandContext, CommandDefinition } from './types'
 
 // Gemini CLI was sunset (Google stopped serving the consumer Gemini CLI on
@@ -35,7 +35,7 @@ const removedGeminiCommand: CommandDefinition = {
     }
 }
 
-const COMMANDS: CommandDefinition[] = [
+const BASE_COMMANDS: CommandDefinition[] = [
     authCommand,
     connectCommand,
     codexCommand,
@@ -46,8 +46,6 @@ const COMMANDS: CommandDefinition[] = [
     opencodeCommand,
     piCommand,
     mcpCommand,
-    hubCommand,
-    { ...hubCommand, name: 'server' },
     hookForwarderCommand,
     doctorCommand,
     resumeCommand,
@@ -57,13 +55,43 @@ const COMMANDS: CommandDefinition[] = [
     inspectPeerCommand
 ]
 
-const commandMap = new Map<string, CommandDefinition>()
-for (const command of COMMANDS) {
-    commandMap.set(command.name, command)
+const clientHubUnavailableCommand: CommandDefinition = {
+    name: 'hub',
+    requiresRuntimeAssets: false,
+    run: async () => {
+        console.error(chalk.red('Error:'), 'The hapi client binary does not include the Hub/Web server.')
+        console.error(chalk.gray('  Install the hapi-server release package and run: hapi-server hub'))
+        process.exit(1)
+    }
 }
 
-export function resolveCommand(args: string[]): { command: CommandDefinition; context: CommandContext } {
+let commandMapPromise: Promise<Map<string, CommandDefinition>> | null = null
+
+async function buildCommandMap(): Promise<Map<string, CommandDefinition>> {
+    const commands = [...BASE_COMMANDS]
+
+    if (!feature('HAPI_BINARY_CLIENT')) {
+        const { hubCommand } = await import('./hub')
+        commands.push(hubCommand, { ...hubCommand, name: 'server' })
+    } else {
+        commands.push(clientHubUnavailableCommand, { ...clientHubUnavailableCommand, name: 'server' })
+    }
+
+    const commandMap = new Map<string, CommandDefinition>()
+    for (const command of commands) {
+        commandMap.set(command.name, command)
+    }
+    return commandMap
+}
+
+function getCommandMap(): Promise<Map<string, CommandDefinition>> {
+    commandMapPromise ??= buildCommandMap()
+    return commandMapPromise
+}
+
+export async function resolveCommand(args: string[]): Promise<{ command: CommandDefinition; context: CommandContext }> {
     const subcommand = args[0]
+    const commandMap = await getCommandMap()
     const command = subcommand ? commandMap.get(subcommand) : undefined
     const resolvedCommand = command ?? claudeCommand
     const commandArgs = command ? args.slice(1) : args

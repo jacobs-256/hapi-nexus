@@ -19,7 +19,7 @@ export async function runCli(): Promise<void> {
         process.env.DEV = 'false'
     }
 
-    const { command, context } = resolveCommand(args)
+    const { command, context } = await resolveCommand(args)
 
     if (command.requiresRuntimeAssets) {
         const { ensureRuntimeAssets } = await import('@/runtime/assets')
