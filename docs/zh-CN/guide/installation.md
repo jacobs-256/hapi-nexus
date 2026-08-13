@@ -74,9 +74,29 @@ HAPI Nexus 有三个组件：
 
 浏览器/PWA 用户使用本地用户名/密码账号登录。首次启动管理员是 `admin` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
 
+## 在 macOS 安装客户端
+
+macOS Apple Silicon 和 Intel 机器可以通过 Homebrew 安装纯客户端 `hapi`：
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+升级、卸载和验证：
+
+```bash
+brew update
+brew upgrade hapi
+brew uninstall hapi
+hapi --version
+```
+
+Homebrew 包不包含 Hub/Web 服务器，也不会自动启动本地 Hub。私有服务器请从 GitHub Releases 安装 `hapi-server`，或从源码构建。
+
 ## 构建二进制
 
-本 fork 文档按“从源码构建并私有部署”的方式编写。请从本仓库构建服务器端和客户端二进制：
+请从本仓库构建服务器端和客户端二进制：
 
 ```bash
 bun install
@@ -117,19 +137,29 @@ bun run dev
 </details>
 
 <details>
-<summary>从你自己的 release 安装预构建二进制</summary>
+<summary>从 GitHub Releases 安装预构建二进制</summary>
 
 GitHub Releases 会把服务器端和客户端分别打包发布：
 
 - `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - 安装到 Hub 服务器
 - `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - 安装到 runner / 客户端机器
 
+客户端 release 覆盖 macOS、Linux 和 Windows。Homebrew 只支持 macOS；Linux 和 Windows 用户请下载匹配平台的 GitHub Release 压缩包。
+
+解压 macOS/Linux 压缩包后：
+
 ```bash
-xattr -d com.apple.quarantine ./hapi-server ./hapi
 chmod +x ./hapi-server
 chmod +x ./hapi
 sudo mv ./hapi-server /usr/local/bin/
 sudo mv ./hapi /usr/local/bin/
+```
+
+macOS 上，通过浏览器下载的未签名二进制可能提示 **“hapi”已损坏，无法打开**。请对解压后的文件或已安装文件清除 quarantine 隔离属性：
+
+```bash
+xattr -dr com.apple.quarantine ./hapi
+sudo xattr -dr com.apple.quarantine /usr/local/bin/hapi
 ```
 </details>
 

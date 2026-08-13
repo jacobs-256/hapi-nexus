@@ -8,6 +8,17 @@ HAPI Nexus 是基于 HAPI 的独立二次开发版本。它保留 local-first ag
 
 为了兼容现有代码，CLI 命令仍然是 `hapi`。
 
+## 安装客户端
+
+macOS 可以通过 Homebrew 安装纯客户端 `hapi`：
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+这只会安装用于 auth、runner 和本地 agent 会话的客户端。它不包含 Hub/Web 服务器，也不会自动启动本地 Hub。如果需要运行私有服务器，请从 GitHub Releases 安装 `hapi-server`，或从源码构建。
+
 ## 功能特性
 
 - **无缝切换** - 本地工作，需要时切到远程，随时再切回来。上下文不丢失，会话不重启。

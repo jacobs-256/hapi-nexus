@@ -6,6 +6,8 @@ This archive contains the `hapi` client binary for local agent sessions, runner 
 
 Use this package on developer, runner, or workstation machines. The Hub/Web server is distributed separately as the `hapi-server` package.
 
+The client binary does not include the Hub/Web server and will not auto-start a local Hub. To run the private Web server, install the separate `hapi-server` release package and run `hapi-server hub`.
+
 ## Package Contents
 
 - `hapi` or `hapi.exe` - Client binary
@@ -27,6 +29,23 @@ Only the agent you use must be installed on that client/runner machine.
 
 ## Install
 
+macOS Homebrew:
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+Upgrade or uninstall:
+
+```bash
+brew update
+brew upgrade hapi
+brew uninstall hapi
+```
+
+Homebrew installs only the client. It does not install `hapi-server` and will not auto-start a local Hub.
+
 Linux/macOS:
 
 ```bash
@@ -41,11 +60,31 @@ Windows PowerShell:
 .\hapi.exe --version
 ```
 
-macOS quarantine fix after browser download:
+macOS Gatekeeper may show `"hapi" is damaged and can't be opened` for unsigned binaries downloaded from a browser. This usually means the downloaded file has a quarantine attribute, not that the binary is actually corrupted.
+
+If `hapi` is still in the extracted download directory:
 
 ```bash
-xattr -d com.apple.quarantine ./hapi
+xattr -dr com.apple.quarantine ./hapi
 chmod +x ./hapi
+./hapi --version
+```
+
+If you already moved it into `/usr/local/bin`:
+
+```bash
+sudo xattr -dr com.apple.quarantine /usr/local/bin/hapi
+sudo chmod +x /usr/local/bin/hapi
+hapi --version
+```
+
+If `hapi` is installed somewhere else, check the path first and clear the attribute from that file:
+
+```bash
+which hapi
+xattr -l "$(which hapi)"
+sudo xattr -dr com.apple.quarantine "$(which hapi)"
+hapi --version
 ```
 
 ## Connect to a Hub
@@ -282,6 +321,7 @@ hapi doctor clean
 For HTTP 401/403 errors, verify:
 
 - `HAPI_API_URL` points to the correct Hub.
+- The Hub is running from the separate server package: `hapi-server hub`.
 - `CLI_API_TOKEN` is the current user's personal access token.
 - The user has access to the target machine/project.
 - Extra proxy headers are present when required.

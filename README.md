@@ -8,6 +8,17 @@ HAPI Nexus is an independent modified version of HAPI. It keeps the local-first 
 
 The CLI command is still `hapi` for compatibility with the existing codebase.
 
+## Install the client
+
+On macOS, install the client-only `hapi` binary with Homebrew:
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+This installs the client for auth, runner, and local agent sessions. It does not install the Hub/Web server and will not auto-start a local Hub. Install `hapi-server` from GitHub Releases or build it from source when you need to run the private server.
+
 ## Features
 
 - **Seamless Handoff** - Work locally, switch to remote when needed, switch back anytime. No context loss, no session restart.

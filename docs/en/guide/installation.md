@@ -74,9 +74,29 @@ HAPI Nexus has three components:
 
 Browser/PWA users sign in with local username/password accounts. The first-start administrator is `admin` / `admin`; change it after first login or set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first hub start.
 
+## Install the client on macOS
+
+Homebrew installs the client-only `hapi` binary on macOS Apple Silicon and Intel machines:
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+Upgrade, uninstall, and verify:
+
+```bash
+brew update
+brew upgrade hapi
+brew uninstall hapi
+hapi --version
+```
+
+The Homebrew package does not include the Hub/Web server and will not auto-start a local Hub. Use `hapi-server` from GitHub Releases or build it from source for the private server.
+
 ## Build the binaries
 
-This fork is documented as a source-built private deployment. Build the server and client binaries from this repository:
+Build the server and client binaries from this repository:
 
 ```bash
 bun install
@@ -117,19 +137,29 @@ This starts the hub and web app concurrently for local development.
 </details>
 
 <details>
-<summary>Prebuilt binary from your own release</summary>
+<summary>Prebuilt binaries from GitHub Releases</summary>
 
 GitHub Releases publish separate archives for the server and client binaries:
 
 - `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - install on the hub server
 - `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - install on runner/client machines
 
+Client releases are available for macOS, Linux, and Windows. Homebrew is macOS-only; Linux and Windows users should download the matching GitHub Release archive.
+
+After extracting a macOS/Linux archive:
+
 ```bash
-xattr -d com.apple.quarantine ./hapi-server ./hapi
 chmod +x ./hapi-server
 chmod +x ./hapi
 sudo mv ./hapi-server /usr/local/bin/
 sudo mv ./hapi /usr/local/bin/
+```
+
+On macOS, unsigned binaries downloaded from a browser may show `"hapi" is damaged and can't be opened`. Clear the quarantine attribute on the extracted or installed binary:
+
+```bash
+xattr -dr com.apple.quarantine ./hapi
+sudo xattr -dr com.apple.quarantine /usr/local/bin/hapi
 ```
 </details>
 

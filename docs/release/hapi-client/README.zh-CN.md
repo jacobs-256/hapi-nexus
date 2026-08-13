@@ -6,6 +6,8 @@
 
 这个包适合安装在开发机、runner 机器或工作站上。Hub/Web 服务器由单独的 `hapi-server` 包提供。
 
+客户端 `hapi` 程序不包含 Hub/Web 服务器，也不会自动启动本地 Hub。要运行私有 Web 服务器，请安装单独的 `hapi-server` release 包，并执行 `hapi-server hub`。
+
 ## 包内容
 
 - `hapi` 或 `hapi.exe` - 客户端程序
@@ -27,6 +29,23 @@
 
 ## 安装
 
+macOS Homebrew:
+
+```bash
+brew install jacobs-256/hapi-nexus/hapi
+hapi --version
+```
+
+升级或卸载：
+
+```bash
+brew update
+brew upgrade hapi
+brew uninstall hapi
+```
+
+Homebrew 只安装客户端。它不会安装 `hapi-server`，也不会自动启动本地 Hub。
+
 Linux/macOS:
 
 ```bash
@@ -41,11 +60,31 @@ Windows PowerShell:
 .\hapi.exe --version
 ```
 
-macOS 浏览器下载后的隔离属性处理：
+macOS Gatekeeper 可能会对浏览器下载的未签名二进制文件提示 **“hapi”已损坏，无法打开**。这通常表示文件带有 quarantine 隔离属性，不一定是程序真的损坏。
+
+如果 `hapi` 还在解压后的下载目录中：
 
 ```bash
-xattr -d com.apple.quarantine ./hapi
+xattr -dr com.apple.quarantine ./hapi
 chmod +x ./hapi
+./hapi --version
+```
+
+如果已经移动到 `/usr/local/bin`：
+
+```bash
+sudo xattr -dr com.apple.quarantine /usr/local/bin/hapi
+sudo chmod +x /usr/local/bin/hapi
+hapi --version
+```
+
+如果安装到了其他位置，先查看实际路径，再清除该文件的隔离属性：
+
+```bash
+which hapi
+xattr -l "$(which hapi)"
+sudo xattr -dr com.apple.quarantine "$(which hapi)"
+hapi --version
 ```
 
 ## 连接到 Hub
@@ -282,6 +321,7 @@ hapi doctor clean
 遇到 HTTP 401/403 时，重点检查：
 
 - `HAPI_API_URL` 是否指向正确 Hub。
+- Hub 是否已通过单独的服务器端包启动：`hapi-server hub`。
 - `CLI_API_TOKEN` 是否为当前用户的个人 access token。
 - 当前用户是否有目标 machine/project 权限。
 - 反向代理需要的额外请求头是否已设置。
