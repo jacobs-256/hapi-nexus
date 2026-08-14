@@ -255,12 +255,6 @@ export class ApiClient {
         })
     }
 
-    async regenerateUserAccessToken(userId: number): Promise<RegenerateUserTokenResponse> {
-        return await this.request<RegenerateUserTokenResponse>(`/api/users/${encodeURIComponent(String(userId))}/token/regenerate`, {
-            method: 'POST'
-        })
-    }
-
     async bind(auth: { initData: string; accessToken: string }): Promise<AuthResponse> {
         const res = await fetch(this.buildUrl('/api/bind'), {
             method: 'POST',

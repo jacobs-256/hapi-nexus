@@ -3,53 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApiClient } from '@/api/client'
 import type { EnterpriseUser, UserRole } from '@/types/api'
 import { useAppContext } from '@/lib/app-context'
-import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { queryKeys } from '@/lib/query-keys'
 import { useTranslation } from '@/lib/use-translation'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
-const ACCESS_TOKEN_PREFIX = 'hapi_access_token::'
 const USER_ROLES: UserRole[] = ['user', 'admin']
+const USER_GRID_TEMPLATE = 'minmax(150px,1.2fr) minmax(150px,1fr) minmax(96px,0.65fr) minmax(105px,0.65fr) minmax(220px,1.45fr) minmax(150px,0.9fr)'
 
-function rememberAccessToken(baseUrl: string, accessToken: string): void {
-    try {
-        localStorage.setItem(`${ACCESS_TOKEN_PREFIX}${baseUrl}`, accessToken)
-    } catch {
-    }
-}
-
-function RoleBadge(props: { role: UserRole }) {
-    const { t } = useTranslation()
-    return (
-        <span className="rounded-full bg-[var(--app-subtle-bg)] px-2 py-0.5 text-xs font-medium text-[var(--app-hint)]">
-            {t(`settings.users.role.${props.role}`)}
-        </span>
-    )
-}
-
-function TokenField(props: { accessToken: string | null | undefined }) {
-    const { t } = useTranslation()
-    const { copied, copy } = useCopyToClipboard()
-    const token = props.accessToken ?? ''
-    return (
-        <div className="flex min-w-0 items-center gap-2">
-            <input
-                readOnly
-                value={token}
-                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-1.5 font-mono text-[11px] text-[var(--app-fg)] outline-none"
-            />
-            <button
-                type="button"
-                onClick={() => void copy(token)}
-                disabled={!token}
-                className="shrink-0 rounded border border-[var(--app-border)] px-2 py-1.5 text-xs text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-            >
-                {copied ? t('settings.users.copied') : t('settings.users.copy')}
-            </button>
-        </div>
-    )
-}
 
 function CreateUserForm(props: { api: ApiClient }) {
     const { t } = useTranslation()
@@ -144,7 +105,6 @@ function CreateUserForm(props: { api: ApiClient }) {
 
 function UserRow(props: {
     api: ApiClient
-    baseUrl: string
     currentUserId: number
     currentUserPlatform?: string
     user: EnterpriseUser
@@ -189,22 +149,12 @@ function UserRow(props: {
         onSuccess: invalidateUsers
     })
 
-    const regenerateMutation = useMutation({
-        mutationFn: async () => await props.api.regenerateUserAccessToken(props.user.id),
-        onSuccess: (response) => {
-            if (isSelf) {
-                rememberAccessToken(props.baseUrl, response.accessToken)
-            }
-            invalidateUsers()
-        }
-    })
-
-    const rowError = updateMutation.error || resetPasswordMutation.error || regenerateMutation.error
+    const rowError = updateMutation.error || resetPasswordMutation.error
 
     return (
-        <div className="space-y-3 px-3 py-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <div className="min-w-0 flex-1">
+        <div className="border-t border-[var(--app-divider)] first:border-t-0">
+            <div className="grid items-center gap-2 px-3 py-3" style={{ gridTemplateColumns: USER_GRID_TEMPLATE }}>
+                <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-[var(--app-fg)]">
                         {props.user.displayName || props.user.username || props.user.platformUserId}
                     </div>
@@ -212,98 +162,87 @@ function UserRow(props: {
                         #{props.user.id} · {props.user.platform} · {props.user.namespace}
                     </div>
                 </div>
-                <RoleBadge role={props.user.role} />
-                {props.user.disabledAt !== null ? (
-                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-                        {t('settings.users.disabled')}
-                    </span>
-                ) : null}
-                {showDeleteUser ? (
-                    <button
-                        type="button"
-                        onClick={() => setDeleteDialogOpen(true)}
-                        disabled={isSelf || deleteMutation.isPending}
-                        className="shrink-0 rounded-md border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
-                    >
-                        {deleteMutation.isPending ? t('settings.users.delete.deleting') : t('settings.users.delete.action')}
-                    </button>
-                ) : null}
-            </div>
 
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                 <input
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                     disabled={isOwner || updateMutation.isPending}
                     placeholder={t('settings.users.displayName')}
+                    aria-label={`${t('settings.users.displayName')}: ${userLabel}`}
                     className="min-w-0 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
                 />
+
                 <select
                     value={props.user.role}
                     onChange={(event) => updateMutation.mutate({ role: event.target.value as UserRole })}
                     disabled={isOwner || isSelf || updateMutation.isPending}
                     className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                    aria-label={t('settings.users.roleLabel')}
+                    aria-label={`${t('settings.users.roleLabel')}: ${userLabel}`}
                 >
                     {USER_ROLES.map((value) => (
                         <option key={value} value={value}>{t(`settings.users.role.${value}`)}</option>
                     ))}
                 </select>
-                <button
-                    type="button"
-                    onClick={() => updateMutation.mutate({ displayName: displayName.trim() || null })}
-                    disabled={isOwner || updateMutation.isPending}
-                    className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-                >
-                    {updateMutation.isPending ? t('settings.users.saving') : t('settings.users.save')}
-                </button>
+
+                <label className="inline-flex min-w-0 items-center gap-2 text-sm text-[var(--app-fg)]">
+                    <input
+                        type="checkbox"
+                        checked={props.user.disabledAt === null}
+                        onChange={(event) => updateMutation.mutate({ disabled: !event.target.checked })}
+                        disabled={isOwner || isSelf || updateMutation.isPending}
+                        className="h-4 w-4 rounded border-[var(--app-border)]"
+                        aria-label={`${t('settings.users.columns.status')}: ${userLabel}`}
+                    />
+                </label>
+
+                {canManageLocalSecret ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            placeholder={t('settings.users.newPassword')}
+                            autoComplete="new-password"
+                            disabled={resetPasswordMutation.isPending}
+                            className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => resetPasswordMutation.mutate()}
+                            disabled={resetPasswordMutation.isPending || password.length < 8}
+                            className="shrink-0 whitespace-nowrap rounded-md border border-[var(--app-border)] px-2.5 py-2 text-xs font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                        >
+                            {resetPasswordMutation.isPending ? t('settings.users.password.saving') : t('settings.users.password.reset')}
+                        </button>
+                    </div>
+                ) : (
+                    <div className="text-sm text-[var(--app-hint)]">—</div>
+                )}
+
+                <div className="flex flex-nowrap items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={() => updateMutation.mutate({ displayName: displayName.trim() || null })}
+                        disabled={isOwner || updateMutation.isPending}
+                        className="whitespace-nowrap rounded-md border border-[var(--app-border)] px-2.5 py-2 text-xs font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                    >
+                        {updateMutation.isPending ? t('settings.users.saving') : t('settings.users.save')}
+                    </button>
+                    {showDeleteUser ? (
+                        <button
+                            type="button"
+                            onClick={() => setDeleteDialogOpen(true)}
+                            disabled={isSelf || deleteMutation.isPending}
+                            className="whitespace-nowrap rounded-md border border-red-500/30 px-2.5 py-2 text-xs font-medium text-red-600 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
+                        >
+                            {deleteMutation.isPending ? t('settings.users.delete.deleting') : t('settings.users.delete.action')}
+                        </button>
+                    ) : null}
+                </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-[var(--app-fg)]">
-                <input
-                    type="checkbox"
-                    checked={props.user.disabledAt !== null}
-                    onChange={(event) => updateMutation.mutate({ disabled: event.target.checked })}
-                    disabled={isOwner || isSelf || updateMutation.isPending}
-                    className="h-4 w-4 rounded border-[var(--app-border)]"
-                />
-                {t('settings.users.disableAccount')}
-            </label>
-
-            <TokenField accessToken={props.user.accessToken} />
-
-            {canManageLocalSecret ? (
-                <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-                    <input
-                        type="password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder={t('settings.users.newPassword')}
-                        autoComplete="new-password"
-                        disabled={resetPasswordMutation.isPending}
-                        className="min-w-0 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                    />
-                    <button
-                        type="button"
-                        onClick={() => resetPasswordMutation.mutate()}
-                        disabled={resetPasswordMutation.isPending || password.length < 8}
-                        className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-                    >
-                        {resetPasswordMutation.isPending ? t('settings.users.password.saving') : t('settings.users.password.reset')}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => regenerateMutation.mutate()}
-                        disabled={regenerateMutation.isPending}
-                        className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-                    >
-                        {regenerateMutation.isPending ? t('settings.users.token.regenerating') : t('settings.users.token.regenerate')}
-                    </button>
-                </div>
-            ) : null}
-
             {rowError ? (
-                <div className="text-xs text-red-600">
+                <div className="px-3 pb-3 text-xs text-red-600">
                     {rowError instanceof Error ? rowError.message : t('settings.users.update.error')}
                 </div>
             ) : null}
@@ -325,9 +264,44 @@ function UserRow(props: {
     )
 }
 
+function UsersGrid(props: {
+    api: ApiClient
+    currentUserId: number
+    currentUserPlatform?: string
+    users: EnterpriseUser[]
+}) {
+    const { t } = useTranslation()
+    return (
+        <div className="overflow-x-auto">
+            <div className="min-w-[900px]">
+                <div
+                    className="grid items-center gap-2 bg-[var(--app-subtle-bg)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--app-hint)]"
+                    style={{ gridTemplateColumns: USER_GRID_TEMPLATE }}
+                >
+                    <div>{t('settings.users.columns.user')}</div>
+                    <div>{t('settings.users.columns.displayName')}</div>
+                    <div>{t('settings.users.columns.role')}</div>
+                    <div>{t('settings.users.columns.status')}</div>
+                    <div>{t('settings.users.columns.security')}</div>
+                    <div className="text-right">{t('settings.users.columns.actions')}</div>
+                </div>
+                {props.users.map((account) => (
+                    <UserRow
+                        key={`${account.platform}:${account.platformUserId}`}
+                        api={props.api}
+                        currentUserId={props.currentUserId}
+                        currentUserPlatform={props.currentUserPlatform}
+                        user={account}
+                    />
+                ))}
+            </div>
+        </div>
+    )
+}
+
 export default function SettingsUsersPage() {
     const { t } = useTranslation()
-    const { api, baseUrl, user } = useAppContext()
+    const { api, user } = useAppContext()
     const usersQuery = useQuery({
         queryKey: queryKeys.users,
         queryFn: async () => await api.getUsers(),
@@ -362,16 +336,12 @@ export default function SettingsUsersPage() {
                 ) : users.length === 0 ? (
                     <div className="px-3 py-3 text-sm text-[var(--app-hint)]">{t('settings.users.empty')}</div>
                 ) : (
-                    users.map((account) => (
-                        <UserRow
-                            key={`${account.platform}:${account.platformUserId}`}
-                            api={api}
-                            baseUrl={baseUrl}
-                            currentUserId={user.id}
-                            currentUserPlatform={user.platform}
-                            user={account}
-                        />
-                    ))
+                    <UsersGrid
+                        api={api}
+                        currentUserId={user.id}
+                        currentUserPlatform={user.platform}
+                        users={users}
+                    />
                 )}
             </SettingsSection>
         </SettingsPageContent>

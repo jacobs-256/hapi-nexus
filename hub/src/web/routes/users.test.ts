@@ -29,7 +29,7 @@ function createApp(
 }
 
 describe('users routes', () => {
-    it('lets the owner create local users and list their access tokens', async () => {
+    it('lets the owner create local users without listing other users access tokens', async () => {
         const store = new Store(':memory:')
         try {
             const app = createApp(store, OWNER_ID)
@@ -46,17 +46,52 @@ describe('users routes', () => {
             })
 
             expect(createResponse.status).toBe(201)
-            const created = await createResponse.json() as { user: { id: number; accessToken: string; role: string } }
-            expect(created.user.accessToken).toMatch(/^hapi_user_/)
+            const created = await createResponse.json() as { user: { id: number; accessToken?: string; role: string } }
+            expect(created.user).not.toHaveProperty('accessToken')
             expect(created.user.role).toBe('admin')
 
             const listResponse = await app.request('/api/users')
             expect(listResponse.status).toBe(200)
-            const body = await listResponse.json() as { users: Array<{ platform: string; username: string | null; accessToken: string | null }> }
-            expect(body.users).toEqual([
-                expect.objectContaining({ platform: 'owner', accessToken: 'owner-token' }),
-                expect.objectContaining({ platform: 'local', username: 'alice', accessToken: created.user.accessToken })
-            ])
+            const body = await listResponse.json() as { users: Array<{ platform: string; username: string | null; accessToken?: string | null }> }
+            const owner = body.users.find((user) => user.platform === 'owner')
+            const alice = body.users.find((user) => user.platform === 'local' && user.username === 'alice')
+            expect(owner).toEqual(expect.objectContaining({ platform: 'owner', accessToken: 'owner-token' }))
+            expect(alice).toEqual(expect.objectContaining({ platform: 'local', username: 'alice' }))
+            expect(alice).not.toHaveProperty('accessToken')
+        } finally {
+            store.close()
+        }
+    })
+
+    it('lets local administrators see only their own access token in the user list', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                accessToken: 'hapi_user_admin',
+                role: 'admin'
+            })
+            store.users.createLocalUser({
+                namespace: 'default',
+                username: 'dev',
+                passwordHash: 'hash-dev',
+                accessToken: 'hapi_user_dev',
+                role: 'user'
+            })
+            const app = createApp(store, admin.id)
+
+            const response = await app.request('/api/users')
+
+            expect(response.status).toBe(200)
+            const body = await response.json() as { users: Array<{ platform: string; username: string | null; accessToken?: string | null }> }
+            const owner = body.users.find((user) => user.platform === 'owner')
+            const self = body.users.find((user) => user.platform === 'local' && user.username === 'admin')
+            const dev = body.users.find((user) => user.platform === 'local' && user.username === 'dev')
+            expect(owner).not.toHaveProperty('accessToken')
+            expect(self).toEqual(expect.objectContaining({ accessToken: 'hapi_user_admin' }))
+            expect(dev).not.toHaveProperty('accessToken')
         } finally {
             store.close()
         }
@@ -110,6 +145,34 @@ describe('users routes', () => {
             expect(regenerated.accessToken).toMatch(/^hapi_user_/)
             expect(regenerated.accessToken).not.toBe('hapi_user_dev')
             expect(store.users.getUserByAccessToken(regenerated.accessToken)?.id).toBe(user.id)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('does not expose token regeneration from the user management API', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'admin',
+                passwordHash: 'hash-admin',
+                accessToken: 'hapi_user_admin',
+                role: 'admin'
+            })
+            const user = store.users.createLocalUser({
+                namespace: 'default',
+                username: 'dev',
+                passwordHash: 'hash-dev',
+                accessToken: 'hapi_user_dev',
+                role: 'user'
+            })
+            const app = createApp(store, admin.id)
+
+            const response = await app.request(`/api/users/${user.id}/token/regenerate`, { method: 'POST' })
+
+            expect(response.status).toBe(404)
+            expect(store.users.getUserByAccessToken('hapi_user_dev')?.id).toBe(user.id)
         } finally {
             store.close()
         }

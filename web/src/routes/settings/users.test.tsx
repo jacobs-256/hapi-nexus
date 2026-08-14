@@ -10,8 +10,7 @@ const apiMock = {
     createUser: vi.fn(),
     updateUser: vi.fn(),
     deleteUser: vi.fn(),
-    resetUserPassword: vi.fn(),
-    regenerateUserAccessToken: vi.fn()
+    resetUserPassword: vi.fn()
 }
 
 let currentUser: AuthResponse['user'] = {
@@ -73,6 +72,8 @@ describe('SettingsUsersPage', () => {
         renderPage()
 
         expect(await screen.findByText('Alice')).toBeInTheDocument()
+        expect(screen.getByText('Password')).toBeInTheDocument()
+        expect(screen.getByText('Actions')).toBeInTheDocument()
 
         fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'bob' } })
         fireEvent.change(screen.getByPlaceholderText('Password (8+ characters)'), { target: { value: 'correct-password' } })
@@ -106,6 +107,35 @@ describe('SettingsUsersPage', () => {
 
         expect(await screen.findByText('Jacobs')).toBeInTheDocument()
         expect(screen.getByRole('button', { name: 'Delete user' })).toBeEnabled()
+    })
+
+    it('uses the status checkbox as enabled state', async () => {
+        renderPage()
+
+        expect(await screen.findByText('Alice')).toBeInTheDocument()
+        const status = screen.getByRole('checkbox', { name: 'Status: Alice' })
+        expect(status).toBeChecked()
+
+        fireEvent.click(status)
+
+        await waitFor(() => expect(apiMock.updateUser).toHaveBeenCalledWith(2, { disabled: true }))
+    })
+
+    it('does not render other users access tokens in the management list', async () => {
+        renderPage()
+
+        expect(await screen.findByText('Alice')).toBeInTheDocument()
+        expect(screen.queryByDisplayValue('hapi_user_alice')).not.toBeInTheDocument()
+        expect(screen.queryByDisplayValue('Hidden — only this user can view their token.')).not.toBeInTheDocument()
+    })
+
+    it('does not render the current users own access token in the management list', async () => {
+        currentUser = { id: 2, username: 'alice', role: 'admin', platform: 'local' }
+
+        renderPage()
+
+        expect(await screen.findByText('Alice')).toBeInTheDocument()
+        expect(screen.queryByDisplayValue('hapi_user_alice')).not.toBeInTheDocument()
     })
 
     it('blocks non-admin users from the management list', () => {

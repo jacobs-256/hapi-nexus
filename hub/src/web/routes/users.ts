@@ -43,6 +43,11 @@ function toEnterpriseUser(user: StoredUser, includeToken: boolean): EnterpriseUs
     }
 }
 
+
+function canViewStoredUserAccessToken(user: StoredUser, actorUserId: number, authPlatform?: string): boolean {
+    return user.platform === 'local' && user.id === actorUserId && authPlatform === 'local'
+}
+
 function toOwnerEnterpriseUser(ownerId: number, namespace: string, includeToken: boolean): EnterpriseUser {
     return {
         id: ownerId,
@@ -203,13 +208,17 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Admin access required' }, 403)
         }
 
+        const authPlatform = c.get('authPlatform')
         const ownerId = await getOwnerUserId()
+        const actorIsOwner = await isOwnerAuth(userId, authPlatform, getOwnerUserId)
         const users = [
             {
                 ...toOwnerEnterpriseUser(ownerId, namespace, false),
-                accessToken: getOwnerAccessToken(namespace)
+                ...(actorIsOwner ? { accessToken: getOwnerAccessToken(namespace) } : {})
             },
-            ...store.users.listUsersByNamespace(namespace).map((user) => toEnterpriseUser(user, true))
+            ...store.users.listUsersByNamespace(namespace).map((user) => (
+                toEnterpriseUser(user, canViewStoredUserAccessToken(user, userId, authPlatform))
+            ))
         ]
         return c.json({ users })
     })
@@ -240,7 +249,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
                 displayName: parsed.data.displayName ?? null,
                 role: parsed.data.role
             })
-            return c.json({ user: toEnterpriseUser(user, true) }, 201)
+            return c.json({ user: toEnterpriseUser(user, false) }, 201)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to create user' }, 400)
         }
@@ -286,7 +295,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'User not found' }, 404)
         }
 
-        return c.json({ user: toEnterpriseUser(user, true) })
+        return c.json({ user: toEnterpriseUser(user, canViewStoredUserAccessToken(user, actorUserId, c.get('authPlatform'))) })
     })
 
     app.delete('/users/:id', async (c) => {
@@ -348,37 +357,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Local user not found' }, 404)
         }
 
-        return c.json({ user: toEnterpriseUser(user, true) })
-    })
-
-    app.post('/users/:id/token/regenerate', async (c) => {
-        const namespace = c.get('namespace')
-        const actorUserId = c.get('userId')
-        const targetUserId = Number(c.req.param('id'))
-        if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
-            return c.json({ error: 'Invalid user id' }, 400)
-        }
-
-        const isAdmin = await isEnterpriseAdmin(store, namespace, actorUserId, getOwnerUserId, c.get('authPlatform'))
-        if (!isAdmin && actorUserId !== targetUserId) {
-            return c.json({ error: 'Admin access required' }, 403)
-        }
-
-        const ownerId = await getOwnerUserId()
-        const target = store.users.getUserById(targetUserId, namespace)
-        if (!target && targetUserId === ownerId) {
-            return c.json({ error: 'Hub owner token is CLI_API_TOKEN. Regenerate it from hub settings.' }, 400)
-        }
-
-        const user = store.users.regenerateUserAccessToken(targetUserId, namespace)
-        if (!user) {
-            return c.json({ error: 'Local user not found' }, 404)
-        }
-
-        return c.json({
-            user: toEnterpriseUser(user, true),
-            accessToken: user.accessToken ?? ''
-        })
+        return c.json({ user: toEnterpriseUser(user, canViewStoredUserAccessToken(user, actorUserId, c.get('authPlatform'))) })
     })
 
     return app
