@@ -116,6 +116,7 @@ Common paths:
 | macOS Intel | `./cli/dist-exe/bun-darwin-x64/hapi-server` | `./cli/dist-exe/bun-darwin-x64/hapi` |
 | Linux x64 | `./cli/dist-exe/bun-linux-x64-baseline/hapi-server` | `./cli/dist-exe/bun-linux-x64-baseline/hapi` |
 | Linux ARM64 | `./cli/dist-exe/bun-linux-arm64/hapi-server` | `./cli/dist-exe/bun-linux-arm64/hapi` |
+| Windows x64 | `.\cli\dist-exe\bun-windows-x64\hapi-server.exe` | `.\cli\dist-exe\bun-windows-x64\hapi.exe` |
 
 Set helper variables before running the examples:
 
@@ -144,7 +145,7 @@ GitHub Releases publish separate archives for the server and client binaries:
 - `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - install on the hub server
 - `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - install on runner/client machines
 
-Client releases are available for macOS, Linux, and Windows. Homebrew is macOS-only; Linux and Windows users should download the matching GitHub Release archive.
+Client releases are available for macOS, Linux, and Windows. The Windows x64 client archive is named `hapi-nexus-vX.Y.Z-hapi-windows-amd64.zip`. Homebrew is macOS-only; Linux and Windows users should download the matching GitHub Release archive.
 
 After extracting a macOS/Linux archive:
 

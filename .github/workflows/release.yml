@@ -302,16 +302,30 @@ jobs:
                   sha256sum * > checksums.txt
                   ls -lh
 
-            - name: Verify Homebrew client artifacts
+            - name: Verify release artifacts
               run: |
                   set -euo pipefail
                   cd cli/release-artifacts
                   tag="${{ needs.prepare.outputs.tag }}"
-                  test -f "hapi-nexus-${tag}-hapi-darwin-arm64.tar.gz"
-                  test -f "hapi-nexus-${tag}-hapi-darwin-amd64.tar.gz"
                   test -f checksums.txt
-                  grep -q "  hapi-nexus-${tag}-hapi-darwin-arm64.tar.gz$" checksums.txt
-                  grep -q "  hapi-nexus-${tag}-hapi-darwin-amd64.tar.gz$" checksums.txt
+
+                  expected_assets=(
+                      "hapi-nexus-${tag}-hapi-darwin-arm64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-darwin-amd64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-linux-arm64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-linux-amd64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-windows-amd64.zip"
+                      "hapi-nexus-${tag}-hapi-server-darwin-arm64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-server-darwin-amd64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-server-linux-arm64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-server-linux-amd64.tar.gz"
+                      "hapi-nexus-${tag}-hapi-server-windows-amd64.zip"
+                  )
+
+                  for asset in "${expected_assets[@]}"; do
+                      test -f "$asset"
+                      grep -q "  ${asset}$" checksums.txt
+                  done
 
             - name: Upload combined release artifacts
               uses: actions/upload-artifact@v4

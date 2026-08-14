@@ -116,6 +116,7 @@ bun run build:single-exe
 | macOS Intel | `./cli/dist-exe/bun-darwin-x64/hapi-server` | `./cli/dist-exe/bun-darwin-x64/hapi` |
 | Linux x64 | `./cli/dist-exe/bun-linux-x64-baseline/hapi-server` | `./cli/dist-exe/bun-linux-x64-baseline/hapi` |
 | Linux ARM64 | `./cli/dist-exe/bun-linux-arm64/hapi-server` | `./cli/dist-exe/bun-linux-arm64/hapi` |
+| Windows x64 | `.\cli\dist-exe\bun-windows-x64\hapi-server.exe` | `.\cli\dist-exe\bun-windows-x64\hapi.exe` |
 
 运行示例前，可以先设置辅助变量：
 
@@ -144,7 +145,7 @@ GitHub Releases 会把服务器端和客户端分别打包发布：
 - `hapi-nexus-vX.Y.Z-hapi-server-<platform>.tar.gz` / `.zip` - 安装到 Hub 服务器
 - `hapi-nexus-vX.Y.Z-hapi-<platform>.tar.gz` / `.zip` - 安装到 runner / 客户端机器
 
-客户端 release 覆盖 macOS、Linux 和 Windows。Homebrew 只支持 macOS；Linux 和 Windows 用户请下载匹配平台的 GitHub Release 压缩包。
+客户端 release 覆盖 macOS、Linux 和 Windows。Windows x64 客户端压缩包名称为 `hapi-nexus-vX.Y.Z-hapi-windows-amd64.zip`。Homebrew 只支持 macOS；Linux 和 Windows 用户请下载匹配平台的 GitHub Release 压缩包。
 
 解压 macOS/Linux 压缩包后：
 
