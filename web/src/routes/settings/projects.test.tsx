@@ -186,6 +186,8 @@ describe('SettingsProjectsPage', () => {
     it('updates and removes members', async () => {
         renderPage()
 
+        fireEvent.click(screen.getByRole('button', { name: 'View details for Shared Project' }))
+
         fireEvent.change(screen.getByRole('combobox', { name: 'Change role for user 2' }), {
             target: { value: 'viewer' }
         })
@@ -201,6 +203,7 @@ describe('SettingsProjectsPage', () => {
     it('adds multiple direct members from searchable users', async () => {
         renderPage()
 
+        fireEvent.click(screen.getByRole('button', { name: 'Add member to Shared Project' }))
         fireEvent.click(screen.getByRole('button', { name: 'Select users' }))
         const search = await screen.findByPlaceholderText('Search username or display name')
 
@@ -226,9 +229,11 @@ describe('SettingsProjectsPage', () => {
     it('removes project directories and creates invites', async () => {
         renderPage()
 
+        fireEvent.click(screen.getByRole('button', { name: 'View details for Shared Project' }))
         fireEvent.click(screen.getByRole('button', { name: 'Remove project directory /srv/projects/app' }))
         await waitFor(() => expect(apiMock.removeProjectWorkspace).toHaveBeenCalledWith('project-1', 'workspace-1'))
 
+        fireEvent.click(screen.getByRole('button', { name: 'Create invite for Shared Project' }))
         fireEvent.click(screen.getByRole('button', { name: 'Create link' }))
         await waitFor(() => expect(apiMock.createProjectInvite).toHaveBeenCalledWith('project-1', { role: 'editor' }))
         expect(screen.getByDisplayValue(/invite-token/)).toBeTruthy()
@@ -237,9 +242,10 @@ describe('SettingsProjectsPage', () => {
     it('selects a project directory from the machine browser', async () => {
         renderPage()
 
+        fireEvent.click(screen.getByRole('button', { name: 'Add directory to Shared Project' }))
         let browseButton: HTMLElement | null = null
         await waitFor(() => {
-            browseButton = screen.getAllByRole('button', { name: 'Browse project directory' })[1]
+            browseButton = screen.getAllByRole('button', { name: 'Browse project directory' }).at(-1) ?? null
             expect(browseButton?.hasAttribute('disabled')).toBe(false)
         })
         fireEvent.click(browseButton!)

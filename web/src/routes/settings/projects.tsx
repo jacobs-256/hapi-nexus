@@ -15,6 +15,9 @@ import { WorkspaceBrowser } from '@/components/WorkspaceBrowser'
 
 const MEMBER_ROLES: ProjectRole[] = ['viewer', 'editor', 'admin', 'owner']
 const INVITE_ROLES: ProjectRole[] = ['editor', 'viewer', 'admin']
+const PROJECT_GRID_TEMPLATE = 'minmax(220px,1.7fr) minmax(110px,0.7fr) minmax(110px,0.65fr) minmax(110px,0.65fr) minmax(390px,2fr)'
+
+type ProjectPanel = 'details' | 'workspace' | 'member' | 'invite' | null
 
 function canManageProject(role: ProjectRole): boolean {
     return role === 'owner' || role === 'admin'
@@ -311,18 +314,22 @@ function WorkspaceList(props: {
         return <div className="text-xs text-[var(--app-hint)]">{t('settings.projects.workspaces.empty')}</div>
     }
     return (
-        <div className="space-y-1">
+        <div className="overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] divide-y divide-[var(--app-divider)]">
             {props.project.workspaces.map((workspace) => {
                 const machine = props.machinesById.get(workspace.machineId)
                 return (
-                    <div key={workspace.id} className="flex min-w-0 items-center gap-2 rounded-md bg-[var(--app-subtle-bg)] px-2 py-1.5">
-                        <div className="min-w-0 flex-1">
-                            <div className="truncate text-xs font-medium text-[var(--app-fg)]">
+                    <div key={workspace.id} className="grid min-w-0 gap-2 px-2.5 py-2 sm:grid-cols-[minmax(8rem,0.45fr)_minmax(0,1fr)_auto] sm:items-center">
+                        <div className="min-w-0">
+                            <div className="truncate text-xs font-semibold text-[var(--app-fg)]">
                                 {machine ? getMachineTitle(machine) : workspace.machineId}
                             </div>
-                            <div className="truncate text-xs text-[var(--app-hint)]" title={workspace.rootPath}>
-                                {workspace.rootPath}
-                            </div>
+                            <div className="truncate text-[11px] text-[var(--app-hint)]">{workspace.machineId}</div>
+                        </div>
+                        <div
+                            className="min-w-0 truncate rounded bg-[var(--app-subtle-bg)] px-2 py-1.5 font-mono text-xs text-[var(--app-fg)]"
+                            title={workspace.rootPath}
+                        >
+                            {workspace.rootPath}
                         </div>
                         {props.canManage ? (
                             <button
@@ -360,7 +367,7 @@ function MemberList(props: {
     const actorIsOwner = props.project.role === 'owner'
     const ownerCount = props.project.members.filter((member) => member.role === 'owner').length
     return (
-        <div className="space-y-1">
+        <div className="overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] divide-y divide-[var(--app-divider)]">
             {props.project.members.map((member) => {
                 const user = props.usersById.get(member.userId)
                 const label = user ? getUserLabel(user) : t('settings.projects.userId', { id: member.userId })
@@ -374,10 +381,10 @@ function MemberList(props: {
                 return (
                     <div
                         key={`${member.projectId}:${member.userId}`}
-                        className="flex min-w-0 items-center gap-2 rounded-md bg-[var(--app-subtle-bg)] px-2 py-1.5"
+                        className="grid min-w-0 gap-2 px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center"
                     >
                         <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs text-[var(--app-fg)]">{label}</span>
+                            <span className="block truncate text-xs font-semibold text-[var(--app-fg)]">{label}</span>
                             {user ? (
                                 <span className="block truncate text-xs text-[var(--app-hint)]">
                                     {[username ? `@${username}` : null, `ID ${member.userId}`].filter(Boolean).join(' · ')}
@@ -536,6 +543,7 @@ function ProjectRow(props: {
     const { t } = useTranslation()
     const queryClient = useQueryClient()
     const { copied, copy } = useCopyToClipboard()
+    const [panel, setPanel] = useState<ProjectPanel>(null)
     const [editingName, setEditingName] = useState(false)
     const [nameDraft, setNameDraft] = useState(props.project.name)
     const [workspaceMachineId, setWorkspaceMachineId] = useState('')
@@ -556,7 +564,7 @@ function ProjectRow(props: {
     const usersQuery = useQuery({
         queryKey: queryKeys.projectMemberCandidates(props.project.id),
         queryFn: async () => await props.api.getProjectMemberCandidates(props.project.id),
-        enabled: manageable
+        enabled: manageable && (panel === 'details' || panel === 'member')
     })
     const users = usersQuery.data?.users ?? []
     const usersById = useMemo(
@@ -697,6 +705,11 @@ function ProjectRow(props: {
         renameMutation.mutate(next)
     }
 
+    function togglePanel(next: Exclude<ProjectPanel, null>) {
+        setPanel((current) => current === next ? null : next)
+        setEditingName(false)
+    }
+
     const removingWorkspaceId = removeWorkspaceMutation.isPending
         ? removeWorkspaceMutation.variables?.id ?? null
         : null
@@ -707,10 +720,14 @@ function ProjectRow(props: {
         ? removeMemberMutation.variables?.userId ?? null
         : null
 
+    const panelButtonClass = (active: boolean): string => `whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${active
+        ? 'border-[var(--app-link)] bg-[var(--app-subtle-bg)] text-[var(--app-link)]'
+        : 'border-[var(--app-border)] text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]'}`
+
     return (
-        <div className="space-y-3 px-3 py-3">
-            <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
+        <div className="border-t border-[var(--app-divider)] first:border-t-0">
+            <div className="grid min-w-[940px] items-center gap-3 px-3 py-3" style={{ gridTemplateColumns: PROJECT_GRID_TEMPLATE }}>
+                <div className="min-w-0">
                     {editingName ? (
                         <form
                             className="flex min-w-0 flex-wrap items-center gap-2"
@@ -725,7 +742,7 @@ function ProjectRow(props: {
                                 onChange={(event) => setNameDraft(event.target.value)}
                                 disabled={renameMutation.isPending}
                                 aria-label={t('settings.projects.rename', { name: props.project.name })}
-                                className="min-w-[12rem] flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-1.5 text-sm text-[var(--app-fg)] outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                                className="min-w-[10rem] flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-1.5 text-sm text-[var(--app-fg)] outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
                             />
                             <button
                                 type="submit"
@@ -745,173 +762,245 @@ function ProjectRow(props: {
                             >
                                 {t('settings.projects.rename.cancel')}
                             </button>
-                            <RoleBadge role={props.project.role} />
                         </form>
                     ) : (
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <div className="truncate text-sm font-semibold text-[var(--app-fg)]">{props.project.name}</div>
-                            <RoleBadge role={props.project.role} />
-                            {manageable ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setEditingName(true)}
-                                    aria-label={t('settings.projects.rename', { name: props.project.name })}
-                                    className="rounded border border-[var(--app-border)] px-2 py-1 text-xs text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]"
-                                >
-                                    {t('settings.projects.rename.action')}
-                                </button>
+                        <button
+                            type="button"
+                            onClick={() => togglePanel('details')}
+                            className="block min-w-0 text-left"
+                        >
+                            <span className="block truncate text-sm font-semibold text-[var(--app-fg)] hover:text-[var(--app-link)]">{props.project.name}</span>
+                            {props.project.repoUrl ? (
+                                <span className="mt-0.5 block truncate text-xs text-[var(--app-hint)]">{props.project.repoUrl}</span>
                             ) : null}
-                        </div>
+                        </button>
                     )}
                     {renameMutation.error ? (
                         <div className="mt-1 text-xs text-red-600">
                             {renameMutation.error instanceof Error ? renameMutation.error.message : t('settings.projects.rename.error')}
                         </div>
                     ) : null}
-                    {props.project.repoUrl ? (
-                        <div className="mt-0.5 truncate text-xs text-[var(--app-hint)]">{props.project.repoUrl}</div>
+                </div>
+
+                <div className="min-w-0">
+                    <RoleBadge role={props.project.role} />
+                </div>
+
+                <div className="text-sm font-medium text-[var(--app-fg)]">{props.project.workspaces.length}</div>
+                <div className="text-sm font-medium text-[var(--app-fg)]">{props.project.members.length}</div>
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={() => togglePanel('details')}
+                        aria-expanded={panel === 'details'}
+                        aria-label={t('settings.projects.details.viewAria', { name: props.project.name })}
+                        className={panelButtonClass(panel === 'details')}
+                    >
+                        {panel === 'details' ? t('settings.projects.details.hide') : t('settings.projects.details.view')}
+                    </button>
+                    {manageable ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setEditingName(true)
+                                    setPanel(null)
+                                }}
+                                aria-label={t('settings.projects.rename', { name: props.project.name })}
+                                className={panelButtonClass(false)}
+                            >
+                                {t('settings.projects.rename.action')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => togglePanel('workspace')}
+                                aria-expanded={panel === 'workspace'}
+                                aria-label={t('settings.projects.workspace.addAria', { name: props.project.name })}
+                                className={panelButtonClass(panel === 'workspace')}
+                            >
+                                {t('settings.projects.workspace.addShort')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => togglePanel('member')}
+                                aria-expanded={panel === 'member'}
+                                aria-label={t('settings.projects.member.addAria', { name: props.project.name })}
+                                className={panelButtonClass(panel === 'member')}
+                            >
+                                {t('settings.projects.member.addShort')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => togglePanel('invite')}
+                                aria-expanded={panel === 'invite'}
+                                aria-label={t('settings.projects.invite.createAria', { name: props.project.name })}
+                                className={panelButtonClass(panel === 'invite')}
+                            >
+                                {t('settings.projects.invite.createShort')}
+                            </button>
+                        </>
                     ) : null}
                 </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-                <div className="min-w-0">
-                    <div className="mb-1 text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.workspaces')}</div>
-                    <WorkspaceList
-                        project={props.project}
-                        machinesById={props.machinesById}
-                        canManage={manageable}
-                        removingWorkspaceId={removingWorkspaceId}
-                        onRemove={(workspace) => removeWorkspaceMutation.mutate(workspace)}
-                    />
-                    {removeWorkspaceMutation.error ? (
-                        <div className="mt-1 text-xs text-red-600">
-                            {removeWorkspaceMutation.error instanceof Error ? removeWorkspaceMutation.error.message : t('settings.projects.workspace.removeError')}
-                        </div>
-                    ) : null}
-                </div>
-                <div className="min-w-0">
-                    <div className="mb-1 text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.members')}</div>
-                    <MemberList
-                        project={props.project}
-                        usersById={usersById}
-                        canManage={manageable}
-                        updatingUserId={updatingUserId}
-                        removingUserId={removingUserId}
-                        onRoleChange={(userId, role) => updateMemberMutation.mutate({ userId, role })}
-                        onRemove={(member) => removeMemberMutation.mutate(member)}
-                    />
-                    {(updateMemberMutation.error || removeMemberMutation.error) ? (
-                        <div className="mt-1 text-xs text-red-600">
-                            {updateMemberMutation.error instanceof Error
-                                ? updateMemberMutation.error.message
-                                : removeMemberMutation.error instanceof Error
-                                    ? removeMemberMutation.error.message
-                                    : t('settings.projects.member.error')}
-                        </div>
-                    ) : null}
-                </div>
-            </div>
+            {panel === 'details' ? (
+                <div className="border-t border-[var(--app-divider)] bg-[var(--app-subtle-bg)] px-3 py-3">
+                    <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                        <section className="min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                                <h3 className="text-sm font-semibold text-[var(--app-fg)]">{t('settings.projects.workspaces')}</h3>
+                                <span className="text-xs text-[var(--app-hint)]">{props.project.workspaces.length}</span>
+                            </div>
+                            <WorkspaceList
+                                project={props.project}
+                                machinesById={props.machinesById}
+                                canManage={manageable}
+                                removingWorkspaceId={removingWorkspaceId}
+                                onRemove={(workspace) => removeWorkspaceMutation.mutate(workspace)}
+                            />
+                            {removeWorkspaceMutation.error ? (
+                                <div className="mt-2 text-xs text-red-600">
+                                    {removeWorkspaceMutation.error instanceof Error ? removeWorkspaceMutation.error.message : t('settings.projects.workspace.removeError')}
+                                </div>
+                            ) : null}
+                        </section>
 
-            {manageable ? (
-                <div className="grid gap-3 border-t border-[var(--app-divider)] pt-3 sm:grid-cols-2">
+                        <section className="min-w-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                                <h3 className="text-sm font-semibold text-[var(--app-fg)]">{t('settings.projects.members')}</h3>
+                                <span className="text-xs text-[var(--app-hint)]">{props.project.members.length}</span>
+                            </div>
+                            <MemberList
+                                project={props.project}
+                                usersById={usersById}
+                                canManage={manageable}
+                                updatingUserId={updatingUserId}
+                                removingUserId={removingUserId}
+                                onRoleChange={(userId, role) => updateMemberMutation.mutate({ userId, role })}
+                                onRemove={(member) => removeMemberMutation.mutate(member)}
+                            />
+                            {(updateMemberMutation.error || removeMemberMutation.error) ? (
+                                <div className="mt-2 text-xs text-red-600">
+                                    {updateMemberMutation.error instanceof Error
+                                        ? updateMemberMutation.error.message
+                                        : removeMemberMutation.error instanceof Error
+                                            ? removeMemberMutation.error.message
+                                            : t('settings.projects.member.error')}
+                                </div>
+                            ) : null}
+                        </section>
+                    </div>
+                </div>
+            ) : null}
+
+            {manageable && panel === 'workspace' ? (
+                <div className="border-t border-[var(--app-divider)] bg-[var(--app-subtle-bg)] px-3 py-3">
                     <form
-                        className="space-y-2"
+                        className="space-y-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-3"
                         onSubmit={(event) => {
                             event.preventDefault()
                             addWorkspaceMutation.mutate()
                         }}
                     >
-                        <div className="text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.workspace.add')}</div>
-                        <select
-                            value={workspaceMachineId}
-                            onChange={(event) => setWorkspaceMachineId(event.target.value)}
-                            disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
-                            className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                        >
-                            {props.machines.length === 0 ? (
-                                <option value="">{t('settings.projects.noMachines')}</option>
-                            ) : null}
-                            {props.machines.map((machine) => (
-                                <MachineOption key={machine.id} machine={machine} />
-                            ))}
-                        </select>
-                        <div className="flex gap-2">
-                            <input
-                                value={workspaceRoot}
-                                onChange={(event) => setWorkspaceRoot(event.target.value)}
+                        <div className="text-sm font-semibold text-[var(--app-fg)]">{t('settings.projects.workspace.add')}</div>
+                        <div className="grid gap-2 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1fr)_auto]">
+                            <select
+                                value={workspaceMachineId}
+                                onChange={(event) => setWorkspaceMachineId(event.target.value)}
                                 disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
-                                placeholder={t('settings.projects.workspace.rootPlaceholder')}
-                                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                            />
-                            <ProjectDirectoryPicker
-                                api={props.api}
-                                machine={selectedWorkspaceMachine}
-                                disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
-                                onChange={setWorkspaceRoot}
-                            />
+                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                            >
+                                {props.machines.length === 0 ? (
+                                    <option value="">{t('settings.projects.noMachines')}</option>
+                                ) : null}
+                                {props.machines.map((machine) => (
+                                    <MachineOption key={machine.id} machine={machine} />
+                                ))}
+                            </select>
+                            <div className="flex gap-2">
+                                <input
+                                    value={workspaceRoot}
+                                    onChange={(event) => setWorkspaceRoot(event.target.value)}
+                                    disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
+                                    placeholder={t('settings.projects.workspace.rootPlaceholder')}
+                                    className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                                />
+                                <ProjectDirectoryPicker
+                                    api={props.api}
+                                    machine={selectedWorkspaceMachine}
+                                    disabled={addWorkspaceMutation.isPending || props.machines.length === 0}
+                                    onChange={setWorkspaceRoot}
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={addWorkspaceMutation.isPending || !workspaceMachineId || !workspaceRoot.trim()}
+                                className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                            >
+                                {addWorkspaceMutation.isPending ? t('settings.projects.workspace.adding') : t('settings.projects.workspace.submit')}
+                            </button>
                         </div>
                         {addWorkspaceMutation.error ? (
                             <div className="text-xs text-red-600">
                                 {addWorkspaceMutation.error instanceof Error ? addWorkspaceMutation.error.message : t('settings.projects.workspace.error')}
                             </div>
                         ) : null}
-                        <button
-                            type="submit"
-                            disabled={addWorkspaceMutation.isPending || !workspaceMachineId || !workspaceRoot.trim()}
-                            className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-                        >
-                            {addWorkspaceMutation.isPending ? t('settings.projects.workspace.adding') : t('settings.projects.workspace.submit')}
-                        </button>
                     </form>
+                </div>
+            ) : null}
 
+            {manageable && panel === 'member' ? (
+                <div className="border-t border-[var(--app-divider)] bg-[var(--app-subtle-bg)] px-3 py-3">
                     <form
-                        className="space-y-2"
+                        className="space-y-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-3"
                         onSubmit={(event) => {
                             event.preventDefault()
                             addMemberMutation.mutate()
                         }}
                     >
-                        <div className="text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.member.add')}</div>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                            <div className="min-w-0 flex-1">
-                                <MemberUserSelect
-                                    users={users}
-                                    selectedUserIds={selectedMemberUserIds}
-                                    existingMemberIds={existingMemberIds}
-                                    onChange={setSelectedMemberUserIds}
-                                    disabled={addMemberMutation.isPending}
-                                    isLoading={usersQuery.isLoading}
-                                    error={usersError}
-                                />
-                            </div>
+                        <div className="text-sm font-semibold text-[var(--app-fg)]">{t('settings.projects.member.add')}</div>
+                        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_8rem_auto]">
+                            <MemberUserSelect
+                                users={users}
+                                selectedUserIds={selectedMemberUserIds}
+                                existingMemberIds={existingMemberIds}
+                                onChange={setSelectedMemberUserIds}
+                                disabled={addMemberMutation.isPending}
+                                isLoading={usersQuery.isLoading}
+                                error={usersError}
+                            />
                             <select
                                 value={memberRole}
                                 onChange={(event) => setMemberRole(event.target.value as ProjectRole)}
                                 disabled={addMemberMutation.isPending}
-                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50 sm:w-28"
+                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
                             >
                                 {memberRoleOptions.map((role) => (
                                     <option key={role} value={role}>{t(`settings.projects.role.${role}`)}</option>
                                 ))}
                             </select>
+                            <button
+                                type="submit"
+                                disabled={addMemberMutation.isPending || selectedMemberUserIds.length === 0}
+                                className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                            >
+                                {addMemberMutation.isPending ? t('settings.projects.member.adding') : t('settings.projects.member.submit')}
+                            </button>
                         </div>
                         {addMemberMutation.error ? (
                             <div className="text-xs text-red-600">
                                 {addMemberMutation.error instanceof Error ? addMemberMutation.error.message : t('settings.projects.member.error')}
                             </div>
                         ) : null}
-                        <button
-                            type="submit"
-                            disabled={addMemberMutation.isPending || selectedMemberUserIds.length === 0}
-                            className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
-                        >
-                            {addMemberMutation.isPending ? t('settings.projects.member.adding') : t('settings.projects.member.submit')}
-                        </button>
                     </form>
+                </div>
+            ) : null}
 
-                    <div className="space-y-2">
-                        <div className="text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.invite.create')}</div>
+            {manageable && panel === 'invite' ? (
+                <div className="border-t border-[var(--app-divider)] bg-[var(--app-subtle-bg)] px-3 py-3">
+                    <div className="space-y-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-3">
+                        <div className="text-sm font-semibold text-[var(--app-fg)]">{t('settings.projects.invite.create')}</div>
                         <div className="flex gap-2">
                             <select
                                 value={inviteRole}
@@ -960,6 +1049,42 @@ function ProjectRow(props: {
     )
 }
 
+function ProjectsGrid(props: {
+    api: ApiClient
+    baseUrl: string
+    projects: ProjectWithDetails[]
+    machines: Machine[]
+    machinesById: Map<string, Machine>
+}) {
+    const { t } = useTranslation()
+    return (
+        <div className="overflow-x-auto">
+            <div className="min-w-[940px]">
+                <div
+                    className="grid items-center gap-3 bg-[var(--app-subtle-bg)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--app-hint)]"
+                    style={{ gridTemplateColumns: PROJECT_GRID_TEMPLATE }}
+                >
+                    <div>{t('settings.projects.columns.project')}</div>
+                    <div>{t('settings.projects.columns.role')}</div>
+                    <div>{t('settings.projects.columns.workspaces')}</div>
+                    <div>{t('settings.projects.columns.members')}</div>
+                    <div className="text-right">{t('settings.projects.columns.actions')}</div>
+                </div>
+                {props.projects.map((project) => (
+                    <ProjectRow
+                        key={project.id}
+                        api={props.api}
+                        baseUrl={props.baseUrl}
+                        project={project}
+                        machines={props.machines}
+                        machinesById={props.machinesById}
+                    />
+                ))}
+            </div>
+        </div>
+    )
+}
+
 export default function SettingsProjectsPage() {
     const { t } = useTranslation()
     const { api, baseUrl } = useAppContext()
@@ -984,16 +1109,13 @@ export default function SettingsProjectsPage() {
                 ) : projects.length === 0 ? (
                     <div className="px-3 py-3 text-sm text-[var(--app-hint)]">{t('settings.projects.empty')}</div>
                 ) : (
-                    projects.map((project) => (
-                        <ProjectRow
-                            key={project.id}
-                            api={api}
-                            baseUrl={baseUrl}
-                            project={project}
-                            machines={machines}
-                            machinesById={machinesById}
-                        />
-                    ))
+                    <ProjectsGrid
+                        api={api}
+                        baseUrl={baseUrl}
+                        projects={projects}
+                        machines={machines}
+                        machinesById={machinesById}
+                    />
                 )}
             </SettingsSection>
         </SettingsPageContent>
