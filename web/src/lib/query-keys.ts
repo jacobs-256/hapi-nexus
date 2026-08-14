@@ -9,6 +9,7 @@ export const queryKeys = {
     machines: ['machines'] as const,
     machinesAll: ['machines', 'all'] as const,
     sqliteStorage: ['sqlite-storage'] as const,
+    storageSettings: ['storage-settings'] as const,
     machineCodexModels: (machineId: string, context?: { sessionId?: string | null; projectId?: string | null }) => [
         'machine-codex-models',
         machineId,

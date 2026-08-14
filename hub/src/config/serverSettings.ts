@@ -9,6 +9,13 @@
  */
 
 import { getSettingsFile, readSettings, writeSettings } from './settings'
+import {
+    applyStorageEnvOverrides,
+    normalizeStorageConfig,
+    storageConfigEquals,
+    validateStorageConfig,
+    type StorageConfig
+} from '../store/storageConfig'
 
 const OLD_SETTINGS_FIELDS = ['webappHost', 'webappPort', 'webappUrl'] as const
 
@@ -21,6 +28,7 @@ export interface ServerSettings {
     listenPort: number
     publicUrl: string
     corsOrigins: string[]
+    storage: StorageConfig
 }
 
 export interface ServerSettingsResult {
@@ -34,6 +42,7 @@ export interface ServerSettingsResult {
         listenPort: 'env' | 'file' | 'default'
         publicUrl: 'env' | 'file' | 'default'
         corsOrigins: 'env' | 'file' | 'default'
+        storage: 'env' | 'file' | 'default'
     }
     savedToFile: boolean
 }
@@ -89,7 +98,7 @@ function rejectOldSettingsFields(settings: object, settingsFile: string): void {
  * Load hub settings with priority: env > file > default
  * Saves new env values to file when not already present
  */
-export async function loadServerSettings(dataDir: string): Promise<ServerSettingsResult> {
+export async function loadServerSettings(dataDir: string, legacyDbPath?: string): Promise<ServerSettingsResult> {
     const settingsFile = getSettingsFile(dataDir)
     const settings = await readSettings(settingsFile)
 
@@ -111,6 +120,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         listenPort: 'default',
         publicUrl: 'default',
         corsOrigins: 'default',
+        storage: 'default',
     }
     // telegramBotToken: env > file > null
     let telegramBotToken: string | null = null
@@ -230,6 +240,18 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
         corsOrigins = deriveCorsOrigins(publicUrl)
     }
 
+
+    const defaultDbPath = legacyDbPath ?? (process.env.DB_PATH ?? `${dataDir}/hapi.db`)
+    const fileStorage = normalizeStorageConfig(settings.storage, dataDir, defaultDbPath)
+    const storage = applyStorageEnvOverrides(fileStorage)
+    validateStorageConfig(storage)
+    const storageChangedByEnv = !storageConfigEquals(fileStorage, storage)
+    sources.storage = storageChangedByEnv ? 'env' : (settings.storage !== undefined ? 'file' : 'default')
+    if (storageChangedByEnv) {
+        settings.storage = storage
+        needsSave = true
+    }
+
     // Save settings if any new values were added
     if (needsSave) {
         await writeSettings(settingsFile, settings)
@@ -245,6 +267,7 @@ export async function loadServerSettings(dataDir: string): Promise<ServerSetting
             listenPort,
             publicUrl,
             corsOrigins,
+            storage,
         },
         sources,
         savedToFile: needsSave,

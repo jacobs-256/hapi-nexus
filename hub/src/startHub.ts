@@ -168,7 +168,11 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
         console.log(`[Hub] Tunnel: disabled (${relayFlag.source})`)
     }
 
-    const store = new Store(config.dbPath)
+    console.log(`[Hub] Conversation store: ${config.storage.conversation.backend}`)
+    console.log(`[Hub] Core store: ${config.storage.core.backend}`)
+
+    const store = new Store(config.dbPath, config.storage)
+    await store.initializeExternalStorage()
     const initialAdmin = await ensureInitialLocalAdmin(store)
     if (initialAdmin.status === 'created') {
         console.log('')
@@ -392,7 +396,11 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
             notificationHub?.stop()
             syncEngine?.stop()
             sseManager?.stop()
+            await store.exportExternalSnapshot().catch((error) => {
+                console.warn('[Storage] Final external snapshot failed:', error instanceof Error ? error.message : error)
+            })
             webServer?.stop()
+            store.close()
         }
     }
 }

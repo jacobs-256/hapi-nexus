@@ -32,30 +32,38 @@ import {
 } from './projects'
 
 export class ProjectStore {
-    constructor(private readonly db: Database) {
+    constructor(private readonly db: Database, private readonly onChange?: () => void) {
     }
 
     ensureDefaults(namespace: string, ownerUserId: number): StoredProject {
         const project = ensureDefaultProject(this.db, namespace, ownerUserId)
         assignLegacySessionsToDefaultProject(this.db, namespace, ownerUserId)
         assignLegacyMachinesToOwner(this.db, namespace, ownerUserId)
+        this.onChange?.()
         return project
     }
 
     ensureDefaultProject(namespace: string, ownerUserId: number): StoredProject {
-        return ensureDefaultProject(this.db, namespace, ownerUserId)
+        const result = ensureDefaultProject(this.db, namespace, ownerUserId)
+        this.onChange?.()
+        return result
     }
 
     ensurePersonalProject(namespace: string, ownerUserId: number): StoredProject {
-        return ensurePersonalProject(this.db, namespace, ownerUserId)
+        const result = ensurePersonalProject(this.db, namespace, ownerUserId)
+        this.onChange?.()
+        return result
     }
 
     assignLegacySessionsToDefaultProject(namespace: string, ownerUserId: number): string {
-        return assignLegacySessionsToDefaultProject(this.db, namespace, ownerUserId)
+        const result = assignLegacySessionsToDefaultProject(this.db, namespace, ownerUserId)
+        this.onChange?.()
+        return result
     }
 
     assignLegacyMachinesToOwner(namespace: string, ownerUserId: number): void {
         assignLegacyMachinesToOwner(this.db, namespace, ownerUserId)
+        this.onChange?.()
     }
 
     createProject(
@@ -64,7 +72,9 @@ export class ProjectStore {
         createdByUserId: number,
         options?: { repoUrl?: string | null; teamId?: string | null }
     ): StoredProject {
-        return createProject(this.db, namespace, name, createdByUserId, options)
+        const result = createProject(this.db, namespace, name, createdByUserId, options)
+        this.onChange?.()
+        return result
     }
 
     createProjectWithWorkspace(
@@ -74,15 +84,19 @@ export class ProjectStore {
         workspace: { machineId: string; rootPath: string },
         options?: { repoUrl?: string | null; teamId?: string | null }
     ): StoredProject {
-        return this.db.transaction(() => {
+        const result = this.db.transaction(() => {
             const project = createProject(this.db, namespace, name, createdByUserId, options)
             addProjectWorkspace(this.db, project.id, workspace.machineId, workspace.rootPath, createdByUserId)
             return project
         })()
+        this.onChange?.()
+        return result
     }
 
     updateProjectName(projectId: string, namespace: string, name: string): StoredProject | null {
-        return updateProjectName(this.db, projectId, namespace, name)
+        const result = updateProjectName(this.db, projectId, namespace, name)
+        if (result) this.onChange?.()
+        return result
     }
 
     getProjectByNamespace(projectId: string, namespace: string): StoredProject | null {
@@ -98,11 +112,15 @@ export class ProjectStore {
     }
 
     addProjectMember(projectId: string, userId: number, role: ProjectRole): StoredProjectMember {
-        return addProjectMember(this.db, projectId, userId, role)
+        const result = addProjectMember(this.db, projectId, userId, role)
+        this.onChange?.()
+        return result
     }
 
     removeProjectMember(projectId: string, userId: number): boolean {
-        return removeProjectMember(this.db, projectId, userId)
+        const result = removeProjectMember(this.db, projectId, userId)
+        if (result) this.onChange?.()
+        return result
     }
 
     countProjectOwners(projectId: string): number {
@@ -135,11 +153,15 @@ export class ProjectStore {
         rootPath: string,
         createdByUserId: number
     ): StoredProjectWorkspace {
-        return addProjectWorkspace(this.db, projectId, machineId, rootPath, createdByUserId)
+        const result = addProjectWorkspace(this.db, projectId, machineId, rootPath, createdByUserId)
+        this.onChange?.()
+        return result
     }
 
     removeProjectWorkspace(projectId: string, workspaceId: string): boolean {
-        return removeProjectWorkspace(this.db, projectId, workspaceId)
+        const result = removeProjectWorkspace(this.db, projectId, workspaceId)
+        if (result) this.onChange?.()
+        return result
     }
 
     createProjectInvite(
@@ -148,7 +170,9 @@ export class ProjectStore {
         expiresAt: number,
         createdByUserId: number
     ): { invite: StoredProjectInvite; token: string } {
-        return createProjectInvite(this.db, projectId, role, expiresAt, createdByUserId)
+        const result = createProjectInvite(this.db, projectId, role, expiresAt, createdByUserId)
+        this.onChange?.()
+        return result
     }
 
     acceptProjectInvite(
@@ -157,7 +181,9 @@ export class ProjectStore {
         namespace: string,
         now?: number
     ): { ok: true; projectId: string; role: ProjectRole } | { ok: false; reason: 'not-found' | 'expired' } {
-        return acceptProjectInvite(this.db, token, userId, namespace, now)
+        const result = acceptProjectInvite(this.db, token, userId, namespace, now)
+        if (result.ok) this.onChange?.()
+        return result
     }
 }
 

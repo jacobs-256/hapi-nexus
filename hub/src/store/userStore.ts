@@ -25,7 +25,7 @@ import {
 export class UserStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(db: Database, private readonly onChange?: () => void) {
         this.db = db
     }
 
@@ -58,34 +58,50 @@ export class UserStore {
     }
 
     addUser(platform: string, platformUserId: string, namespace: string): StoredUser {
-        return addUser(this.db, platform, platformUserId, namespace)
+        const result = addUser(this.db, platform, platformUserId, namespace)
+        this.onChange?.()
+        return result
     }
 
     createLocalUser(input: CreateLocalUserInput): StoredUser {
-        return createLocalUser(this.db, input)
+        const result = createLocalUser(this.db, input)
+        this.onChange?.()
+        return result
     }
 
     updateUser(userId: number, namespace: string, input: UpdateUserInput): StoredUser | null {
-        return updateUser(this.db, userId, namespace, input)
+        const result = updateUser(this.db, userId, namespace, input)
+        if (result) this.onChange?.()
+        return result
     }
 
     updateUserPassword(userId: number, namespace: string, passwordHash: string): StoredUser | null {
-        return updateUserPassword(this.db, userId, namespace, passwordHash)
+        const result = updateUserPassword(this.db, userId, namespace, passwordHash)
+        if (result) this.onChange?.()
+        return result
     }
 
     updateLocalUsername(userId: number, namespace: string, username: string): UpdateLocalUsernameResult {
-        return updateLocalUsername(this.db, userId, namespace, username)
+        const result = updateLocalUsername(this.db, userId, namespace, username)
+        if (result.status === 'updated') this.onChange?.()
+        return result
     }
 
     regenerateUserAccessToken(userId: number, namespace: string): StoredUser | null {
-        return regenerateUserAccessToken(this.db, userId, namespace)
+        const result = regenerateUserAccessToken(this.db, userId, namespace)
+        if (result) this.onChange?.()
+        return result
     }
 
     removeLocalUserById(userId: number, namespace: string, replacementOwnerUserId: number): StoredUser | null {
-        return removeLocalUserById(this.db, userId, namespace, replacementOwnerUserId)
+        const result = removeLocalUserById(this.db, userId, namespace, replacementOwnerUserId)
+        if (result) this.onChange?.()
+        return result
     }
 
     removeUser(platform: string, platformUserId: string): boolean {
-        return removeUser(this.db, platform, platformUserId)
+        const result = removeUser(this.db, platform, platformUserId)
+        if (result) this.onChange?.()
+        return result
     }
 }

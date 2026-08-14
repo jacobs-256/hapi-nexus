@@ -1,6 +1,8 @@
 import { Database } from 'bun:sqlite'
 import { chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, openSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import type { StorageConfig } from './storageConfig'
+import { ExternalStorageSync, exportSqliteSnapshotToExternal } from './externalStorage'
 
 import { MachineStore } from './machineStore'
 import { MessageStore } from './messageStore'
@@ -42,8 +44,6 @@ const REQUIRED_TABLES = [
     'schema_migrations',
     'sessions',
     'machines',
-    'messages',
-    'message_epochs',
     'users',
     'teams',
     'team_members',
@@ -59,7 +59,11 @@ const REQUIRED_TABLES = [
 
 export class Store {
     private db: Database
+    private conversationDb: Database
     private readonly _dbPath: string
+    private readonly _conversationDbPath: string
+    private readonly _storageConfig: StorageConfig
+    private readonly externalSync: ExternalStorageSync | null
     private closed: boolean = false
 
     readonly sessions: SessionStore
@@ -80,6 +84,21 @@ export class Store {
         return this._dbPath
     }
 
+    get conversationDbPath(): string {
+        return this._conversationDbPath
+    }
+
+    get storageConfig(): StorageConfig {
+        return this._storageConfig
+    }
+
+    get sqliteMirrorStorageConfig(): StorageConfig {
+        return {
+            conversation: { backend: 'sqlite', sqlite: { path: this._conversationDbPath } },
+            core: { backend: 'sqlite', sqlite: { path: this._dbPath } }
+        }
+    }
+
     get schemaVersion(): number {
         return this.getUserVersion()
     }
@@ -88,49 +107,49 @@ export class Store {
         return SCHEMA_VERSION
     }
 
-    constructor(dbPath: string) {
+    constructor(dbPath: string, storageConfig?: StorageConfig) {
+        const resolvedStorageConfig = storageConfig ?? {
+            conversation: { backend: 'sqlite' as const, sqlite: { path: dbPath } },
+            core: { backend: 'sqlite' as const, sqlite: { path: dbPath } }
+        }
+        this._storageConfig = resolvedStorageConfig
+        const mirrorBasePath = dbPath
+        dbPath = resolvedStorageConfig.core.backend === 'sqlite'
+            ? resolvedStorageConfig.core.sqlite.path
+            : `${dbPath}.core-mirror.db`
+        const conversationDbPath = resolvedStorageConfig.conversation.backend === 'sqlite'
+            ? resolvedStorageConfig.conversation.sqlite.path
+            : `${mirrorBasePath}.conversation-mirror.db`
         this._dbPath = dbPath
-        if (dbPath !== ':memory:' && !dbPath.startsWith('file::memory:')) {
-            const dir = dirname(dbPath)
-            mkdirSync(dir, { recursive: true, mode: 0o700 })
-            try {
-                chmodSync(dir, 0o700)
-            } catch {
-            }
+        this._conversationDbPath = conversationDbPath
+        this.ensureSqlitePath(dbPath)
+        this.ensureSqlitePath(conversationDbPath)
 
-            if (!existsSync(dbPath)) {
-                try {
-                    const fd = openSync(dbPath, 'a', 0o600)
-                    closeSync(fd)
-                } catch {
-                }
-            }
-        }
-
-        this.db = new Database(dbPath, { create: true, readwrite: true, strict: true })
-        this.db.exec('PRAGMA journal_mode = WAL')
-        this.db.exec('PRAGMA synchronous = NORMAL')
-        this.db.exec('PRAGMA foreign_keys = ON')
-        this.db.exec('PRAGMA busy_timeout = 5000')
+        this.db = this.openSqliteDatabase(dbPath)
+        this.conversationDb = conversationDbPath === dbPath ? this.db : this.openSqliteDatabase(conversationDbPath)
         this.initSchema()
+        this.initConversationSchema()
+        this.externalSync = new ExternalStorageSync(resolvedStorageConfig, this.db, this.conversationDb)
 
-        if (dbPath !== ':memory:' && !dbPath.startsWith('file::memory:')) {
-            for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
-                try {
-                    chmodSync(path, 0o600)
-                } catch {
-                }
-            }
-        }
+        this.chmodSqliteFiles(dbPath)
+        this.chmodSqliteFiles(conversationDbPath)
 
-        this.sessions = new SessionStore(this.db)
-        this.machines = new MachineStore(this.db)
-        this.messages = new MessageStore(this.db)
-        this.users = new UserStore(this.db)
-        this.projects = new ProjectStore(this.db)
-        this.push = new PushStore(this.db)
-        this.fcm = new FcmStore(this.db)
-        this.scratchlist = new ScratchlistStore(this.db)
+        this.sessions = new SessionStore(this.db, (sessionId) => {
+            this.messages.deleteMessagesForSession(sessionId)
+            this.scheduleConversationSync()
+            this.scheduleCoreSync()
+        }, () => this.scheduleCoreSync())
+        this.machines = new MachineStore(this.db, (sessionIds) => {
+            this.messages.deleteMessagesForSessions(sessionIds)
+            this.scheduleConversationSync()
+            this.scheduleCoreSync()
+        }, () => this.scheduleCoreSync())
+        this.messages = new MessageStore(this.conversationDb, () => this.scheduleConversationSync())
+        this.users = new UserStore(this.db, () => this.scheduleCoreSync())
+        this.projects = new ProjectStore(this.db, () => this.scheduleCoreSync())
+        this.push = new PushStore(this.db, () => this.scheduleCoreSync())
+        this.fcm = new FcmStore(this.db, () => this.scheduleCoreSync())
+        this.scratchlist = new ScratchlistStore(this.db, () => this.scheduleCoreSync())
     }
 
     /**
@@ -145,26 +164,76 @@ export class Store {
         invokedAt: number,
         namespace: string
     ): number {
-        return this.db.transaction(() => {
-            const changes = this.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
-            if (changes > 0) {
-                this.sessions.touchSessionUpdatedAt(sessionId, invokedAt, namespace)
-            }
+        if (this.conversationDb === this.db) {
+            return this.db.transaction(() => {
+                const changes = this.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
+                if (changes > 0) {
+                    this.sessions.touchSessionUpdatedAt(sessionId, invokedAt, namespace)
+                }
 
-            const session = this.sessions.getSessionByNamespace(sessionId, namespace)
-            if (!session) {
-                throw new Error('session not found after messages-consumed transition')
-            }
-            if (changes > 0 && session.updatedAt < invokedAt) {
-                throw new Error('session activity was not persisted after messages-consumed transition')
-            }
+                const session = this.sessions.getSessionByNamespace(sessionId, namespace)
+                if (!session) {
+                    throw new Error('session not found after messages-consumed transition')
+                }
+                if (changes > 0 && session.updatedAt < invokedAt) {
+                    throw new Error('session activity was not persisted after messages-consumed transition')
+                }
 
-            return session.updatedAt
-        })()
+                return session.updatedAt
+            })()
+        }
+
+        const existing = this.sessions.getSessionByNamespace(sessionId, namespace)
+        if (!existing) {
+            throw new Error('session not found before messages-consumed transition')
+        }
+
+        const changes = this.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
+        if (changes > 0) {
+            this.sessions.touchSessionUpdatedAt(sessionId, invokedAt, namespace)
+        }
+
+        const session = this.sessions.getSessionByNamespace(sessionId, namespace)
+        if (!session) {
+            throw new Error('session not found after messages-consumed transition')
+        }
+        if (changes > 0 && session.updatedAt < invokedAt) {
+            throw new Error('session activity was not persisted after messages-consumed transition')
+        }
+
+        return session.updatedAt
+    }
+
+    async initializeExternalStorage(): Promise<void> {
+        if (!this.externalSync?.active) return
+        const imported = await this.externalSync.importExternalIntoSqlite()
+        const count = Object.values(imported).reduce((sum, value) => sum + value, 0)
+        if (count > 0) {
+            console.log(`[Storage] Imported ${count} row(s) from external storage into local mirrors.`)
+        }
+    }
+
+    async exportExternalSnapshot(config: StorageConfig = this._storageConfig): Promise<Record<string, number>> {
+        if (config === this._storageConfig) {
+            return await this.externalSync?.exportAll() ?? {}
+        }
+        return await exportSqliteSnapshotToExternal(config, this.db, this.conversationDb)
+    }
+
+    private scheduleCoreSync(): void {
+        this.externalSync?.schedule('core')
+    }
+
+    private scheduleConversationSync(): void {
+        this.externalSync?.schedule('conversation')
     }
 
     close(): void {
         if (this.closed) return
+        this.externalSync?.stop()
+        if (this.conversationDb !== this.db) {
+            this.conversationDb.close()
+        }
         this.db.close()
         this.closed = true
 
@@ -175,6 +244,88 @@ export class Store {
         if (process.platform === 'win32') {
             Bun.gc(true)
         }
+    }
+
+    private isMemorySqlitePath(dbPath: string): boolean {
+        return dbPath === ':memory:' || dbPath.startsWith('file::memory:')
+    }
+
+    private ensureSqlitePath(dbPath: string): void {
+        if (this.isMemorySqlitePath(dbPath)) return
+        const dir = dirname(dbPath)
+        mkdirSync(dir, { recursive: true, mode: 0o700 })
+        try {
+            chmodSync(dir, 0o700)
+        } catch {
+        }
+
+        if (!existsSync(dbPath)) {
+            try {
+                const fd = openSync(dbPath, 'a', 0o600)
+                closeSync(fd)
+            } catch {
+            }
+        }
+    }
+
+    private chmodSqliteFiles(dbPath: string): void {
+        if (this.isMemorySqlitePath(dbPath)) return
+        for (const path of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+            try {
+                chmodSync(path, 0o600)
+            } catch {
+            }
+        }
+    }
+
+    private openSqliteDatabase(dbPath: string): Database {
+        const db = new Database(dbPath, { create: true, readwrite: true, strict: true })
+        db.exec('PRAGMA journal_mode = WAL')
+        db.exec('PRAGMA synchronous = NORMAL')
+        db.exec('PRAGMA foreign_keys = ON')
+        db.exec('PRAGMA busy_timeout = 5000')
+        return db
+    }
+
+    private initConversationSchema(): void {
+        const currentVersion = this.getUserVersion(this.conversationDb)
+        if (currentVersion === 0) {
+            this.createConversationSchema()
+            this.setUserVersion(SCHEMA_VERSION, this.conversationDb)
+            return
+        }
+        if (currentVersion !== SCHEMA_VERSION) {
+            throw this.buildSchemaMismatchError(currentVersion, this._conversationDbPath)
+        }
+        this.createConversationSchema()
+        this.assertConversationTablesPresent()
+    }
+
+    private createConversationSchema(): void {
+        this.conversationDb.exec(`
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                seq INTEGER NOT NULL,
+                local_id TEXT,
+                invoked_at INTEGER,
+                scheduled_at INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_messages_session_position
+                ON messages(session_id, COALESCE(invoked_at, created_at) DESC, seq DESC);
+            CREATE INDEX IF NOT EXISTS idx_messages_scheduled_pending
+                ON messages(scheduled_at)
+                WHERE scheduled_at IS NOT NULL AND invoked_at IS NULL;
+
+            CREATE TABLE IF NOT EXISTS message_epochs (
+                session_id TEXT PRIMARY KEY,
+                epoch INTEGER NOT NULL DEFAULT 0
+            );
+        `)
     }
 
     private initSchema(): void {
@@ -297,30 +448,6 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_machines_namespace ON machines(namespace);
             CREATE INDEX IF NOT EXISTS idx_machines_team ON machines(team_id);
 
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                seq INTEGER NOT NULL,
-                local_id TEXT,
-                invoked_at INTEGER,
-                scheduled_at INTEGER,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, seq);
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_local_id ON messages(session_id, local_id) WHERE local_id IS NOT NULL;
-            CREATE INDEX IF NOT EXISTS idx_messages_session_position
-                ON messages(session_id, COALESCE(invoked_at, created_at) DESC, seq DESC);
-            CREATE INDEX IF NOT EXISTS idx_messages_scheduled_pending
-                ON messages(scheduled_at)
-                WHERE scheduled_at IS NOT NULL AND invoked_at IS NULL;
-
-            CREATE TABLE IF NOT EXISTS message_epochs (
-                session_id TEXT PRIMARY KEY,
-                epoch INTEGER NOT NULL DEFAULT 0,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-            );
 
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -999,13 +1126,13 @@ export class Store {
         return new Set(rows.map((row) => row.name))
     }
 
-    private getUserVersion(): number {
-        const row = this.db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined
+    private getUserVersion(db: Database = this.db): number {
+        const row = db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined
         return row?.user_version ?? 0
     }
 
-    private setUserVersion(version: number): void {
-        this.db.exec(`PRAGMA user_version = ${version}`)
+    private setUserVersion(version: number, db: Database = this.db): void {
+        db.exec(`PRAGMA user_version = ${version}`)
     }
 
     private hasAnyUserTables(): boolean {
@@ -1031,10 +1158,24 @@ export class Store {
         }
     }
 
-    private buildSchemaMismatchError(currentVersion: number): Error {
-        const location = (this._dbPath === ':memory:' || this._dbPath.startsWith('file::memory:'))
+    private assertConversationTablesPresent(): void {
+        const rows = this.conversationDb.prepare(
+            `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('messages', 'message_epochs')`
+        ).all() as Array<{ name: string }>
+        const existing = new Set(rows.map((row) => row.name))
+        const missing = ['messages', 'message_epochs'].filter((table) => !existing.has(table))
+        if (missing.length > 0) {
+            throw new Error(
+                `SQLite conversation schema is missing required tables (${missing.join(', ')}). ` +
+                'Back up and rebuild the conversation database, or run an offline migration.'
+            )
+        }
+    }
+
+    private buildSchemaMismatchError(currentVersion: number, dbPath: string = this._dbPath): Error {
+        const location = this.isMemorySqlitePath(dbPath)
             ? 'in-memory database'
-            : this._dbPath
+            : dbPath
         return new Error(
             `SQLite schema version mismatch for ${location}. ` +
             `Expected ${SCHEMA_VERSION}, found ${currentVersion}. ` +

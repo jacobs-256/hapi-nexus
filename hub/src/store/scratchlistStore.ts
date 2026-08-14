@@ -16,7 +16,7 @@ import {
 export class ScratchlistStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(db: Database, private readonly onChange?: () => void) {
         this.db = db
     }
 
@@ -41,7 +41,9 @@ export class ScratchlistStore {
             attachments?: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
         }
     ): CreateScratchlistResult {
-        return createScratchlistEntry(this.db, sessionId, text, options)
+        const result = createScratchlistEntry(this.db, sessionId, text, options)
+        if (result.outcome === 'created') this.onChange?.()
+        return result
     }
 
     update(
@@ -52,7 +54,9 @@ export class ScratchlistStore {
             attachments?: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
         }
     ): StoredScratchlistEntry | null {
-        return updateScratchlistEntry(this.db, sessionId, entryId, patch)
+        const result = updateScratchlistEntry(this.db, sessionId, entryId, patch)
+        if (result) this.onChange?.()
+        return result
     }
 
     sumAttachmentBytes(sessionId: string): number {
@@ -60,7 +64,9 @@ export class ScratchlistStore {
     }
 
     delete(sessionId: string, entryId: string): boolean {
-        return deleteScratchlistEntry(this.db, sessionId, entryId)
+        const result = deleteScratchlistEntry(this.db, sessionId, entryId)
+        if (result) this.onChange?.()
+        return result
     }
 
     /**
@@ -71,6 +77,8 @@ export class ScratchlistStore {
      * race the migration. Required by tiann/hapi#920.
      */
     transfer(fromSessionId: string, toSessionId: string): { moved: number; collided: number } {
-        return transferScratchlistEntries(this.db, fromSessionId, toSessionId)
+        const result = transferScratchlistEntries(this.db, fromSessionId, toSessionId)
+        if (result.moved > 0 || result.collided > 0) this.onChange?.()
+        return result
     }
 }

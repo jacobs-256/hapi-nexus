@@ -24,7 +24,11 @@ import {
 export class SessionStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(
+        db: Database,
+        private readonly onSessionDeleted?: (sessionId: string) => void,
+        private readonly onChange?: () => void
+    ) {
         this.db = db
     }
 
@@ -39,11 +43,15 @@ export class SessionStore {
         requestedId?: string,
         options?: { projectId?: string | null; createdByUserId?: number | null }
     ): StoredSession {
-        return getOrCreateSession(this.db, tag, metadata, agentState, namespace, model, effort, modelReasoningEffort, requestedId, options)
+        const result = getOrCreateSession(this.db, tag, metadata, agentState, namespace, model, effort, modelReasoningEffort, requestedId, options)
+        this.onChange?.()
+        return result
     }
 
     assignSessionProject(id: string, namespace: string, projectId: string, createdByUserId: number): StoredSession | null {
-        return assignSessionProject(this.db, id, namespace, projectId, createdByUserId)
+        const result = assignSessionProject(this.db, id, namespace, projectId, createdByUserId)
+        if (result) this.onChange?.()
+        return result
     }
 
     updateSessionMetadata(
@@ -53,7 +61,9 @@ export class SessionStore {
         namespace: string,
         options?: { touchUpdatedAt?: boolean }
     ): VersionedUpdateResult<unknown | null> {
-        return updateSessionMetadata(this.db, id, metadata, expectedVersion, namespace, options)
+        const result = updateSessionMetadata(this.db, id, metadata, expectedVersion, namespace, options)
+        if (result.result === 'success') this.onChange?.()
+        return result
     }
 
     updateSessionAgentState(
@@ -62,19 +72,27 @@ export class SessionStore {
         expectedVersion: number,
         namespace: string
     ): VersionedUpdateResult<unknown | null> {
-        return updateSessionAgentState(this.db, id, agentState, expectedVersion, namespace)
+        const result = updateSessionAgentState(this.db, id, agentState, expectedVersion, namespace)
+        if (result.result === 'success') this.onChange?.()
+        return result
     }
 
     setSessionTodos(id: string, todos: unknown, todosUpdatedAt: number, namespace: string): boolean {
-        return setSessionTodos(this.db, id, todos, todosUpdatedAt, namespace)
+        const result = setSessionTodos(this.db, id, todos, todosUpdatedAt, namespace)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionTeamState(id: string, teamState: unknown, updatedAt: number, namespace: string): boolean {
-        return setSessionTeamState(this.db, id, teamState, updatedAt, namespace)
+        const result = setSessionTeamState(this.db, id, teamState, updatedAt, namespace)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionModel(id: string, model: string | null, namespace: string, options?: { touchUpdatedAt?: boolean }): boolean {
-        return setSessionModel(this.db, id, model, namespace, options)
+        const result = setSessionModel(this.db, id, model, namespace, options)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionModelReasoningEffort(
@@ -83,23 +101,33 @@ export class SessionStore {
         namespace: string,
         options?: { touchUpdatedAt?: boolean }
     ): boolean {
-        return setSessionModelReasoningEffort(this.db, id, modelReasoningEffort, namespace, options)
+        const result = setSessionModelReasoningEffort(this.db, id, modelReasoningEffort, namespace, options)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionEffort(id: string, effort: string | null, namespace: string, options?: { touchUpdatedAt?: boolean }): boolean {
-        return setSessionEffort(this.db, id, effort, namespace, options)
+        const result = setSessionEffort(this.db, id, effort, namespace, options)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionServiceTier(id: string, serviceTier: string | null, namespace: string, options?: { touchUpdatedAt?: boolean }): boolean {
-        return setSessionServiceTier(this.db, id, serviceTier, namespace, options)
+        const result = setSessionServiceTier(this.db, id, serviceTier, namespace, options)
+        if (result) this.onChange?.()
+        return result
     }
 
     setSessionActive(id: string, active: boolean, activeAt: number, namespace: string): boolean {
-        return setSessionActive(this.db, id, active, activeAt, namespace)
+        const result = setSessionActive(this.db, id, active, activeAt, namespace)
+        if (result) this.onChange?.()
+        return result
     }
 
     touchSessionUpdatedAt(id: string, updatedAt: number, namespace: string): boolean {
-        return touchSessionUpdatedAt(this.db, id, updatedAt, namespace)
+        const result = touchSessionUpdatedAt(this.db, id, updatedAt, namespace)
+        if (result) this.onChange?.()
+        return result
     }
 
     getSession(id: string): StoredSession | null {
@@ -119,6 +147,11 @@ export class SessionStore {
     }
 
     deleteSession(id: string, namespace: string): boolean {
-        return deleteSession(this.db, id, namespace)
+        const deleted = deleteSession(this.db, id, namespace)
+        if (deleted) {
+            this.onSessionDeleted?.(id)
+            this.onChange?.()
+        }
+        return deleted
     }
 }

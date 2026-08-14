@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import type { StorageConfig } from '@hapi/protocol/storage'
 
 export interface Settings {
     machineId?: string
@@ -20,6 +21,7 @@ export interface Settings {
     listenPort?: number
     publicUrl?: string
     corsOrigins?: string[]
+    storage?: StorageConfig
 }
 
 export function getSettingsFile(dataDir: string): string {
@@ -66,4 +68,12 @@ export async function writeSettings(settingsFile: string, settings: Settings): P
     const tmpFile = settingsFile + '.tmp'
     await writeFile(tmpFile, JSON.stringify(settings, null, 2))
     await rename(tmpFile, settingsFile)
+}
+
+
+export async function updateSettings(settingsFile: string, updater: (settings: Settings) => Settings | void): Promise<Settings> {
+    const current = await readSettingsOrThrow(settingsFile)
+    const next = updater(current) ?? current
+    await writeSettings(settingsFile, next)
+    return next
 }

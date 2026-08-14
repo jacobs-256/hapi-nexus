@@ -6,16 +6,18 @@ import { addPushSubscription, getPushSubscriptionsByNamespace, removePushSubscri
 export class PushStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(db: Database, private readonly onChange?: () => void) {
         this.db = db
     }
 
     addPushSubscription(namespace: string, subscription: { endpoint: string; p256dh: string; auth: string }): void {
         addPushSubscription(this.db, namespace, subscription)
+        this.onChange?.()
     }
 
     removePushSubscription(namespace: string, endpoint: string): void {
         removePushSubscription(this.db, namespace, endpoint)
+        this.onChange?.()
     }
 
     getPushSubscriptionsByNamespace(namespace: string): StoredPushSubscription[] {

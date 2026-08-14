@@ -16,7 +16,11 @@ import {
 export class MachineStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(
+        db: Database,
+        private readonly onSessionsDeleted?: (sessionIds: string[]) => void,
+        private readonly onChange?: () => void
+    ) {
         this.db = db
     }
 
@@ -27,7 +31,9 @@ export class MachineStore {
         namespace: string,
         options?: { ownerUserId?: number | null; teamId?: string | null }
     ): StoredMachine {
-        return getOrCreateMachine(this.db, id, metadata, runnerState, namespace, options)
+        const result = getOrCreateMachine(this.db, id, metadata, runnerState, namespace, options)
+        this.onChange?.()
+        return result
     }
 
     updateMachineMetadata(
@@ -36,7 +42,9 @@ export class MachineStore {
         expectedVersion: number,
         namespace: string
     ): VersionedUpdateResult<unknown | null> {
-        return updateMachineMetadata(this.db, id, metadata, expectedVersion, namespace)
+        const result = updateMachineMetadata(this.db, id, metadata, expectedVersion, namespace)
+        if (result.result === 'success') this.onChange?.()
+        return result
     }
 
     updateMachineRunnerState(
@@ -45,7 +53,9 @@ export class MachineStore {
         expectedVersion: number,
         namespace: string
     ): VersionedUpdateResult<unknown | null> {
-        return updateMachineRunnerState(this.db, id, runnerState, expectedVersion, namespace)
+        const result = updateMachineRunnerState(this.db, id, runnerState, expectedVersion, namespace)
+        if (result.result === 'success') this.onChange?.()
+        return result
     }
 
     getMachine(id: string): StoredMachine | null {
@@ -65,7 +75,12 @@ export class MachineStore {
     }
 
     deleteMachineByNamespace(id: string, namespace: string): DeleteMachineResult {
-        return deleteMachineByNamespace(this.db, id, namespace)
+        const result = deleteMachineByNamespace(this.db, id, namespace)
+        if (result.deletedSessionIds.length > 0) {
+            this.onSessionsDeleted?.(result.deletedSessionIds)
+        }
+        if (result.machineDeleted) this.onChange?.()
+        return result
     }
 }
 

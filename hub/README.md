@@ -44,7 +44,15 @@ These are used only when the hub creates the first active local admin. If an act
 - `HAPI_LISTEN_PORT` - HTTP port (default: 3006).
 - `CORS_ORIGINS` - Comma-separated origins, or `*`.
 - `HAPI_HOME` - Data directory (default: ~/.hapi).
-- `DB_PATH` - SQLite database path (default: HAPI_HOME/hapi.db).
+- `DB_PATH` - Legacy/default SQLite database path (default: HAPI_HOME/hapi.db).
+- `HAPI_CONVERSATION_STORE` - Conversation-history storage backend: `sqlite` or `elasticsearch`.
+- `HAPI_CONVERSATION_SQLITE_PATH` - SQLite path for conversation records when using `sqlite`.
+- `ELASTICSEARCH_URL`, `ELASTICSEARCH_INDEX`, `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, `ELASTICSEARCH_API_KEY` - Elasticsearch-backed conversation storage settings.
+- `HAPI_CORE_STORE` - Other hub data storage backend: `sqlite` or `mysql`.
+- `HAPI_CORE_SQLITE_PATH` - SQLite path for users/projects/machines/session metadata when using `sqlite`.
+- `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_SOCKET_PATH` - MySQL-backed core storage settings.
+
+Storage can also be changed in **Settings -> Storage**. The hub keeps a local SQLite mirror for external backends and imports from/export snapshots to MySQL/Elasticsearch on startup, shutdown, explicit migration, and debounced writes. SQLite-to-SQLite path changes can copy data automatically.
 - `TELEGRAM_NOTIFICATION` - Enable/disable Telegram notifications (default: true).
 - `HAPI_RELAY_API` - Relay API domain (default: relay.hapi.run).
 - `HAPI_RELAY_AUTH` - Relay auth key (default: hapi).

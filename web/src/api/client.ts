@@ -55,6 +55,9 @@ import type {
     RegenerateUserTokenResponse,
     ReopenSessionResponse,
     SqliteStorageUsageResponse,
+    StorageSettingsResponse,
+    UpdateStorageSettingsRequest,
+    UpdateStorageSettingsResponse,
     UserResponse,
     UserRole,
     UsersResponse,
@@ -834,6 +837,17 @@ export class ApiClient {
 
     async getSqliteStorageUsage(): Promise<SqliteStorageUsageResponse> {
         return await this.request<SqliteStorageUsageResponse>('/api/storage/sqlite')
+    }
+
+    async getStorageSettings(): Promise<StorageSettingsResponse> {
+        return await this.request<StorageSettingsResponse>('/api/storage')
+    }
+
+    async updateStorageSettings(request: UpdateStorageSettingsRequest): Promise<UpdateStorageSettingsResponse> {
+        return await this.request<UpdateStorageSettingsResponse>('/api/storage', {
+            method: 'PUT',
+            body: JSON.stringify(request)
+        })
     }
 
     async listMachineDirectory(

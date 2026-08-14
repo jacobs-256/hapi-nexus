@@ -39,7 +39,7 @@ export function getVisibleSettingsCategories(args: {
     user: AuthResponse['user'] | null | undefined
 }): SettingsCategory[] {
     return settingsCategories.filter((category) => {
-        if (category.id === 'storage') return getNamespace(args.token) === 'default'
+        if (category.id === 'storage') return getNamespace(args.token) === 'default' && args.user?.role === 'admin'
         if (category.id === 'users') return args.user?.role === 'admin'
         return true
     })

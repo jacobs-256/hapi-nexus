@@ -18,6 +18,7 @@ import type {
     Session
 } from './schemas'
 import type { SessionSummary } from './sessionSummary'
+import type { StorageConfig, StorageMigrationMode } from './storage'
 
 export const CreateOrLoadMachineRequestSchema = z.object({
     id: z.string().min(1),
@@ -853,12 +854,38 @@ export type SlashCommandsResponse = {
     error?: string
 }
 
-export type SqliteStorageUsageResponse = {
+export type SqliteStorageFileUsage = {
     path: string
     databaseBytes: number
     walBytes: number
     shmBytes: number
     totalBytes: number
+}
+
+export type SqliteStorageUsageResponse = SqliteStorageFileUsage & {
     schemaVersion: number
     expectedSchemaVersion: number
+}
+
+export type StorageSettingsResponse = {
+    config: StorageConfig
+    effectiveConfig: StorageConfig
+    activeConfig: StorageConfig
+    restartRequired: boolean
+    migrationSupported: boolean
+    sqlite?: {
+        core?: SqliteStorageFileUsage & { schemaVersion: number; expectedSchemaVersion: number }
+        conversation?: SqliteStorageFileUsage & { schemaVersion: number; expectedSchemaVersion: number }
+    }
+}
+
+export type UpdateStorageSettingsRequest = {
+    config: StorageConfig
+    migrate?: StorageMigrationMode
+}
+
+export type UpdateStorageSettingsResponse = StorageSettingsResponse & {
+    saved: true
+    migrated: boolean
+    migrationMessage?: string
 }

@@ -26,6 +26,8 @@ import {
     mergeSessionMessages,
     copyMessageToSession as copyStoredMessageToSession,
     getAllMessages,
+    deleteMessagesForSession,
+    deleteMessagesForSessions,
     type CancelQueuedMessageResult,
     type LookupQueuedMessageResult,
     type LocalMessageState,
@@ -35,12 +37,14 @@ import {
 export class MessageStore {
     private readonly db: Database
 
-    constructor(db: Database) {
+    constructor(db: Database, private readonly onChange?: () => void) {
         this.db = db
     }
 
     addMessage(sessionId: string, content: unknown, localId?: string, scheduledAt?: number | null): StoredMessage {
-        return addMessage(this.db, sessionId, content, localId, scheduledAt)
+        const result = addMessage(this.db, sessionId, content, localId, scheduledAt)
+        this.onChange?.()
+        return result
     }
 
     copyMessageToSession(
@@ -48,7 +52,9 @@ export class MessageStore {
         message: Pick<StoredMessage, 'content' | 'createdAt' | 'localId' | 'invokedAt' | 'scheduledAt'>
     ): StoredMessage {
         // 中文注释：重复会话合并时需要保留源消息的时间戳和排队信息，因此走专门的复制入口而不是普通 addMessage。
-        return copyStoredMessageToSession(this.db, sessionId, message)
+        const result = copyStoredMessageToSession(this.db, sessionId, message)
+        this.onChange?.()
+        return result
     }
 
     getAllMessages(sessionId: string): StoredMessage[] {
@@ -89,7 +95,9 @@ export class MessageStore {
     }
 
     bumpMessageEpoch(sessionId: string): number {
-        return bumpMessageEpoch(this.db, sessionId)
+        const result = bumpMessageEpoch(this.db, sessionId)
+        this.onChange?.()
+        return result
     }
 
     getLocalMessageStates(sessionId: string, localIds: string[]): LocalMessageState[] {
@@ -125,7 +133,9 @@ export class MessageStore {
     }
 
     cancelQueuedMessage(sessionId: string, messageId: string): CancelQueuedMessageResult {
-        return cancelQueuedMessage(this.db, sessionId, messageId)
+        const result = cancelQueuedMessage(this.db, sessionId, messageId)
+        this.onChange?.()
+        return result
     }
 
     lookupQueuedMessage(sessionId: string, messageId: string): LookupQueuedMessageResult {
@@ -133,14 +143,30 @@ export class MessageStore {
     }
 
     deleteQueuedMessageById(sessionId: string, messageId: string): boolean {
-        return deleteQueuedMessageById(this.db, sessionId, messageId)
+        const result = deleteQueuedMessageById(this.db, sessionId, messageId)
+        if (result) this.onChange?.()
+        return result
     }
 
     markMessagesInvoked(sessionId: string, localIds: string[], invokedAt: number): number {
-        return markMessagesInvoked(this.db, sessionId, localIds, invokedAt)
+        const result = markMessagesInvoked(this.db, sessionId, localIds, invokedAt)
+        if (result > 0) this.onChange?.()
+        return result
     }
 
     mergeSessionMessages(fromSessionId: string, toSessionId: string): { moved: number; oldMaxSeq: number; newMaxSeq: number } {
-        return mergeSessionMessages(this.db, fromSessionId, toSessionId)
+        const result = mergeSessionMessages(this.db, fromSessionId, toSessionId)
+        if (result.moved > 0) this.onChange?.()
+        return result
+    }
+
+    deleteMessagesForSession(sessionId: string): void {
+        deleteMessagesForSession(this.db, sessionId)
+        this.onChange?.()
+    }
+
+    deleteMessagesForSessions(sessionIds: string[]): void {
+        deleteMessagesForSessions(this.db, sessionIds)
+        if (sessionIds.length > 0) this.onChange?.()
     }
 }

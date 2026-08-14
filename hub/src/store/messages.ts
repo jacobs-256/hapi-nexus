@@ -701,3 +701,16 @@ export function mergeSessionMessages(
         throw error
     }
 }
+
+
+export function deleteMessagesForSession(db: Database, sessionId: string): void {
+    db.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
+    db.prepare('DELETE FROM message_epochs WHERE session_id = ?').run(sessionId)
+}
+
+export function deleteMessagesForSessions(db: Database, sessionIds: string[]): void {
+    if (sessionIds.length === 0) return
+    const placeholders = sessionIds.map(() => '?').join(', ')
+    db.prepare(`DELETE FROM messages WHERE session_id IN (${placeholders})`).run(...sessionIds)
+    db.prepare(`DELETE FROM message_epochs WHERE session_id IN (${placeholders})`).run(...sessionIds)
+}

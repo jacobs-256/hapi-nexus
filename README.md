@@ -31,6 +31,7 @@ This installs the client for auth, runner, and local agent sessions. It does not
 - **Codex Folder History Sync** - Import every Codex CLI transcript for a workspace folder into HAPI Nexus, then continue from the latest imported session through the Web UI or `hapi resume`.
 - **Project Sharing** - Create projects, attach runner workspaces, invite users, and share sessions without copying source code to every device.
 - **Private Hub Accounts** - Browser users sign in with local username/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
+- **Configurable Storage** - Conversation history can use SQLite or Elasticsearch; other hub data can use SQLite or MySQL, managed from Settings -> Storage with optional data copy when switching.
 
 ## Getting Started
 

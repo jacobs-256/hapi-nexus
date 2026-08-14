@@ -29,6 +29,7 @@ import { join } from 'node:path'
 import { getOrCreateCliApiToken } from './config/cliApiToken'
 import { getSettingsFile } from './config/settings'
 import { loadServerSettings, type ServerSettings, type ServerSettingsResult } from './config/serverSettings'
+import type { StorageConfig } from '@hapi/protocol/storage'
 
 export type ConfigSource = 'env' | 'file' | 'default'
 
@@ -41,6 +42,7 @@ export interface ConfigSources {
     listenPort: ConfigSource
     publicUrl: ConfigSource
     corsOrigins: ConfigSource
+    storage: ConfigSource
     cliApiToken: 'env' | 'file' | 'generated'
 }
 
@@ -75,8 +77,11 @@ class Configuration {
     /** Data directory for credentials and state */
     public readonly dataDir: string
 
-    /** SQLite DB path */
+    /** Legacy SQLite DB path (used when both storage groups use the original database) */
     public readonly dbPath: string
+
+    /** Split conversation/core storage configuration */
+    public readonly storage: StorageConfig
 
     /** Port for the HTTP service */
     public readonly listenPort: number
@@ -102,6 +107,7 @@ class Configuration {
     ) {
         this.dataDir = dataDir
         this.dbPath = dbPath
+        this.storage = serverSettings.storage
         this.settingsFile = getSettingsFile(dataDir)
 
         // Apply server settings
@@ -149,7 +155,7 @@ class Configuration {
             : join(dataDir, 'hapi.db')
 
         // 3. Load hub settings (with persistence)
-        const settingsResult = await loadServerSettings(dataDir)
+        const settingsResult = await loadServerSettings(dataDir, dbPath)
 
         if (settingsResult.savedToFile) {
             console.log(`[Hub] Configuration saved to ${getSettingsFile(dataDir)}`)

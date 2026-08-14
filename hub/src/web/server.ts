@@ -253,7 +253,11 @@ function createWebApp(options: {
     app.route('/api', createMachinesRoutes(options.getSyncEngine))
     app.route('/api', createProjectsRoutes(options.store, options.getSyncEngine))
     app.route('/api', createUsersRoutes(options.store))
-    app.route('/api', createStorageRoutes(options.store))
+    app.route('/api', createStorageRoutes(options.store, {
+        settingsFile: configuration.settingsFile,
+        dataDir: configuration.dataDir,
+        legacyDbPath: configuration.dbPath
+    }))
     app.route('/api', createGitRoutes(options.getSyncEngine))
     // 中文注释：这里提供两类 Codex 辅助能力：扫描本地 transcript 以导入到 Hapi，以及按需重启 Codex Desktop 客户端。
     app.route('/api', createCodexDesktopRoutes({

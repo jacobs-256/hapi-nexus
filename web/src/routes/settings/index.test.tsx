@@ -11,7 +11,7 @@ import SettingsVoiceVoicesPage from './voice-voices'
 import SettingsVoiceAdvancedPage from './voice-advanced'
 
 const { context, navigate, setAppearance, setColorTheme, setFontScale, setTerminalFontSize, setComposerEnterBehavior, setVoice } = vi.hoisted(() => ({
-    context: { token: '' },
+    context: { token: '', user: { role: 'admin' as 'admin' | 'user' } },
     navigate: vi.fn(),
     setAppearance: vi.fn(),
     setColorTheme: vi.fn(),
@@ -132,6 +132,7 @@ vi.mock('@/lib/app-context', () => ({
         api: {},
         baseUrl: 'http://127.0.0.1:3006',
         token: context.token,
+        user: context.user,
     }),
 }))
 
@@ -173,6 +174,7 @@ describe('responsive settings pages', () => {
         vi.clearAllMocks()
         localStorage.clear()
         context.token = `x.${btoa(JSON.stringify({ ns: 'default' }))}.x`
+        context.user = { role: 'admin' }
     })
 
     it('renders the mobile hub categories with current summaries', () => {
@@ -191,6 +193,12 @@ describe('responsive settings pages', () => {
 
     it('hides Hub storage from tenant namespaces', () => {
         context.token = `x.${btoa(JSON.stringify({ ns: 'tenant' }))}.x`
+        renderPage(<SettingsHubPage />)
+        expect(screen.queryByText('Hub database usage')).not.toBeInTheDocument()
+    })
+
+    it('hides Hub storage from non-admin users', () => {
+        context.user = { role: 'user' }
         renderPage(<SettingsHubPage />)
         expect(screen.queryByText('Hub database usage')).not.toBeInTheDocument()
     })
