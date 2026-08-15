@@ -472,6 +472,13 @@ export const SyncEventSchema = z.discriminatedUnion('type', [
             status: z.string(),
             subscriptionId: z.string().optional()
         }).optional()
+    }),
+    SessionEventBaseSchema.extend({
+        type: z.literal('app-settings-updated'),
+        data: z.object({
+            key: z.literal('composerToolbar'),
+            settings: z.unknown()
+        })
     })
 ])
 

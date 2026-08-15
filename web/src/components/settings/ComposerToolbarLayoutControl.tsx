@@ -2,13 +2,22 @@ import { useState, type DragEvent } from 'react'
 import { ComposerSendButtonPreview, ComposerToolbarItemPreview } from '@/components/AssistantChat/ComposerButtons'
 import {
     COMPOSER_TOOLBAR_ITEM_IDS,
+    isComposerToolbarItemEnabled,
+    mergeComposerToolbarDisabledItems,
     moveComposerToolbarItem,
     moveComposerToolbarItemInSingleLayout,
+    setComposerToolbarItemDisabled,
     useComposerToolbarLayout,
     type ComposerToolbarGroup,
     type ComposerToolbarItemId,
     type ComposerToolbarLayoutMode,
 } from '@/hooks/useComposerToolbarLayout'
+import {
+    dispatchGlobalComposerToolbarSettingsChange,
+    useGlobalComposerToolbarSettings
+} from '@/hooks/useGlobalComposerToolbarSettings'
+import { useAppContext } from '@/lib/app-context'
+import { getNamespace } from '@/routes/settings/categories'
 import { useTranslation } from '@/lib/use-translation'
 import { SettingsChoiceGroup } from './SettingsPrimitives'
 
@@ -27,9 +36,15 @@ const ITEM_LABEL_KEYS: Record<ComposerToolbarItemId, string> = {
 
 export function ComposerToolbarLayoutControl() {
     const { t } = useTranslation()
+    const { api, token, user } = useAppContext()
     const { layout, setLayout, resetLayout } = useComposerToolbarLayout()
+    const { settings: globalSettings, isLoading: globalSettingsLoading } = useGlobalComposerToolbarSettings(api)
     const [draggedItem, setDraggedItem] = useState<ComposerToolbarItemId | null>(null)
     const [selectedItem, setSelectedItem] = useState<ComposerToolbarItemId | null>(null)
+    const [globalSavingItem, setGlobalSavingItem] = useState<ComposerToolbarItemId | null>(null)
+    const [globalError, setGlobalError] = useState<string | null>(null)
+    const effectiveLayout = mergeComposerToolbarDisabledItems(layout, globalSettings.disabled)
+    const canManageGlobal = getNamespace(token) === 'default' && user?.role === 'admin'
 
     const setMode = (mode: ComposerToolbarLayoutMode) => {
         setLayout({ ...layout, mode })
@@ -67,15 +82,40 @@ export function ComposerToolbarLayoutControl() {
         setLayout(next)
     }
 
+    const setGlobalDisabled = async (item: ComposerToolbarItemId, disabled: boolean) => {
+        if (!canManageGlobal) return
+        const disabledSet = new Set(globalSettings.disabled)
+        if (disabled) {
+            disabledSet.add(item)
+        } else {
+            disabledSet.delete(item)
+        }
+        const nextDisabled = COMPOSER_TOOLBAR_ITEM_IDS.filter((entry) => disabledSet.has(entry))
+        setGlobalSavingItem(item)
+        setGlobalError(null)
+        try {
+            const response = await api.updateGlobalComposerToolbarSettings({ disabled: nextDisabled })
+            dispatchGlobalComposerToolbarSettingsChange(response.settings)
+        } catch (error) {
+            setGlobalError(error instanceof Error ? error.message : t('settings.chat.composerToolbar.globalError'))
+        } finally {
+            setGlobalSavingItem(null)
+        }
+    }
+
     const renderItem = (item: ComposerToolbarItemId, group: ComposerToolbarGroup, index: number) => {
         const label = t(ITEM_LABEL_KEYS[item])
+        const disabled = !isComposerToolbarItemEnabled(effectiveLayout, item)
+        const title = disabled
+            ? `${label} · ${t('settings.chat.composerToolbar.disabled')}`
+            : label
         return (
             <button
                 key={item}
                 type="button"
                 draggable
-                aria-label={label}
-                title={label}
+                aria-label={title}
+                title={title}
                 onDragStart={(event) => {
                     setDraggedItem(item)
                     event.dataTransfer.effectAllowed = 'move'
@@ -103,9 +143,12 @@ export function ComposerToolbarLayoutControl() {
                     }
                 }}
                 aria-pressed={selectedItem === item}
-                className={`cursor-grab rounded-full transition-colors hover:bg-[var(--app-bg)] active:cursor-grabbing ${selectedItem === item ? 'bg-[var(--app-bg)] ring-1 ring-[var(--app-link)]' : ''} ${draggedItem === item ? 'opacity-35' : ''}`}
+                className={`relative cursor-grab rounded-full transition-colors hover:bg-[var(--app-bg)] active:cursor-grabbing ${selectedItem === item ? 'bg-[var(--app-bg)] ring-1 ring-[var(--app-link)]' : ''} ${disabled ? 'opacity-40 grayscale' : ''} ${draggedItem === item ? 'opacity-35' : ''}`}
             >
                 <ComposerToolbarItemPreview item={item} label={label} />
+                {disabled ? (
+                    <span className="pointer-events-none absolute inset-x-1 top-1/2 h-px -rotate-12 bg-[var(--app-fg)]/60" aria-hidden="true" />
+                ) : null}
             </button>
         )
     }
@@ -130,6 +173,9 @@ export function ComposerToolbarLayoutControl() {
     const selectedGroup: ComposerToolbarGroup = selectedItem && layout.right.includes(selectedItem) ? 'right' : 'left'
     const selectedItems = layout.mode === 'split' ? layout[selectedGroup] : singleItems
     const selectedIndex = selectedItem ? selectedItems.indexOf(selectedItem) : -1
+    const selectedLocalDisabled = selectedItem ? !isComposerToolbarItemEnabled(layout, selectedItem) : false
+    const selectedGlobalDisabled = selectedItem ? globalSettings.disabled.includes(selectedItem) : false
+    const selectedDisabled = selectedLocalDisabled || selectedGlobalDisabled
 
     return (
         <div className="border-t border-[var(--app-divider)] py-3">
@@ -174,41 +220,78 @@ export function ComposerToolbarLayoutControl() {
                 </div>
             </div>
             {selectedItem && selectedIndex >= 0 ? (
-                <div className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-lg bg-[var(--app-subtle-bg)] px-3 py-2 text-sm">
-                    <span className="min-w-0 truncate text-[var(--app-hint)]">{t(ITEM_LABEL_KEYS[selectedItem])}</span>
-                    <span className="flex shrink-0 items-center gap-1">
-                        <button
-                            type="button"
-                            disabled={selectedIndex === 0}
-                            aria-label={t('settings.chat.composerToolbar.moveEarlier')}
-                            title={t('settings.chat.composerToolbar.moveEarlier')}
-                            onClick={() => moveItemByOffset(selectedItem, selectedGroup, selectedIndex, -1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[var(--app-bg)] disabled:opacity-35"
-                        >
-                            ←
-                        </button>
-                        <button
-                            type="button"
-                            disabled={selectedIndex === selectedItems.length - 1}
-                            aria-label={t('settings.chat.composerToolbar.moveLater')}
-                            title={t('settings.chat.composerToolbar.moveLater')}
-                            onClick={() => moveItemByOffset(selectedItem, selectedGroup, selectedIndex, 1)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[var(--app-bg)] disabled:opacity-35"
-                        >
-                            →
-                        </button>
-                        {layout.mode === 'split' ? (
+                <div className="mx-3 mt-2 rounded-lg bg-[var(--app-subtle-bg)] px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span className="min-w-0 truncate text-[var(--app-fg)]">{t(ITEM_LABEL_KEYS[selectedItem])}</span>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${selectedDisabled ? 'bg-red-500/10 text-red-600' : 'bg-emerald-500/10 text-emerald-600'}`}>
+                                    {selectedDisabled ? t('settings.chat.composerToolbar.disabled') : t('settings.chat.composerToolbar.enabled')}
+                                </span>
+                                {selectedGlobalDisabled ? (
+                                    <span className="shrink-0 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] text-red-600">
+                                        {t('settings.chat.composerToolbar.globalBadge')}
+                                    </span>
+                                ) : null}
+                            </div>
+                            <p className="mt-0.5 text-xs text-[var(--app-hint)]">{t('settings.chat.composerToolbar.disableHint')}</p>
+                            {globalError ? <p className="mt-1 text-xs text-red-600">{globalError}</p> : null}
+                        </div>
+                        <span className="flex shrink-0 items-center gap-1">
                             <button
                                 type="button"
-                                aria-label={selectedGroup === 'left' ? t('settings.chat.composerToolbar.moveRight') : t('settings.chat.composerToolbar.moveLeft')}
-                                title={selectedGroup === 'left' ? t('settings.chat.composerToolbar.moveRight') : t('settings.chat.composerToolbar.moveLeft')}
-                                onClick={() => setLayout(moveComposerToolbarItem(layout, selectedItem, selectedGroup === 'left' ? 'right' : 'left', selectedGroup === 'left' ? layout.right.length : layout.left.length))}
-                                className="ml-1 rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-link)] hover:bg-[var(--app-bg)]"
+                                onClick={() => setLayout(setComposerToolbarItemDisabled(layout, selectedItem, !selectedLocalDisabled))}
+                                className={`rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--app-bg)] ${selectedLocalDisabled ? 'text-emerald-600' : 'text-red-600'}`}
                             >
-                                {selectedGroup === 'left' ? t('settings.chat.composerToolbar.rightGroup') : t('settings.chat.composerToolbar.leftGroup')}
+                                {selectedLocalDisabled ? t('settings.chat.composerToolbar.enableTool') : t('settings.chat.composerToolbar.disableTool')}
                             </button>
-                        ) : null}
-                    </span>
+                            {canManageGlobal ? (
+                                <button
+                                    type="button"
+                                    disabled={globalSettingsLoading || globalSavingItem === selectedItem}
+                                    onClick={() => {
+                                        void setGlobalDisabled(selectedItem, !selectedGlobalDisabled)
+                                    }}
+                                    className={`rounded-lg px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--app-bg)] disabled:opacity-50 ${selectedGlobalDisabled ? 'text-emerald-600' : 'text-red-600'}`}
+                                >
+                                    {selectedGlobalDisabled
+                                        ? t('settings.chat.composerToolbar.enableGlobally')
+                                        : t('settings.chat.composerToolbar.disableGlobally')}
+                                </button>
+                            ) : null}
+                            <button
+                                type="button"
+                                disabled={selectedIndex === 0}
+                                aria-label={t('settings.chat.composerToolbar.moveEarlier')}
+                                title={t('settings.chat.composerToolbar.moveEarlier')}
+                                onClick={() => moveItemByOffset(selectedItem, selectedGroup, selectedIndex, -1)}
+                                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[var(--app-bg)] disabled:opacity-35"
+                            >
+                                ←
+                            </button>
+                            <button
+                                type="button"
+                                disabled={selectedIndex === selectedItems.length - 1}
+                                aria-label={t('settings.chat.composerToolbar.moveLater')}
+                                title={t('settings.chat.composerToolbar.moveLater')}
+                                onClick={() => moveItemByOffset(selectedItem, selectedGroup, selectedIndex, 1)}
+                                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[var(--app-bg)] disabled:opacity-35"
+                            >
+                                →
+                            </button>
+                            {layout.mode === 'split' ? (
+                                <button
+                                    type="button"
+                                    aria-label={selectedGroup === 'left' ? t('settings.chat.composerToolbar.moveRight') : t('settings.chat.composerToolbar.moveLeft')}
+                                    title={selectedGroup === 'left' ? t('settings.chat.composerToolbar.moveRight') : t('settings.chat.composerToolbar.moveLeft')}
+                                    onClick={() => setLayout(moveComposerToolbarItem(layout, selectedItem, selectedGroup === 'left' ? 'right' : 'left', selectedGroup === 'left' ? layout.right.length : layout.left.length))}
+                                    className="ml-1 rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-link)] hover:bg-[var(--app-bg)]"
+                                >
+                                    {selectedGroup === 'left' ? t('settings.chat.composerToolbar.rightGroup') : t('settings.chat.composerToolbar.leftGroup')}
+                                </button>
+                            ) : null}
+                        </span>
+                    </div>
                 </div>
             ) : null}
         </div>

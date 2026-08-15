@@ -9,6 +9,7 @@ const connectMock = vi.fn()
 const resizeMock = vi.fn()
 const disconnectMock = vi.fn()
 const onOutputMock = vi.fn()
+const getGlobalComposerToolbarSettingsMock = vi.fn()
 let onExitHandler: ((code: number | null, signal: string | null) => void) | null = null
 
 const onExitRegister = (handler: (code: number | null, signal: string | null) => void) => {
@@ -31,7 +32,9 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@/lib/app-context', () => ({
     useAppContext: () => ({
-        api: null,
+        api: {
+            getGlobalComposerToolbarSettings: getGlobalComposerToolbarSettingsMock
+        },
         token: 'test-token',
         baseUrl: 'http://localhost:3000'
     })
@@ -76,6 +79,8 @@ function renderWithProviders() {
 describe('TerminalPage paste behavior', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        localStorage.clear()
+        getGlobalComposerToolbarSettingsMock.mockResolvedValue({ settings: { disabled: [] } })
         onExitHandler = null
     })
 
@@ -87,7 +92,8 @@ describe('TerminalPage paste behavior', () => {
         })
 
         renderWithProviders()
-        fireEvent.click(screen.getAllByRole('button', { name: 'Paste' })[0])
+        const pasteButtons = await screen.findAllByRole('button', { name: 'Paste' })
+        fireEvent.click(pasteButtons[0])
 
         await waitFor(() => {
             expect(readText).toHaveBeenCalledTimes(1)
@@ -106,7 +112,8 @@ describe('TerminalPage paste behavior', () => {
         })
 
         renderWithProviders()
-        fireEvent.click(screen.getAllByRole('button', { name: 'Paste' })[0])
+        const pasteButtons = await screen.findAllByRole('button', { name: 'Paste' })
+        fireEvent.click(pasteButtons[0])
 
         expect(await screen.findByText('Paste input')).toBeInTheDocument()
     })
@@ -115,11 +122,14 @@ describe('TerminalPage paste behavior', () => {
 describe('TerminalPage exit behavior', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        localStorage.clear()
+        getGlobalComposerToolbarSettingsMock.mockResolvedValue({ settings: { disabled: [] } })
         onExitHandler = null
     })
 
     it('navigates back to chat shortly after the terminal exits', async () => {
         renderWithProviders()
+        expect(await screen.findByTestId('terminal-view')).toBeInTheDocument()
 
         await waitFor(() => {
             expect(onExitHandler).not.toBeNull()
@@ -135,5 +145,34 @@ describe('TerminalPage exit behavior', () => {
             },
             { timeout: 3000 }
         )
+    })
+})
+
+describe('TerminalPage toolbar availability', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        localStorage.clear()
+        getGlobalComposerToolbarSettingsMock.mockResolvedValue({ settings: { disabled: [] } })
+        onExitHandler = null
+    })
+
+    it('blocks direct terminal route access when the terminal tool is disabled', () => {
+        localStorage.setItem('hapi-composer-toolbar-layout', JSON.stringify({
+            disabled: ['terminal']
+        }))
+
+        renderWithProviders()
+
+        expect(screen.getByText('Terminal is disabled')).toBeInTheDocument()
+        expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument()
+    })
+
+    it('blocks direct terminal route access when the terminal tool is globally disabled', async () => {
+        getGlobalComposerToolbarSettingsMock.mockResolvedValue({ settings: { disabled: ['terminal'] } })
+
+        renderWithProviders()
+
+        expect(await screen.findByText('Terminal is disabled')).toBeInTheDocument()
+        expect(screen.queryByTestId('terminal-view')).not.toBeInTheDocument()
     })
 })

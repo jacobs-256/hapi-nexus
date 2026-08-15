@@ -20,6 +20,7 @@ import { createPermissionsRoutes } from './routes/permissions'
 import { createMachinesRoutes } from './routes/machines'
 import { createProjectsRoutes } from './routes/projects'
 import { createUsersRoutes } from './routes/users'
+import { createAppSettingsRoutes } from './routes/appSettings'
 import { createStorageRoutes } from './routes/storage'
 import { createGitRoutes } from './routes/git'
 import { createCliRoutes } from './routes/cli'
@@ -234,7 +235,7 @@ function createWebApp(options: {
     const corsOriginOption = corsOrigins.includes('*') ? '*' : corsOrigins
     const corsMiddleware = cors({
         origin: corsOriginOption,
-        allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
         allowHeaders: ['authorization', 'content-type']
     })
     app.use('/api/*', corsMiddleware)
@@ -253,6 +254,7 @@ function createWebApp(options: {
     app.route('/api', createMachinesRoutes(options.getSyncEngine))
     app.route('/api', createProjectsRoutes(options.store, options.getSyncEngine))
     app.route('/api', createUsersRoutes(options.store))
+    app.route('/api', createAppSettingsRoutes(options.store, { getSseManager: options.getSseManager }))
     app.route('/api', createStorageRoutes(options.store, {
         settingsFile: configuration.settingsFile,
         dataDir: configuration.dataDir,

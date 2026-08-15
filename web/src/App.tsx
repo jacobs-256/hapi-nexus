@@ -14,6 +14,7 @@ import { useSyncingState } from '@/hooks/useSyncingState'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useViewportHeight } from '@/hooks/useViewportHeight'
 import { useVisibilityReporter } from '@/hooks/useVisibilityReporter'
+import { dispatchGlobalComposerToolbarSettingsChange } from '@/hooks/useGlobalComposerToolbarSettings'
 import { useAppearance, useTheme } from '@/hooks/useTheme'
 import { queryKeys } from '@/lib/query-keys'
 import { AppContextProvider, useAppContext } from '@/lib/app-context'
@@ -562,6 +563,12 @@ function AppInner() {
         '--app-page-safe-area-bottom': telegramApp ? 'env(safe-area-inset-bottom)' : '0px',
     } as CSSProperties
 
+    const handleGlobalSseEvent = useCallback((event: SyncEvent) => {
+        if (event.type === 'app-settings-updated' && event.data.key === 'composerToolbar') {
+            dispatchGlobalComposerToolbarSettingsChange(event.data.settings)
+        }
+    }, [])
+
     const { subscriptionId: globalSubscriptionId } = useSSE({
         enabled: sseEnabled,
         token: token ?? '',
@@ -570,7 +577,7 @@ function AppInner() {
         scope: 'global',
         onConnect: handleSseConnect,
         onDisconnect: handleSseDisconnect,
-        onEvent: () => {},
+        onEvent: handleGlobalSseEvent,
         onToast: handleToast
     })
 

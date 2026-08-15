@@ -14,6 +14,12 @@ import { LoadingState } from '@/components/LoadingState'
 import { Button } from '@/components/ui/button'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
 import {
+    isComposerToolbarItemEnabled,
+    mergeComposerToolbarDisabledItems,
+    useComposerToolbarLayout
+} from '@/hooks/useComposerToolbarLayout'
+import { useGlobalComposerToolbarSettings } from '@/hooks/useGlobalComposerToolbarSettings'
+import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -126,6 +132,25 @@ const QUICK_INPUT_ROWS: QuickInput[][] = [
     ],
 ]
 
+function TerminalDisabledState() {
+    const { t } = useTranslation()
+    const goBack = useAppGoBack()
+
+    return (
+        <div className="flex h-full min-h-0 flex-col bg-[var(--app-bg)] pt-[var(--app-page-safe-area-top)]">
+            <div className="mx-auto flex w-full max-w-content flex-1 items-center justify-center p-6">
+                <div className="w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-5 text-center shadow-sm">
+                    <div className="text-base font-semibold text-[var(--app-fg)]">{t('terminal.disabledBySettings')}</div>
+                    <p className="mt-2 text-sm text-[var(--app-hint)]">{t('terminal.disabledBySettingsDescription')}</p>
+                    <Button type="button" onClick={goBack} className="mt-4">
+                        {t('terminal.disabledBack')}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 function QuickKeyButton(props: {
     input: QuickInput
     disabled: boolean
@@ -183,6 +208,25 @@ function QuickKeyButton(props: {
 }
 
 export default function TerminalPage() {
+    const { api } = useAppContext()
+    const { layout: localLayout } = useComposerToolbarLayout()
+    const { settings: globalSettings, isLoading } = useGlobalComposerToolbarSettings(api)
+    const layout = mergeComposerToolbarDisabledItems(localLayout, globalSettings.disabled)
+    if (isLoading && isComposerToolbarItemEnabled(localLayout, 'terminal')) {
+        return (
+            <div className="flex h-full items-center justify-center">
+                <LoadingState label="Loading terminal settings…" className="text-sm" />
+            </div>
+        )
+    }
+    if (!isComposerToolbarItemEnabled(layout, 'terminal')) {
+        return <TerminalDisabledState />
+    }
+
+    return <TerminalPageInner />
+}
+
+function TerminalPageInner() {
     const { t } = useTranslation()
     const { sessionId } = useParams({ from: '/sessions/$sessionId/terminal' })
     const { api, token, baseUrl } = useAppContext()

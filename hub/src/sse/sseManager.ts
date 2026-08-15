@@ -162,7 +162,7 @@ export class SSEManager {
     }
 
     private shouldSend(connection: SSEConnection, event: SyncEvent): boolean {
-        if (event.type !== 'connection-changed') {
+        if (event.type !== 'connection-changed' && event.type !== 'app-settings-updated') {
             const eventNamespace = event.namespace
             if (!eventNamespace || eventNamespace !== connection.namespace) {
                 return false
@@ -171,6 +171,10 @@ export class SSEManager {
 
         if (connection.userId !== null && this.userEventFilter && !this.userEventFilter(connection.userId, connection.namespace, event)) {
             return false
+        }
+
+        if (event.type === 'app-settings-updated') {
+            return connection.all
         }
 
         if (event.type === 'message-received' || event.type === 'scheduled-matured') {

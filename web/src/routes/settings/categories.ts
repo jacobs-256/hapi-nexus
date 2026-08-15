@@ -22,7 +22,7 @@ export const settingsCategoryGroups: Array<{ id: string; titleKey: string; categ
     { id: 'system', titleKey: 'settings.nav.system', categoryIds: ['storage', 'about'] },
 ]
 
-function getNamespace(token: string): string | null {
+export function getNamespace(token: string): string | null {
     try {
         const payload = token.split('.')[1]
         if (!payload) return null

@@ -29,7 +29,7 @@ export function CheckIcon(props: { className?: string }) {
 
 export function SettingsPageContent(props: { title?: string; description?: string; actions?: ReactNode; children: ReactNode }) {
     return (
-        <div className="mx-auto w-full max-w-[1080px] px-3 py-4 sm:px-5 lg:px-8 lg:py-7">
+        <div className="w-full px-3 py-4 sm:px-5 lg:p-0">
             {(props.title || props.description || props.actions) ? (
                 <div className="mb-6 flex min-w-0 flex-col gap-3 border-b border-[var(--app-divider)] pb-5 sm:flex-row sm:items-end sm:justify-between">
                     <div className="min-w-0">

@@ -26,9 +26,9 @@ export default function SettingsLayout() {
     const mobileTitle = t(mobileTitleKey)
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[var(--app-bg)]">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--app-bg)]">
             <header className="shrink-0 border-b border-[var(--app-border)] bg-[var(--app-dialog-bg)] pt-[var(--app-page-safe-area-top)]">
-                <div className="mx-auto flex w-full max-w-[1440px] items-center gap-3 px-3 py-3 sm:px-5 lg:px-6">
+                <div className="flex w-full items-center gap-3 px-3 py-3 sm:px-5 lg:px-6">
                     <button type="button" onClick={goBack} aria-label={t('common.back')} className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--app-hint)] transition-colors hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)] lg:hidden">
                         <BackIcon />
                     </button>
@@ -45,15 +45,15 @@ export default function SettingsLayout() {
                 </div>
             </header>
 
-            <div className="min-h-0 flex-1 bg-[var(--app-bg)]">
-                <div className="mx-auto flex h-full w-full max-w-[1440px] min-h-0">
-                    <aside className="hidden w-72 shrink-0 border-r border-[var(--app-border)] bg-[var(--app-bg)] lg:block">
+            <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--app-bg)]">
+                <aside className="absolute bottom-4 left-4 top-4 z-20 hidden w-72 lg:block xl:bottom-5 xl:left-6 xl:top-5">
+                    <div className="app-scroll-y h-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)]/95 shadow-xl shadow-black/10 backdrop-blur">
                         <SettingsNav activeId={category?.id ?? 'display'} />
-                    </aside>
-                    <main className="app-scroll-y min-w-0 flex-1 bg-[var(--app-bg)] lg:[scrollbar-gutter:stable_both-edges]">
-                        <Outlet />
-                    </main>
-                </div>
+                    </div>
+                </aside>
+                <main className="app-scroll-y h-full min-w-0 bg-[var(--app-bg)] lg:py-4 lg:pl-[20rem] lg:pr-4 lg:[scrollbar-gutter:stable_both-edges] xl:py-5 xl:pl-[21rem] xl:pr-6">
+                    <Outlet />
+                </main>
             </div>
         </div>
     )

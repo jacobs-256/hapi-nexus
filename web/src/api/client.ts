@@ -4,6 +4,8 @@ import type {
     CodexLocalSessionsResponse,
     CodexDuplicateSessionsResponse,
     CodexMergeDuplicateSessionsResponse,
+    CodexImportJobResponse,
+    CodexImportJobsResponse,
     CodexDesktopScriptResponse,
     CodexDesktopSyncRequest,
     CodexFolderSyncRequest,
@@ -36,6 +38,7 @@ import type {
     DeleteUploadResponse,
     FileReadResponse,
     GitCommandResponse,
+    GlobalComposerToolbarSettingsResponse,
     GrokModelsResponse,
     GrokReasoningEffortResponse,
     ListDirectoryResponse,
@@ -56,6 +59,7 @@ import type {
     ReopenSessionResponse,
     SqliteStorageUsageResponse,
     StorageSettingsResponse,
+    UpdateGlobalComposerToolbarSettingsRequest,
     UpdateStorageSettingsRequest,
     UpdateStorageSettingsResponse,
     UserResponse,
@@ -255,6 +259,19 @@ export class ApiClient {
         })
     }
 
+    async getGlobalComposerToolbarSettings(): Promise<GlobalComposerToolbarSettingsResponse> {
+        return await this.request<GlobalComposerToolbarSettingsResponse>('/api/settings/composer-toolbar')
+    }
+
+    async updateGlobalComposerToolbarSettings(
+        payload: UpdateGlobalComposerToolbarSettingsRequest
+    ): Promise<GlobalComposerToolbarSettingsResponse> {
+        return await this.request<GlobalComposerToolbarSettingsResponse>('/api/settings/composer-toolbar', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        })
+    }
+
     async bind(auth: { initData: string; accessToken: string }): Promise<AuthResponse> {
         const res = await fetch(this.buildUrl('/api/bind'), {
             method: 'POST',
@@ -404,6 +421,21 @@ export class ApiClient {
             method: 'POST',
             ...(payload ? { body: JSON.stringify(payload) } : {})
         })
+    }
+
+    async createCodexImportJob(payload: CodexDesktopSyncRequest): Promise<CodexImportJobResponse> {
+        return await this.request<CodexImportJobResponse>('/api/codex/import-jobs', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async getCodexImportJobs(): Promise<CodexImportJobsResponse> {
+        return await this.request<CodexImportJobsResponse>('/api/codex/import-jobs')
+    }
+
+    async getCodexImportJob(jobId: string): Promise<CodexImportJobResponse> {
+        return await this.request<CodexImportJobResponse>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}`)
     }
 
     async syncCodexFolder(payload: CodexFolderSyncRequest): Promise<CodexDesktopScriptResponse> {

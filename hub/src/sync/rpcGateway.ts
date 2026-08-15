@@ -2,6 +2,7 @@ import type { AgentFlavor, CodexCollaborationMode, PermissionMode } from '@hapi/
 import { RPC_METHODS } from '@hapi/protocol/rpcMethods'
 import {
     ArchiveCodexSessionRpcResponseSchema,
+    CodexSessionMessagesRpcResponseSchema,
     CursorChatStoreStatusSchema,
     ListCodexSessionsRpcResponseSchema
 } from '@hapi/protocol/apiTypes'
@@ -20,6 +21,7 @@ import type {
     GrokReasoningEffortResponse,
     ListDirectoryResponse,
     ListCodexSessionsRpcResponse,
+    CodexSessionMessagesRpcResponse,
     ArchiveCodexSessionRpcResponse,
     OpencodeModelsResponse,
     OpencodeModelSummary,
@@ -68,6 +70,7 @@ export type RpcPathExistsResponse = PathExistsResponse
 export type RpcCodexModel = CodexModelSummary
 export type RpcListCodexModelsResponse = CodexModelsResponse
 export type RpcListCodexSessionsResponse = ListCodexSessionsRpcResponse
+export type RpcCodexSessionMessagesResponse = CodexSessionMessagesRpcResponse
 export type RpcArchiveCodexSessionResponse = ArchiveCodexSessionRpcResponse
 export type RpcCursorModel = CursorModelSummary
 export type RpcListCursorModelsResponse = CursorModelsResponse
@@ -318,6 +321,11 @@ export class RpcGateway {
     async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]): Promise<RpcListCodexSessionsResponse> {
         const result = await this.machineRpc(machineId, RPC_METHODS.ListCodexSessions, { cwd: cwd ?? null, sessionIds }, MODEL_LIST_RPC_TIMEOUT_MS)
         return ListCodexSessionsRpcResponseSchema.parse(result)
+    }
+
+    async getCodexSessionMessagesForMachine(machineId: string, sessionId: string, offset: number, limit: number): Promise<RpcCodexSessionMessagesResponse> {
+        const result = await this.machineRpc(machineId, RPC_METHODS.GetCodexSessionMessages, { sessionId, offset, limit }, MODEL_LIST_RPC_TIMEOUT_MS)
+        return CodexSessionMessagesRpcResponseSchema.parse(result)
     }
 
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {

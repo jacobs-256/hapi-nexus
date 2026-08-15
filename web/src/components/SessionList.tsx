@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { AuthResponse, EnterpriseUser, ProjectWithDetails, ProjectWorkspace, SessionSummary } from '@/types/api'
+import type { AuthResponse, CodexImportJob, CodexLocalSessionSummary, EnterpriseUser, ProjectWithDetails, ProjectWorkspace, SessionSummary } from '@/types/api'
 import type { ApiClient } from '@/api/client'
 import { useLongPress } from '@/hooks/useLongPress'
 import { usePlatform } from '@/hooks/usePlatform'
 import { useSessionActions } from '@/hooks/mutations/useSessionActions'
 import { SessionActionMenu } from '@/components/SessionActionMenu'
 import { SessionExportDialog } from '@/components/SessionExportDialog'
+import { CodexSessionSyncDialog } from '@/components/CodexSessionSyncDialog'
 import { RenameSessionDialog } from '@/components/RenameSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { CopyIcon, CheckIcon } from '@/components/icons'
@@ -19,7 +20,7 @@ import { useShowActiveSessionsOnly } from '@/hooks/useShowActiveSessionsOnly'
 import { classifySessionAttention } from '@/lib/sessionAttention'
 import { getSessionLastSeenAt } from '@/lib/sessionLastSeen'
 import { useSessionRowTooltipIds } from '@/components/HoverTooltip'
-import { subscribeCodexImportedSessions } from '@/lib/codexImportedSessions'
+import { markCodexSessionsImported, subscribeCodexImportedSessions } from '@/lib/codexImportedSessions'
 import { formatReopenError } from '@/lib/reopenError'
 import { getSessionTitle } from '@/lib/sessionTitle'
 import { getWorktreeSessionLabel } from '@/lib/sessionWorktreeLabel'
@@ -32,6 +33,7 @@ import { SessionRowSummary } from '@/components/SessionRowSummary'
 import { Spinner } from '@/components/Spinner'
 import { useProjects } from '@/hooks/queries/useProjects'
 import { queryKeys } from '@/lib/query-keys'
+import { useToast } from '@/lib/toast-context'
 
 export { getWorktreeSessionLabel } from '@/lib/sessionWorktreeLabel'
 
@@ -44,6 +46,13 @@ type SessionGroup = {
     createdAt: number
     latestUpdatedAt: number
     hasActiveSession: boolean
+}
+
+type CodexGroupSyncTarget = {
+    groupKey: string
+    directory: string
+    machineId: string
+    projectId: string | null
 }
 
 export type SessionTimeRange = {
@@ -262,6 +271,10 @@ function getPrimaryProjectId(group: SessionGroup): string | null {
         .map((session) => session.projectId ?? null)
         .filter((id): id is string => typeof id === 'string' && id.length > 0)
     return ids[0] ?? null
+}
+
+function groupHasCodexSessions(group: SessionGroup): boolean {
+    return group.sessions.some((session) => session.metadata?.flavor === 'codex')
 }
 
 function findWorkspaceForGroup(
@@ -678,7 +691,9 @@ function SessionGroupActionMenu(props: {
     moveError: string | null
     isMoving: boolean
     canStartInGroupDirectory: boolean
+    canSyncCodexSessions: boolean
     onRename: () => void
+    onSyncCodexSessions?: () => void
     onNewSessionInDirectory?: () => void
     onMoveTargetChange: (projectId: string) => void
     onMove: () => void
@@ -759,6 +774,17 @@ function SessionGroupActionMenu(props: {
                                 }}
                             />
                             <CopyPathMenuItem path={props.group.directory} />
+                            {props.onSyncCodexSessions && props.canSyncCodexSessions ? (
+                                <GroupActionMenuItem
+                                    icon={<SyncIcon className="h-3.5 w-3.5" />}
+                                    label={t('sessions.group.syncCodex')}
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        closeMenu()
+                                        props.onSyncCodexSessions?.()
+                                    }}
+                                />
+                            ) : null}
                             {props.onNewSessionInDirectory && props.canStartInGroupDirectory ? (
                                 <GroupActionMenuItem
                                     icon={<PlusIcon className="h-3.5 w-3.5" />}
@@ -835,6 +861,28 @@ function PlusIcon(props: { className?: string }) {
         >
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+    )
+}
+
+function SyncIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M21 12a9 9 0 0 1-15 6.7" />
+            <path d="M3 12a9 9 0 0 1 15-6.7" />
+            <path d="M6 19H3v-3" />
+            <path d="M18 5h3v3" />
         </svg>
     )
 }
@@ -1467,6 +1515,7 @@ export function SessionList(props: {
     const { showActiveSessionsOnly } = useShowActiveSessionsOnly()
     const { machineFilter, setMachineFilter } = useSessionListMachineFilter()
     const queryClient = useQueryClient()
+    const { addToast } = useToast()
     const { projects } = useProjects(api, Boolean(api))
     const showDetailedStatus = sessionListStatusMode === 'detailed'
     const [searchQuery, setSearchQuery] = useState('')
@@ -1484,6 +1533,15 @@ export function SessionList(props: {
     const skipNextGroupAliasBlurRef = useRef(false)
     const [moveTargetProjectIds, setMoveTargetProjectIds] = useState<Record<string, string>>({})
     const [moveErrors, setMoveErrors] = useState<Record<string, string | null>>({})
+    const [codexSyncTarget, setCodexSyncTarget] = useState<CodexGroupSyncTarget | null>(null)
+    const [codexSyncSessions, setCodexSyncSessions] = useState<CodexLocalSessionSummary[]>([])
+    const [codexSyncMachineId, setCodexSyncMachineId] = useState<string | null>(null)
+    const [codexSyncError, setCodexSyncError] = useState<string | null>(null)
+    const [codexSyncJobs, setCodexSyncJobs] = useState<CodexImportJob[]>([])
+    const [isLoadingCodexSyncSessions, setIsLoadingCodexSyncSessions] = useState(false)
+    const [isQueueingCodexSync, setIsQueueingCodexSync] = useState(false)
+    const [isRestartingCodexDesktop, setIsRestartingCodexDesktop] = useState(false)
+    const completedCodexSyncJobIdsRef = useRef(new Set<string>())
     const currentUserId = props.currentUser?.id ?? null
     const projectsById = useMemo(
         () => new Map(projects.map((project) => [project.id, project])),
@@ -1523,6 +1581,165 @@ export function SessionList(props: {
             }))
         }
     })
+
+    const loadCodexSyncSessions = useCallback(async (target: CodexGroupSyncTarget) => {
+        if (!api) return
+        setIsLoadingCodexSyncSessions(true)
+        setCodexSyncError(null)
+        try {
+            const result = await api.getCodexSessions(target.directory, target.machineId)
+            if (!result.success) {
+                throw new Error(result.error)
+            }
+            const targetMachine = machinesById[target.machineId]
+            const caseInsensitive = isWindowsPathContext(
+                targetMachine,
+                target.directory,
+                ...result.sessions.map((session) => session.cwd)
+            )
+            const targetDirectory = normalizeComparablePath(target.directory, caseInsensitive)
+            setCodexSyncSessions(result.sessions.filter((session) => {
+                const cwd = session.cwd?.trim()
+                return Boolean(cwd && normalizeComparablePath(cwd, caseInsensitive) === targetDirectory)
+            }))
+            setCodexSyncMachineId(result.machineId ?? target.machineId)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('codexSync.failed.body')
+            setCodexSyncSessions([])
+            setCodexSyncMachineId(null)
+            setCodexSyncError(message)
+            addToast({
+                title: t('codexSync.failed.title'),
+                body: message,
+                sessionId: '',
+                url: ''
+            })
+        } finally {
+            setIsLoadingCodexSyncSessions(false)
+        }
+    }, [addToast, api, machinesById, t])
+
+    const loadCodexSyncJobs = useCallback(async () => {
+        if (!api) return
+        try {
+            const result = await api.getCodexImportJobs()
+            if (result.success) {
+                setCodexSyncJobs(result.jobs)
+            }
+        } catch {
+            // Best-effort polling; queue start/success/failure also arrives over SSE.
+        }
+    }, [api])
+
+    const openCodexSyncDialog = useCallback((target: CodexGroupSyncTarget) => {
+        setCodexSyncTarget(target)
+        setCodexSyncSessions([])
+        setCodexSyncMachineId(null)
+        setCodexSyncError(null)
+        void loadCodexSyncSessions(target)
+        void loadCodexSyncJobs()
+    }, [loadCodexSyncJobs, loadCodexSyncSessions])
+
+    const closeCodexSyncDialog = useCallback(() => {
+        setCodexSyncTarget(null)
+        setCodexSyncError(null)
+    }, [])
+
+    const hasActiveCodexSyncJobs = useMemo(
+        () => codexSyncJobs.some((job) => job.status === 'queued' || job.status === 'running'),
+        [codexSyncJobs]
+    )
+
+    useEffect(() => {
+        if (!codexSyncTarget && !hasActiveCodexSyncJobs) return
+
+        void loadCodexSyncJobs()
+        const timer = setInterval(() => {
+            void loadCodexSyncJobs()
+        }, 2000)
+        return () => clearInterval(timer)
+    }, [codexSyncTarget, hasActiveCodexSyncJobs, loadCodexSyncJobs])
+
+    useEffect(() => {
+        let shouldRefreshSessions = false
+        for (const job of codexSyncJobs) {
+            if ((job.status === 'queued' || job.status === 'running') || completedCodexSyncJobIdsRef.current.has(job.id)) {
+                continue
+            }
+            completedCodexSyncJobIdsRef.current.add(job.id)
+            const importedCodexSessionIds = job.items
+                .filter((item) => item.status === 'succeeded' || (item.status === 'skipped' && Boolean(item.hapiSessionId)))
+                .map((item) => item.codexSessionId)
+            if (importedCodexSessionIds.length > 0) {
+                markCodexSessionsImported(importedCodexSessionIds)
+                shouldRefreshSessions = true
+            }
+        }
+        if (shouldRefreshSessions) {
+            void queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+        }
+    }, [codexSyncJobs, queryClient])
+
+    const queueCodexSyncSessions = useCallback(async (sessionIds: string[]) => {
+        if (!api || !codexSyncTarget || isQueueingCodexSync) return
+        setIsQueueingCodexSync(true)
+        setCodexSyncError(null)
+        try {
+            const result = await api.createCodexImportJob({
+                sessionIds,
+                projectId: codexSyncTarget.projectId,
+                cwd: codexSyncTarget.directory,
+                machineId: codexSyncMachineId ?? codexSyncTarget.machineId
+            })
+            if (!result.success) {
+                throw new Error(result.error)
+            }
+            setCodexSyncJobs((current) => [result.job, ...current.filter((job) => job.id !== result.job.id)])
+            addToast({
+                title: t('codexSync.importQueue.queued.title'),
+                body: t('codexSync.importQueue.queued.body', { n: result.job.totalItems }),
+                sessionId: '',
+                url: ''
+            })
+        } catch (error) {
+            const message = error instanceof Error ? error.message : t('codexSync.importQueue.failed.body')
+            setCodexSyncError(message)
+            addToast({
+                title: t('codexSync.failed.title'),
+                body: message,
+                sessionId: '',
+                url: ''
+            })
+        } finally {
+            setIsQueueingCodexSync(false)
+        }
+    }, [addToast, api, codexSyncMachineId, codexSyncTarget, isQueueingCodexSync, t])
+
+    const restartCodexDesktopForSync = useCallback(async () => {
+        if (!api) return
+        setIsRestartingCodexDesktop(true)
+        try {
+            const result = await api.restartCodexDesktop()
+            if (!result.success) {
+                throw new Error(result.error || t('codexSync.restart.failed.body'))
+            }
+            addToast({
+                title: t('codexSync.restart.started.title'),
+                body: t('codexSync.restart.started.body'),
+                sessionId: '',
+                url: ''
+            })
+        } catch (error) {
+            addToast({
+                title: t('codexSync.restart.failed.title'),
+                body: error instanceof Error ? error.message : t('codexSync.restart.failed.body'),
+                sessionId: '',
+                url: ''
+            })
+        } finally {
+            setIsRestartingCodexDesktop(false)
+        }
+    }, [addToast, api, t])
 
     useEffect(() => {
         // 中文注释：监听导入标记变化，让列表在“导入完成”或“用户已在 Hapi 中继续会话”后立即刷新时间文案。
@@ -2018,6 +2235,8 @@ export function SessionList(props: {
                     const selectedMoveTargetId = moveTargetProjectIds[group.key] ?? ''
                     const isMovingGroup = moveDirectoryMutation.isPending
                         && moveDirectoryMutation.variables?.groupKey === group.key
+                    const groupMachineId = group.machineId
+                    const canSyncCodexSessions = Boolean(api && groupMachineId && canStartInGroupDirectory && groupHasCodexSessions(group))
                     return (
                         <div key={group.key}>
                             <div
@@ -2093,7 +2312,16 @@ export function SessionList(props: {
                                         moveError={moveErrors[group.key] ?? null}
                                         isMoving={isMovingGroup}
                                         canStartInGroupDirectory={canStartInGroupDirectory}
+                                        canSyncCodexSessions={canSyncCodexSessions}
                                         onRename={() => startRenamingGroup(group, groupDisplayName)}
+                                        onSyncCodexSessions={canSyncCodexSessions && groupMachineId
+                                            ? () => openCodexSyncDialog({
+                                                groupKey: group.key,
+                                                directory: group.directory,
+                                                machineId: groupMachineId,
+                                                projectId: groupProject?.id ?? primaryProjectId
+                                            })
+                                            : undefined}
                                         onNewSessionInDirectory={onNewSessionInDirectory
                                             ? () => onNewSessionInDirectory({
                                                 machineId: group.machineId,
@@ -2169,6 +2397,23 @@ export function SessionList(props: {
             </div>
             </div>
             </div>
+            {codexSyncTarget ? (
+                <CodexSessionSyncDialog
+                    isOpen={true}
+                    onClose={closeCodexSyncDialog}
+                    sessions={codexSyncSessions}
+                    currentCodexSessionId={null}
+                    currentWorkDirectory={codexSyncTarget.directory}
+                    selectionMode="multiple"
+                    onConfirm={queueCodexSyncSessions}
+                    onRestartCodexDesktop={restartCodexDesktopForSync}
+                    importJobs={codexSyncJobs}
+                    error={codexSyncError}
+                    isPending={isQueueingCodexSync}
+                    isRestartingCodexDesktop={isRestartingCodexDesktop}
+                    isLoading={isLoadingCodexSyncSessions}
+                />
+            ) : null}
         </div>
     )
 }

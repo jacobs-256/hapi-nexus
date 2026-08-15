@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CodexLocalSessionSummary } from '@/types/api'
+import type { CodexImportJob, CodexLocalSessionSummary } from '@/types/api'
 import {
     Dialog,
     DialogContent,
@@ -16,6 +16,25 @@ const ALL_WORKDIR_FILTER = '__all__'
 function formatCodexSessionTime(value: number): string | null {
     if (!Number.isFinite(value)) return null
     return new Date(value).toLocaleString()
+}
+
+function isActiveImportJob(job: CodexImportJob): boolean {
+    return job.status === 'queued' || job.status === 'running'
+}
+
+function getImportJobStatusKey(job: CodexImportJob): string {
+    if (job.status === 'queued') return 'codexSync.importQueue.status.queued'
+    if (job.status === 'running') return 'codexSync.importQueue.status.running'
+    if (job.status === 'succeeded') return 'codexSync.importQueue.status.succeeded'
+    return 'codexSync.importQueue.status.failed'
+}
+
+function getImportItemStatusKey(status: string): string {
+    if (status === 'queued') return 'codexSync.importQueue.item.queued'
+    if (status === 'running') return 'codexSync.importQueue.item.running'
+    if (status === 'succeeded') return 'codexSync.importQueue.item.succeeded'
+    if (status === 'skipped') return 'codexSync.importQueue.item.skipped'
+    return 'codexSync.importQueue.item.failed'
 }
 
 function getCodexSessionPreview(session: CodexLocalSessionSummary): string {
@@ -40,6 +59,16 @@ function isForkedCodexSession(session: CodexLocalSessionSummary): boolean {
     return typeof session.forkedFromId === 'string' && session.forkedFromId.trim().length > 0
 }
 
+function isCodexSessionImported(
+    session: CodexLocalSessionSummary,
+    importedSessions: Record<string, number>
+): boolean {
+    if (typeof session.imported === 'boolean') {
+        return session.imported
+    }
+    return Boolean(importedSessions[session.id])
+}
+
 export function CodexSessionSyncDialog(props: {
     isOpen: boolean
     onClose: () => void
@@ -51,6 +80,8 @@ export function CodexSessionSyncDialog(props: {
     selectionMode?: 'single' | 'multiple'
     onRestartCodexDesktop: () => Promise<void>
     onArchiveSession?: (session: CodexLocalSessionSummary) => Promise<void>
+    importJobs?: CodexImportJob[]
+    error?: string | null
     isPending: boolean
     isRestartingCodexDesktop: boolean
     isLoading: boolean
@@ -66,6 +97,8 @@ export function CodexSessionSyncDialog(props: {
         selectionMode = 'multiple',
         onRestartCodexDesktop,
         onArchiveSession,
+        importJobs = [],
+        error,
         isPending,
         isRestartingCodexDesktop,
         isLoading,
@@ -115,6 +148,16 @@ export function CodexSessionSyncDialog(props: {
                 .some((value) => value.toLowerCase().includes(query))
         })
     }, [searchQuery, sessions, workdirFilter])
+    const selectableFilteredSessions = useMemo(
+        () => filteredSessions.filter((session) => !isCodexSessionImported(session, importedSessions)),
+        [filteredSessions, importedSessions]
+    )
+    const visibleImportJobs = useMemo(
+        () => importJobs
+            .filter((job) => isActiveImportJob(job) || Date.now() - (job.finishedAt ?? job.createdAt) < 5 * 60_000)
+            .slice(0, 5),
+        [importJobs]
+    )
 
     useEffect(() => {
         if (isOpen && !wasOpenRef.current) {
@@ -158,13 +201,24 @@ export function CodexSessionSyncDialog(props: {
         if (!isOpen || isLoading || hasInitializedSelection) return
 
         // 中文注释：弹窗打开后等本地 Codex 会话列表加载完成，再尝试默认勾选当前 Hapi 会话关联的 Codex thread，避免异步加载时默认值丢失。
-        const defaultSelected = currentCodexSessionId && sessionIdSet.has(currentCodexSessionId) && !importedSessions[currentCodexSessionId]
-            ? [currentCodexSessionId]
+        const currentSession = currentCodexSessionId
+            ? sessions.find((session) => session.id === currentCodexSessionId)
+            : null
+        const defaultSelected = currentSession && sessionIdSet.has(currentSession.id) && !isCodexSessionImported(currentSession, importedSessions)
+            ? [currentSession.id]
             : []
         setSelectedSessionIds(defaultSelected)
         setHasInitializedSelection(true)
-    }, [currentCodexSessionId, hasInitializedSelection, importedSessions, isLoading, isOpen, sessionIdSet])
+    }, [currentCodexSessionId, hasInitializedSelection, importedSessions, isLoading, isOpen, sessionIdSet, sessions])
 
+    useEffect(() => {
+        if (!isOpen || selectedSessionIds.length === 0) return
+        const sessionsById = new Map(sessions.map((session) => [session.id, session]))
+        setSelectedSessionIds((current) => current.filter((sessionId) => {
+            const session = sessionsById.get(sessionId)
+            return Boolean(session && !isCodexSessionImported(session, importedSessions))
+        }))
+    }, [importedSessions, isOpen, selectedSessionIds.length, sessions])
 
     const clearLongPressTimer = () => {
         if (longPressTimerRef.current) {
@@ -194,6 +248,8 @@ export function CodexSessionSyncDialog(props: {
 
     const toggleSession = (sessionId: string) => {
         if (isPending || isLoading) return
+        const session = sessions.find((candidate) => candidate.id === sessionId)
+        if (!session || isCodexSessionImported(session, importedSessions)) return
 
         if (selectionMode === 'single') {
             setSelectedSessionIds([sessionId])
@@ -207,7 +263,7 @@ export function CodexSessionSyncDialog(props: {
     }
 
     const selectAll = () => {
-        setSelectedSessionIds(filteredSessions.map((session) => session.id))
+        setSelectedSessionIds(selectableFilteredSessions.map((session) => session.id))
     }
 
     const clearAll = () => {
@@ -254,9 +310,9 @@ export function CodexSessionSyncDialog(props: {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                    {archiveError ? (
+                    {error || archiveError ? (
                         <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
-                            {archiveError}
+                            {error || archiveError}
                         </div>
                     ) : null}
                     <div className="flex items-center justify-between gap-2">
@@ -279,7 +335,7 @@ export function CodexSessionSyncDialog(props: {
                                     variant="secondary"
                                     size="sm"
                                     onClick={selectAll}
-                                    disabled={isPending || isLoading || filteredSessions.length === 0}
+                                    disabled={isPending || isLoading || selectableFilteredSessions.length === 0}
                                 >
                                     {t('codexSync.confirm.selectAll')}
                                 </Button>
@@ -339,7 +395,7 @@ export function CodexSessionSyncDialog(props: {
                             <div className="divide-y divide-[var(--app-border)]">
                                 {filteredSessions.map((session) => {
                                     const checked = selectedSessionIdSet.has(session.id)
-                                    const isImported = Boolean(importedSessions[session.id])
+                                    const isImported = isCodexSessionImported(session, importedSessions)
                                     const time = formatCodexSessionTime(session.modifiedAt)
                                     const preview = getCodexSessionPreview(session)
                                     const cwd = getCodexSessionCwd(session)
@@ -348,7 +404,7 @@ export function CodexSessionSyncDialog(props: {
                                     return (
                                         <div
                                             key={session.id}
-                                            className="relative flex cursor-pointer items-start gap-3 px-3 py-2 transition-colors hover:bg-[var(--app-subtle-bg)]"
+                                            className={`relative flex items-start gap-3 px-3 py-2 transition-colors hover:bg-[var(--app-subtle-bg)] ${isImported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                                             onContextMenu={(event) => {
                                                 if (!onArchiveSession) return
                                                 event.preventDefault()
@@ -369,7 +425,7 @@ export function CodexSessionSyncDialog(props: {
                                                 type={selectionMode === 'single' ? 'radio' : 'checkbox'}
                                                 className="mt-1 h-4 w-4 accent-[var(--app-link)]"
                                                 checked={checked}
-                                                disabled={isPending || isLoading}
+                                                disabled={isPending || isLoading || isImported}
                                                 onChange={() => toggleSession(session.id)}
                                             />
                                             <div className="min-w-0 flex-1">
@@ -439,6 +495,55 @@ export function CodexSessionSyncDialog(props: {
                             </div>
                         )}
                     </div>
+
+                    {visibleImportJobs.length > 0 ? (
+                        <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3">
+                            <div className="mb-2 text-xs font-medium text-[var(--app-hint)]">
+                                {t('codexSync.importQueue.title')}
+                            </div>
+                            <div className="space-y-2">
+                                {visibleImportJobs.map((job) => (
+                                    <div key={job.id} className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-2">
+                                        <div className="flex items-center justify-between gap-2 text-xs">
+                                            <span className="font-medium text-[var(--app-fg)]">
+                                                {t(getImportJobStatusKey(job))}
+                                            </span>
+                                            <span className="text-[var(--app-hint)]">
+                                                {t('codexSync.importQueue.itemsProgress', {
+                                                    done: job.completedItems,
+                                                    total: job.totalItems
+                                                })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-[var(--app-hint)]">
+                                            {t('codexSync.importQueue.messagesProgress', {
+                                                done: job.importedMessages,
+                                                total: job.totalMessages
+                                            })}
+                                        </div>
+                                        <div className="mt-2 space-y-1">
+                                            {job.items.slice(0, 3).map((item) => (
+                                                <div key={item.codexSessionId} className="flex items-center justify-between gap-2 text-[11px]">
+                                                    <span className="min-w-0 truncate text-[var(--app-hint)]">
+                                                        {item.title || item.codexSessionId}
+                                                    </span>
+                                                    <span className="shrink-0 text-[var(--app-hint)]">
+                                                        {t(getImportItemStatusKey(item.status))}
+                                                        {item.messagesToImport > 0 ? ` ${item.importedMessages}/${item.messagesToImport}` : ''}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            {job.items.length > 3 ? (
+                                                <div className="text-[11px] text-[var(--app-hint)]">
+                                                    {t('codexSync.importQueue.moreItems', { n: job.items.length - 3 })}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className="mt-4 flex justify-end gap-2">
