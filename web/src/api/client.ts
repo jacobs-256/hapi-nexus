@@ -38,6 +38,7 @@ import type {
     DeleteUploadResponse,
     FileReadResponse,
     GitCommandResponse,
+    GlobalComposerToolbarSettingsResponse,
     GrokModelsResponse,
     GrokReasoningEffortResponse,
     ListDirectoryResponse,
@@ -58,6 +59,7 @@ import type {
     ReopenSessionResponse,
     SqliteStorageUsageResponse,
     StorageSettingsResponse,
+    UpdateGlobalComposerToolbarSettingsRequest,
     UpdateStorageSettingsRequest,
     UpdateStorageSettingsResponse,
     UserResponse,
@@ -254,6 +256,19 @@ export class ApiClient {
         return await this.request<UserResponse>(`/api/users/${encodeURIComponent(String(userId))}/password`, {
             method: 'POST',
             body: JSON.stringify({ password })
+        })
+    }
+
+    async getGlobalComposerToolbarSettings(): Promise<GlobalComposerToolbarSettingsResponse> {
+        return await this.request<GlobalComposerToolbarSettingsResponse>('/api/settings/composer-toolbar')
+    }
+
+    async updateGlobalComposerToolbarSettings(
+        payload: UpdateGlobalComposerToolbarSettingsRequest
+    ): Promise<GlobalComposerToolbarSettingsResponse> {
+        return await this.request<GlobalComposerToolbarSettingsResponse>('/api/settings/composer-toolbar', {
+            method: 'PUT',
+            body: JSON.stringify(payload)
         })
     }
 

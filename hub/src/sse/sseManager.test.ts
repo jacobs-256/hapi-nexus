@@ -65,6 +65,57 @@ describe('SSEManager namespace filtering', () => {
         expect(received.map((entry) => entry.id).sort()).toEqual(['alpha', 'beta'])
     })
 
+    it('broadcasts app settings updates to all namespaces with global subscriptions', () => {
+        const manager = new SSEManager(0, new VisibilityTracker())
+        const receivedAlpha: SyncEvent[] = []
+        const receivedBeta: SyncEvent[] = []
+        const receivedScoped: SyncEvent[] = []
+
+        manager.subscribe({
+            id: 'alpha',
+            namespace: 'alpha',
+            all: true,
+            send: (event) => {
+                receivedAlpha.push(event)
+            },
+            sendHeartbeat: () => {}
+        })
+
+        manager.subscribe({
+            id: 'beta',
+            namespace: 'beta',
+            all: true,
+            send: (event) => {
+                receivedBeta.push(event)
+            },
+            sendHeartbeat: () => {}
+        })
+
+        manager.subscribe({
+            id: 'scoped',
+            namespace: 'alpha',
+            all: false,
+            sessionId: 'session-1',
+            send: (event) => {
+                receivedScoped.push(event)
+            },
+            sendHeartbeat: () => {}
+        })
+
+        const event: SyncEvent = {
+            type: 'app-settings-updated',
+            data: {
+                key: 'composerToolbar',
+                settings: { disabled: ['terminal'] }
+            }
+        }
+        manager.broadcast(event)
+
+        expect(receivedAlpha).toEqual([event])
+        expect(receivedBeta).toEqual([event])
+        expect(receivedScoped).toHaveLength(0)
+    })
+
     it('sends toast only to visible connections in a namespace', async () => {
         const manager = new SSEManager(0, new VisibilityTracker())
         const received: Array<{ id: string; event: SyncEvent }> = []

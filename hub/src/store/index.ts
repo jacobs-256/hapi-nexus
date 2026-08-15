@@ -12,6 +12,7 @@ import { ScratchlistStore } from './scratchlistStore'
 import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
 import { ProjectStore } from './projectStore'
+import { AppSettingsStore } from './appSettingsStore'
 
 export type {
     StoredMachine,
@@ -38,10 +39,12 @@ export { ScratchlistStore } from './scratchlistStore'
 export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 export { ProjectStore } from './projectStore'
+export { AppSettingsStore } from './appSettingsStore'
 
-export const SCHEMA_VERSION: number = 18
+export const SCHEMA_VERSION: number = 19
 const REQUIRED_TABLES = [
     'schema_migrations',
+    'app_settings',
     'sessions',
     'machines',
     'users',
@@ -71,6 +74,7 @@ export class Store {
     readonly messages: MessageStore
     readonly users: UserStore
     readonly projects: ProjectStore
+    readonly appSettings: AppSettingsStore
     readonly push: PushStore
     readonly fcm: FcmStore
     readonly scratchlist: ScratchlistStore
@@ -147,6 +151,7 @@ export class Store {
         this.messages = new MessageStore(this.conversationDb, () => this.scheduleConversationSync())
         this.users = new UserStore(this.db, () => this.scheduleCoreSync())
         this.projects = new ProjectStore(this.db, () => this.scheduleCoreSync())
+        this.appSettings = new AppSettingsStore(this.db, () => this.scheduleCoreSync())
         this.push = new PushStore(this.db, () => this.scheduleCoreSync())
         this.fcm = new FcmStore(this.db, () => this.scheduleCoreSync())
         this.scratchlist = new ScratchlistStore(this.db, () => this.scheduleCoreSync())
@@ -288,11 +293,18 @@ export class Store {
     }
 
     private initConversationSchema(): void {
-        const currentVersion = this.getUserVersion(this.conversationDb)
+        let currentVersion = this.getUserVersion(this.conversationDb)
         if (currentVersion === 0) {
             this.createConversationSchema()
             this.setUserVersion(SCHEMA_VERSION, this.conversationDb)
             return
+        }
+        if (currentVersion === 18 && SCHEMA_VERSION === 19) {
+            // V19 only adds the core app_settings table; conversation storage
+            // shape is unchanged, but split SQLite conversation mirrors still
+            // need their user_version bumped so normal startup can continue.
+            this.setUserVersion(SCHEMA_VERSION, this.conversationDb)
+            currentVersion = SCHEMA_VERSION
         }
         if (currentVersion !== SCHEMA_VERSION) {
             throw this.buildSchemaMismatchError(currentVersion, this._conversationDbPath)
@@ -351,6 +363,7 @@ export class Store {
             15: () => this.migrateFromV15ToV16(),
             16: () => this.migrateFromV16ToV17(),
             17: () => this.migrateFromV17ToV18(),
+            18: () => this.migrateFromV18ToV19(),
         })
 
         if (currentVersion === 0) {
@@ -429,6 +442,12 @@ export class Store {
             CREATE INDEX IF NOT EXISTS idx_sessions_tag ON sessions(tag);
             CREATE INDEX IF NOT EXISTS idx_sessions_tag_namespace ON sessions(tag, namespace);
             CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,
@@ -1025,6 +1044,20 @@ export class Store {
      */
     private migrateFromV17ToV18(): void {
         this.createSchemaMigrationsTable()
+    }
+
+    private migrateFromV18ToV19(): void {
+        this.createAppSettingsTable()
+    }
+
+    private createAppSettingsTable(): void {
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+        `)
     }
 
     private createSchemaMigrationsTable(): void {

@@ -36,6 +36,7 @@ import { Autocomplete } from '@/components/ChatInput/Autocomplete'
 import { StatusBar } from '@/components/AssistantChat/StatusBar'
 import { ComposerButtons } from '@/components/AssistantChat/ComposerButtons'
 import type { PendingSchedule } from '@/components/AssistantChat/ScheduleTimePicker'
+import { isComposerToolbarItemEnabled, type ComposerToolbarLayout } from '@/hooks/useComposerToolbarLayout'
 import { AttachmentItem } from '@/components/AssistantChat/AttachmentItem'
 import { useTranslation } from '@/lib/use-translation'
 import { getModelOptionsForFlavor, getNextModelForFlavor } from './modelOptions'
@@ -197,6 +198,10 @@ export function HappyComposer(props: {
     pendingSchedule?: PendingSchedule | null
     onSchedule?: (pending: PendingSchedule) => void
     onClearSchedule?: () => void
+    attachmentToolEnabled?: boolean
+    abortToolEnabled?: boolean
+    scheduleToolEnabled?: boolean
+    toolbarLayout?: ComposerToolbarLayout
     // Scratchlist drawer props - SessionChat owns the state. Threaded
     // straight through to ComposerButtons. When undefined, the toggle
     // button doesn't render (back-compat for any other consumer).
@@ -259,6 +264,10 @@ export function HappyComposer(props: {
         pendingSchedule: pendingScheduleProp,
         onSchedule: onScheduleProp,
         onClearSchedule: onClearScheduleProp,
+        attachmentToolEnabled = true,
+        abortToolEnabled = true,
+        scheduleToolEnabled = true,
+        toolbarLayout,
         sendError = null,
         onClearSendError,
         resolveSessionMentionTooltip,
@@ -309,8 +318,13 @@ export function HappyComposer(props: {
     // pendingSchedule is controlled externally when onSchedule prop is provided; otherwise local state
     const [pendingScheduleLocal, setPendingScheduleLocal] = useState<PendingSchedule | null>(null)
     const isControlled = onScheduleProp !== undefined
-    const pendingSchedule = isControlled ? (pendingScheduleProp ?? null) : pendingScheduleLocal
-    const setPendingSchedule = isControlled ? onScheduleProp : setPendingScheduleLocal
+    const rawPendingSchedule = isControlled ? (pendingScheduleProp ?? null) : pendingScheduleLocal
+    const pendingSchedule = scheduleToolEnabled ? rawPendingSchedule : null
+    const setPendingSchedule = scheduleToolEnabled ? (onScheduleProp ?? setPendingScheduleLocal) : undefined
+    const clearPendingSchedule = scheduleToolEnabled ? (onClearScheduleProp ?? (() => setPendingScheduleLocal(null))) : undefined
+    const settingsToolEnabled = !toolbarLayout || isComposerToolbarItemEnabled(toolbarLayout, 'settings')
+    const piModelToolEnabled = !toolbarLayout || isComposerToolbarItemEnabled(toolbarLayout, 'piModel')
+    const piThinkingToolEnabled = !toolbarLayout || isComposerToolbarItemEnabled(toolbarLayout, 'piThinking')
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const richInputRef = useRef<RichComposerInputHandle>(null)
@@ -367,10 +381,10 @@ export function HappyComposer(props: {
         // we feed it back as an 'absolute' PendingSchedule.  The existing
         // shouldAutoClearPendingSchedule effect in SessionChat handles the
         // case where the absolute time has passed by the time we restore.
-        if (sendError.scheduledAt !== null && onScheduleProp) {
+        if (scheduleToolEnabled && sendError.scheduledAt !== null && onScheduleProp) {
             onScheduleProp({ type: 'absolute', ms: sendError.scheduledAt })
         }
-    }, [sendError, api, composerText, onScheduleProp])
+    }, [sendError, api, composerText, onScheduleProp, scheduleToolEnabled])
 
     useEffect(() => {
         if (richMentionsEnabled) {
@@ -653,7 +667,7 @@ export function HappyComposer(props: {
             }
         }
 
-        if (key === 'Escape' && threadIsRunning) {
+        if (key === 'Escape' && threadIsRunning && abortToolEnabled) {
             e.preventDefault()
             handleAbort()
             return
@@ -685,6 +699,7 @@ export function HappyComposer(props: {
         composerEnterBehavior,
         richMentionsEnabled,
         flushAndSend,
+        abortToolEnabled,
     ])
 
     useEffect(() => {
@@ -694,6 +709,7 @@ export function HappyComposer(props: {
             // would lose the provider and can pick the wrong cached match or clear
             // the model. Pi model changes go only through the dedicated PiModelPanel.
             if (agentFlavor === 'pi') return
+            if (!settingsToolEnabled) return
             if (e.key === 'm' && (e.metaKey || e.ctrlKey) && onModelChange && supportsModelChange(agentFlavor)) {
                 e.preventDefault()
                 onModelChange(getNextModelForFlavor(agentFlavor, model, availableModelOptions))
@@ -703,7 +719,7 @@ export function HappyComposer(props: {
 
         window.addEventListener('keydown', handleGlobalKeyDown)
         return () => window.removeEventListener('keydown', handleGlobalKeyDown)
-    }, [model, onModelChange, haptic, agentFlavor, availableModelOptions])
+    }, [model, onModelChange, haptic, agentFlavor, availableModelOptions, settingsToolEnabled])
 
     const handleChange = useCallback((e: ReactChangeEvent<HTMLTextAreaElement>) => {
         const selection = {
@@ -733,6 +749,11 @@ export function HappyComposer(props: {
 
         if (imageFiles.length === 0) return
 
+        if (!attachmentToolEnabled) {
+            e.preventDefault()
+            return
+        }
+
         // The backend rejects scheduledAt + attachments (per-CLI upload dir is
         // torn down before a mature emit could read the files). The button-based
         // attachment flow is disabled by ComposerButtons.hasAttachments, but the
@@ -752,7 +773,7 @@ export function HappyComposer(props: {
         } catch (error) {
             console.error('Error adding pasted image:', error)
         }
-    }, [api, pendingSchedule])
+    }, [api, pendingSchedule, attachmentToolEnabled])
 
     const handleSettingsToggle = useCallback(() => {
         haptic('light')
@@ -837,7 +858,7 @@ export function HappyComposer(props: {
     const piEffortHidden = piModels && selectedPiModel && selectedPiModel.reasoning === false
     const showEffortSettings = Boolean(onEffortChange && supportsEffort(agentFlavor) && !piEffortHidden)
     const showFastModeSettings = Boolean(onServiceTierChange)
-    const showSettingsButton = Boolean(
+    const showSettingsButton = settingsToolEnabled && Boolean(
         showCollaborationSettings
         || showPermissionSettings
         || showModelSettings
@@ -846,8 +867,20 @@ export function HappyComposer(props: {
         || showEffortSettings
         || showFastModeSettings
     )
-    const showAbortButton = true
+    const showAbortButton = abortToolEnabled
     const voiceEnabled = Boolean(onVoiceToggle)
+
+    useEffect(() => {
+        if (!settingsToolEnabled) {
+            setShowSettings(false)
+        }
+        if (!piModelToolEnabled) {
+            setShowPiModelPanel(false)
+        }
+        if (!piThinkingToolEnabled) {
+            setShowPiThinkingPanel(false)
+        }
+    }, [settingsToolEnabled, piModelToolEnabled, piThinkingToolEnabled])
 
     const handleSend = useCallback(() => {
         flushAndSend()
@@ -1433,7 +1466,7 @@ export function HappyComposer(props: {
                             onSend={handleSend}
                             pendingSchedule={pendingSchedule}
                             onSchedule={setPendingSchedule}
-                            onClearSchedule={isControlled ? onClearScheduleProp : () => setPendingScheduleLocal(null)}
+                            onClearSchedule={clearPendingSchedule}
                             hasAttachments={hasAttachments}
                             piModelLabel={piModelLabel}
                             piModelDisabled={controlsDisabled || !piHasModels}
@@ -1446,6 +1479,7 @@ export function HappyComposer(props: {
                             scratchlistMode={props.scratchlistMode}
                             scratchlistCount={props.scratchlistCount}
                             onScratchlistToggle={props.onScratchlistToggle}
+                            toolbarLayout={toolbarLayout}
                         />
                     </div>
                 </ComposerPrimitive.Root>

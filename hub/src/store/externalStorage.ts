@@ -15,10 +15,12 @@ const CORE_TABLES = [
     'push_subscriptions',
     'fcm_devices',
     'session_scratchlist',
+    'app_settings',
     'schema_migrations'
 ] as const
 
 const CONVERSATION_TABLES = ['messages', 'message_epochs'] as const
+const OPTIONAL_CORE_TABLES: readonly TableName[] = ['app_settings']
 
 type TableGroup = 'core' | 'conversation'
 type TableName = typeof CORE_TABLES[number] | typeof CONVERSATION_TABLES[number]
@@ -321,12 +323,15 @@ export class ExternalStorageSync {
                 if (presentTables.length === 0) {
                     return imported
                 }
-                if (presentTables.length !== CORE_TABLES.length) {
+                const missingRequired = tablePresence
+                    .filter(([table, present]) => !present && !OPTIONAL_CORE_TABLES.includes(table))
+                    .map(([table]) => table)
+                if (missingRequired.length > 0) {
                     const missing = tablePresence.filter(([, present]) => !present).map(([table]) => table)
                     throw new Error(`MySQL storage has partial HAPI schema; missing tables: ${missing.join(', ')}`)
                 }
                 clearSqliteTables(this.coreDb, CORE_TABLES)
-                for (const table of CORE_TABLES) {
+                for (const table of presentTables) {
                     imported[`core.${table}`] = await importMysqlTable(sql, this.coreDb, table)
                 }
             } finally {

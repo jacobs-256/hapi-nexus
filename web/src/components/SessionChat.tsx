@@ -86,6 +86,12 @@ import { useOpencodeReasoningEffortOptions } from '@/hooks/queries/useOpencodeRe
 import { useVoiceOptional } from '@/lib/voice-context'
 import { VoiceBackendSession, registerSessionStore, registerVoiceHooksStore, voiceHooks } from '@/realtime'
 import { isRemoteTerminalSupported } from '@/utils/terminalSupport'
+import {
+    isComposerToolbarItemEnabled,
+    mergeComposerToolbarDisabledItems,
+    useComposerToolbarLayout
+} from '@/hooks/useComposerToolbarLayout'
+import { useGlobalComposerToolbarSettings } from '@/hooks/useGlobalComposerToolbarSettings'
 
 type SessionModelSelection = { provider: string; modelId: string } | string | null
 
@@ -461,6 +467,17 @@ function SessionChatInner(props: SessionChatProps) {
     const { haptic } = usePlatform()
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const { layout: localComposerToolbarLayout } = useComposerToolbarLayout()
+    const { settings: globalComposerToolbarSettings } = useGlobalComposerToolbarSettings(props.api)
+    const composerToolbarLayout = useMemo(
+        () => mergeComposerToolbarDisabledItems(localComposerToolbarLayout, globalComposerToolbarSettings.disabled),
+        [localComposerToolbarLayout, globalComposerToolbarSettings.disabled]
+    )
+    const attachmentToolEnabled = isComposerToolbarItemEnabled(composerToolbarLayout, 'attachment')
+    const terminalToolEnabled = isComposerToolbarItemEnabled(composerToolbarLayout, 'terminal')
+    const scheduleToolEnabled = isComposerToolbarItemEnabled(composerToolbarLayout, 'schedule')
+    const scratchlistToolEnabled = isComposerToolbarItemEnabled(composerToolbarLayout, 'scratchlist')
+    const abortToolEnabled = isComposerToolbarItemEnabled(composerToolbarLayout, 'abort')
     const sessionInactive = !props.session.active
     const inactiveCanResume = inactiveSessionCanResume(
         props.session,
@@ -526,8 +543,17 @@ function SessionChatInner(props: SessionChatProps) {
     // initializes to false again. (Previous effect-based reset was
     // racy on first paint - see public-export comment for context.)
     const handleScratchlistToggle = useCallback(() => {
+        if (!scratchlistToolEnabled) {
+            return
+        }
         setScratchlistMode((m) => !m)
-    }, [])
+    }, [scratchlistToolEnabled])
+
+    useEffect(() => {
+        if (!scratchlistToolEnabled && scratchlistMode) {
+            setScratchlistMode(false)
+        }
+    }, [scratchlistToolEnabled, scratchlistMode])
     /**
      * Global keyboard shortcut: Ctrl/Cmd + Shift + S toggles scratchlist
      * mode (open/close drawer + flip composer routing).
@@ -552,6 +578,7 @@ function SessionChatInner(props: SessionChatProps) {
      */
     useEffect(() => {
         const onKeyDown = (e: globalThis.KeyboardEvent) => {
+            if (!scratchlistToolEnabled) return
             if (!isScratchlistToggleHotkey(e)) return
             if (isScratchlistHotkeyBlockedTarget(e.target)) return
             e.preventDefault()
@@ -559,7 +586,7 @@ function SessionChatInner(props: SessionChatProps) {
         }
         window.addEventListener('keydown', onKeyDown)
         return () => window.removeEventListener('keydown', onKeyDown)
-    }, [])
+    }, [scratchlistToolEnabled])
     /**
      * onSend wrapper: when scratchlist mode is on AND the submission is
      * not scheduled, route to scratchlist (text and/or hub attachments).
@@ -577,7 +604,7 @@ function SessionChatInner(props: SessionChatProps) {
             attachments?: AttachmentMetadata[],
             scheduledAt?: number | null,
         ): Promise<boolean> => {
-            if (shouldRouteToScratchlist(scratchlistMode, attachments, scheduledAt)) {
+            if (shouldRouteToScratchlist(scratchlistToolEnabled && scratchlistMode, attachments, scheduledAt)) {
                 return scratchlist.add(text, attachments)
             }
             // If the user uploaded while scratchlist mode was on, then toggled
@@ -604,7 +631,7 @@ function SessionChatInner(props: SessionChatProps) {
             }
             return props.onSend(text, attachments, scheduledAt)
         },
-        [props.onSend, props.api, props.session.id, scratchlist, scratchlistMode],
+        [props.onSend, props.api, props.session.id, scratchlist, scratchlistMode, scratchlistToolEnabled],
     )
     const agentFlavor = props.session.metadata?.flavor ?? null
     const controlledByUser = props.session.agentState?.controlledByUser === true
@@ -1233,6 +1260,12 @@ function SessionChatInner(props: SessionChatProps) {
         return () => clearTimeout(timer)
     }, [pendingSchedule])
 
+    useEffect(() => {
+        if (!scheduleToolEnabled && pendingSchedule != null) {
+            setPendingSchedule(null)
+        }
+    }, [scheduleToolEnabled, pendingSchedule])
+
     const handleSend = useCallback(async (text: string, attachments?: AttachmentMetadata[], scheduledAt?: number | null) => {
         // Route through the scratchlist-aware wrapper. When scratchlistMode
         // is on AND the payload is pure text, this turns into
@@ -1245,7 +1278,7 @@ function SessionChatInner(props: SessionChatProps) {
         // the next normal send would reuse the same schedule. (Per
         // upstream review on PR #798: [Major] "Clear accepted scheduled
         // chat sends after scratchlist fallback".)
-        const routedToScratchlist = shouldRouteToScratchlist(scratchlistMode, attachments, scheduledAt)
+        const routedToScratchlist = shouldRouteToScratchlist(scratchlistToolEnabled && scratchlistMode, attachments, scheduledAt)
         const accepted = await onSendForComposer(text, attachments, scheduledAt)
         if (!accepted) return
         if (!routedToScratchlist) {
@@ -1259,16 +1292,16 @@ function SessionChatInner(props: SessionChatProps) {
             setPendingSchedule(null)
             setForceScrollToken((token) => token + 1)
         }
-    }, [onSendForComposer, scratchlistMode])
+    }, [onSendForComposer, scratchlistMode, scratchlistToolEnabled])
 
     const attachmentAdapter = useMemo(() => {
-        if (!props.session.active) {
+        if (!props.session.active || !attachmentToolEnabled) {
             return undefined
         }
-        return scratchlistMode
+        return scratchlistToolEnabled && scratchlistMode
             ? createScratchlistAttachmentAdapter(props.api, props.session.id)
             : createAttachmentAdapter(props.api, props.session.id)
-    }, [props.api, props.session.id, props.session.active, scratchlistMode])
+    }, [props.api, props.session.id, props.session.active, scratchlistMode, scratchlistToolEnabled, attachmentToolEnabled])
 
     const runtime = useHappyRuntime({
         session: props.session,
@@ -1325,7 +1358,7 @@ function SessionChatInner(props: SessionChatProps) {
 
             <AssistantRuntimeProvider runtime={runtime}>
                 <ShareSeedConsumer sessionId={props.session.id} sessionActive={props.session.active} />
-                <DragDropZone disabled={sessionInactive || props.isSending || pendingSchedule != null}>
+                <DragDropZone disabled={!attachmentToolEnabled || sessionInactive || props.isSending || pendingSchedule != null}>
 
                     <HappyThread
                         // Key with prefix: different components under the same session
@@ -1388,7 +1421,7 @@ function SessionChatInner(props: SessionChatProps) {
                              * useScratchlist hook above (so the toolbar counter
                              * and the drawer share one source of truth).
                              */}
-                            {scratchlistMode ? (
+                            {scratchlistToolEnabled && scratchlistMode ? (
                                 <ScratchlistDrawerHost
                                     sessionId={props.session.id}
                                     api={props.api}
@@ -1404,7 +1437,9 @@ function SessionChatInner(props: SessionChatProps) {
                                 api={props.api}
                                 onEdit={({ pendingSchedule: restored }) => {
                                     // Restore the schedule so the clock button re-activates
-                                    setPendingSchedule(restored)
+                                    if (scheduleToolEnabled) {
+                                        setPendingSchedule(restored)
+                                    }
                                 }}
                             />
                         </div>
@@ -1414,9 +1449,6 @@ function SessionChatInner(props: SessionChatProps) {
                         sessionId={props.session.id}
                         resolveSessionMentionTooltip={resolveSessionMentionTooltip}
                         disabled={props.isSending}
-                        pendingSchedule={pendingSchedule}
-                        onSchedule={setPendingSchedule}
-                        onClearSchedule={() => setPendingSchedule(null)}
                         permissionMode={props.session.permissionMode}
                         collaborationMode={codexCollaborationModeSupported ? props.session.collaborationMode : undefined}
                         threadGoal={reduced.latestGoal}
@@ -1550,16 +1582,23 @@ function SessionChatInner(props: SessionChatProps) {
                                 : undefined
                         }
                         onSwitchToRemote={handleSwitchToRemote}
-                        onTerminal={props.session.active && terminalSupported ? handleViewTerminal : undefined}
-                        terminalUnsupported={props.session.active && !terminalSupported}
+                        onTerminal={terminalToolEnabled && props.session.active && terminalSupported ? handleViewTerminal : undefined}
+                        terminalUnsupported={terminalToolEnabled && props.session.active && !terminalSupported}
                         autocompleteSuggestions={props.autocompleteSuggestions}
                         voiceStatus={voice?.status}
                         voiceMicMuted={voice?.micMuted}
                         onVoiceToggle={voice && voiceBackendReady ? handleVoiceToggle : undefined}
                         onVoiceMicToggle={voice && voiceBackendReady ? handleVoiceMicToggle : undefined}
-                        scratchlistMode={scratchlistMode}
+                        attachmentToolEnabled={attachmentToolEnabled}
+                        abortToolEnabled={abortToolEnabled}
+                        scheduleToolEnabled={scheduleToolEnabled}
+                        toolbarLayout={composerToolbarLayout}
+                        scratchlistMode={scratchlistToolEnabled && scratchlistMode}
                         scratchlistCount={scratchlist.entries.length}
-                        onScratchlistToggle={handleScratchlistToggle}
+                        onScratchlistToggle={scratchlistToolEnabled ? handleScratchlistToggle : undefined}
+                        pendingSchedule={scheduleToolEnabled ? pendingSchedule : null}
+                        onSchedule={scheduleToolEnabled ? setPendingSchedule : undefined}
+                        onClearSchedule={scheduleToolEnabled ? () => setPendingSchedule(null) : undefined}
                         sendError={props.sendError ?? null}
                         onClearSendError={props.onClearSendError}
                         />

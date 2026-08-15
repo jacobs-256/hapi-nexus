@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { I18nProvider } from '@/lib/i18n-context'
 import SettingsHubPage from './index'
 import SettingsGeneralPage from './general'
@@ -10,7 +10,7 @@ import SettingsVoicePage from './voice'
 import SettingsVoiceVoicesPage from './voice-voices'
 import SettingsVoiceAdvancedPage from './voice-advanced'
 
-const { context, navigate, setAppearance, setColorTheme, setFontScale, setTerminalFontSize, setComposerEnterBehavior, setVoice } = vi.hoisted(() => ({
+const { context, navigate, setAppearance, setColorTheme, setFontScale, setTerminalFontSize, setComposerEnterBehavior, setVoice, getGlobalComposerToolbarSettings, updateGlobalComposerToolbarSettings } = vi.hoisted(() => ({
     context: { token: '', user: { role: 'admin' as 'admin' | 'user' } },
     navigate: vi.fn(),
     setAppearance: vi.fn(),
@@ -19,6 +19,8 @@ const { context, navigate, setAppearance, setColorTheme, setFontScale, setTermin
     setTerminalFontSize: vi.fn(),
     setComposerEnterBehavior: vi.fn(),
     setVoice: vi.fn(),
+    getGlobalComposerToolbarSettings: vi.fn(),
+    updateGlobalComposerToolbarSettings: vi.fn(),
 }))
 
 vi.mock('@/hooks/useColorTheme', () => ({
@@ -129,7 +131,10 @@ vi.mock('@/hooks/useChatSurfaceColors', () => ({
 
 vi.mock('@/lib/app-context', () => ({
     useAppContext: () => ({
-        api: {},
+        api: {
+            getGlobalComposerToolbarSettings,
+            updateGlobalComposerToolbarSettings,
+        },
         baseUrl: 'http://127.0.0.1:3006',
         token: context.token,
         user: context.user,
@@ -173,6 +178,8 @@ describe('responsive settings pages', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         localStorage.clear()
+        getGlobalComposerToolbarSettings.mockResolvedValue({ settings: { disabled: [] } })
+        updateGlobalComposerToolbarSettings.mockImplementation(async (payload: { disabled: string[] }) => ({ settings: payload }))
         context.token = `x.${btoa(JSON.stringify({ ns: 'default' }))}.x`
         context.user = { role: 'admin' }
     })
@@ -235,6 +242,29 @@ describe('responsive settings pages', () => {
         fireEvent.click(screen.getByRole('radio', { name: 'Insert newline' }))
         expect(setComposerEnterBehavior).toHaveBeenCalledWith('newline')
         expect(screen.getByText('Grouped Tool Use Background')).toBeInTheDocument()
+    })
+
+    it('disables a selected composer toolbar tool from chat settings', () => {
+        renderPage(<SettingsChatPage />)
+
+        fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Disable tool' }))
+
+        const stored = JSON.parse(localStorage.getItem('hapi-composer-toolbar-layout') ?? '{}')
+        expect(stored.disabled).toContain('terminal')
+    })
+
+    it('lets default-namespace admins disable a composer toolbar tool globally', async () => {
+        renderPage(<SettingsChatPage />)
+
+        fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+        const globalButton = screen.getByRole('button', { name: 'Disable globally' }) as HTMLButtonElement
+        await waitFor(() => expect(globalButton.disabled).toBe(false))
+        fireEvent.click(globalButton)
+
+        await waitFor(() => expect(updateGlobalComposerToolbarSettings).toHaveBeenCalledWith({
+            disabled: ['terminal']
+        }))
     })
 
     it('renders About metadata on its own route page', () => {

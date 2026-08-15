@@ -143,6 +143,34 @@ export type UserResponse = { user: EnterpriseUser }
 export type DeleteUserResponse = { ok: true }
 export type RegenerateUserTokenResponse = { user: EnterpriseUser; accessToken: string }
 
+export const ComposerToolbarItemIdSchema = z.enum([
+    'attachment',
+    'settings',
+    'piModel',
+    'piThinking',
+    'terminal',
+    'abort',
+    'switch',
+    'voiceMic',
+    'scratchlist',
+    'schedule',
+])
+
+export type ComposerToolbarItemId = z.infer<typeof ComposerToolbarItemIdSchema>
+
+export const GlobalComposerToolbarSettingsSchema = z.object({
+    disabled: z.array(ComposerToolbarItemIdSchema).default([])
+})
+
+export type GlobalComposerToolbarSettings = z.infer<typeof GlobalComposerToolbarSettingsSchema>
+
+export const UpdateGlobalComposerToolbarSettingsRequestSchema = z.object({
+    disabled: z.array(ComposerToolbarItemIdSchema).max(10)
+})
+
+export type UpdateGlobalComposerToolbarSettingsRequest = z.infer<typeof UpdateGlobalComposerToolbarSettingsRequestSchema>
+export type GlobalComposerToolbarSettingsResponse = { settings: GlobalComposerToolbarSettings }
+
 export const CreateUserRequestSchema = z.object({
     username: z.string().trim().min(1).max(128),
     password: z.string().min(8).max(1024),

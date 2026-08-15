@@ -21,6 +21,7 @@ export type ComposerToolbarLayout = {
     mode: ComposerToolbarLayoutMode
     left: ComposerToolbarItemId[]
     right: ComposerToolbarItemId[]
+    disabled: ComposerToolbarItemId[]
 }
 
 export const DEFAULT_COMPOSER_TOOLBAR_LAYOUT: ComposerToolbarLayout = {
@@ -30,6 +31,7 @@ export const DEFAULT_COMPOSER_TOOLBAR_LAYOUT: ComposerToolbarLayout = {
         'abort',
     ],
     right: [],
+    disabled: [],
 }
 
 export function moveComposerToolbarItem(
@@ -57,6 +59,46 @@ export function moveComposerToolbarItemInSingleLayout(
         ...layout,
         left: items.slice(0, leftCount),
         right: items.slice(leftCount),
+    }
+}
+
+export function setComposerToolbarItemDisabled(
+    layout: ComposerToolbarLayout,
+    item: ComposerToolbarItemId,
+    disabled: boolean,
+): ComposerToolbarLayout {
+    const disabledSet = new Set(layout.disabled ?? [])
+    if (disabled) {
+        disabledSet.add(item)
+    } else {
+        disabledSet.delete(item)
+    }
+    return {
+        ...layout,
+        disabled: COMPOSER_TOOLBAR_ITEM_IDS.filter((entry) => disabledSet.has(entry)),
+    }
+}
+
+export function isComposerToolbarItemEnabled(
+    layout: ComposerToolbarLayout,
+    item: ComposerToolbarItemId,
+): boolean {
+    return !(layout.disabled ?? []).includes(item)
+}
+
+export function mergeComposerToolbarDisabledItems(
+    layout: ComposerToolbarLayout,
+    disabledItems: readonly ComposerToolbarItemId[],
+): ComposerToolbarLayout {
+    const disabledSet = new Set<ComposerToolbarItemId>(layout.disabled ?? [])
+    for (const item of disabledItems) {
+        if (isItemId(item)) {
+            disabledSet.add(item)
+        }
+    }
+    return {
+        ...layout,
+        disabled: COMPOSER_TOOLBAR_ITEM_IDS.filter((entry) => disabledSet.has(entry)),
     }
 }
 
@@ -99,10 +141,22 @@ export function normalizeComposerToolbarLayout(value: unknown): ComposerToolbarL
         }
     }
 
+    const disabledSeen = new Set<ComposerToolbarItemId>()
+    const disabled = Array.isArray(candidate.disabled)
+        ? candidate.disabled.filter((item): item is ComposerToolbarItemId => {
+            if (!isItemId(item) || disabledSeen.has(item)) {
+                return false
+            }
+            disabledSeen.add(item)
+            return true
+        })
+        : []
+
     return {
         mode: isLayoutMode(candidate.mode) ? candidate.mode : DEFAULT_COMPOSER_TOOLBAR_LAYOUT.mode,
         left,
         right,
+        disabled,
     }
 }
 
