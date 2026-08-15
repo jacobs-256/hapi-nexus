@@ -11,8 +11,10 @@ import { configuration } from '@/configuration'
 import type { ClientToServerEvents, ServerToClientEvents, Update, UpdateMachineBody } from '@hapi/protocol'
 import {
     ArchiveCodexSessionRpcRequestSchema,
+    CodexSessionMessagesRpcRequestSchema,
     ListCodexSessionsRpcRequestSchema,
     type ArchiveCodexSessionRpcResponse,
+    type CodexSessionMessagesRpcResponse,
     type ListCodexSessionsRpcResponse,
     type MachineDirectoryEntry,
     type MachineListDirectoryResponse,
@@ -37,7 +39,7 @@ import {
 } from '../modules/common/grokModels'
 import type { SpawnSessionOptions, SpawnSessionResult } from '../modules/common/rpcTypes'
 import { applyVersionedAck } from './versionedUpdate'
-import { archiveLocalCodexSession, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from '../modules/common/codexSessions'
+import { archiveLocalCodexSession, getLocalCodexSessionMessagePage, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from '../modules/common/codexSessions'
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
 import { collectMachineHealth } from '@/utils/machineHealth'
 import { inspectCursorChatStore } from '@/cursor/cursorChatStoreStatus'
@@ -292,6 +294,23 @@ export class ApiMachineClient {
                     }
                 }
                 return { success: true, sessions }
+            }
+        )
+
+        this.rpcHandlerManager.registerHandler<unknown, CodexSessionMessagesRpcResponse>(
+            RPC_METHODS.GetCodexSessionMessages,
+            async (params) => {
+                const parsed = CodexSessionMessagesRpcRequestSchema.safeParse(params)
+                if (!parsed.success) return { success: false, error: 'Invalid Codex session messages request' }
+                const page = getLocalCodexSessionMessagePage(parsed.data.sessionId, {
+                    offset: parsed.data.offset,
+                    limit: parsed.data.limit
+                })
+                if (!page) return { success: false, error: 'Codex session not found' }
+                if (!(await this.isCodexSessionWithinWorkspaceRoots(page))) {
+                    return { success: false, error: 'Codex session is outside workspace roots' }
+                }
+                return { success: true, session: page }
             }
         )
 

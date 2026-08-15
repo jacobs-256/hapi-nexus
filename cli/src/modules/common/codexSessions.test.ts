@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { archiveLocalCodexSession, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from './codexSessions'
+import { archiveLocalCodexSession, getLocalCodexSessionMessagePage, listLocalCodexSessionSummaries, listLocalCodexSessionsWithMessagesByIds } from './codexSessions'
 
 describe('archiveLocalCodexSession', () => {
     const originalCodexHome = process.env.CODEX_HOME
@@ -178,6 +178,31 @@ describe('listLocalCodexSessionSummaries', () => {
 
         expect(sessions.map((session) => session.id)).toEqual(['wanted-session-id'])
         expect(sessions[0]?.messages).toHaveLength(1)
+        rmSync(root, { recursive: true, force: true })
+    })
+
+    it('returns a bounded message page for a requested session id', () => {
+        const root = mkdtempSync(join(tmpdir(), 'codex-home-'))
+        process.env.CODEX_HOME = root
+        const sessionsDir = join(root, 'sessions', '2026', '06', '27')
+        mkdirSync(sessionsDir, { recursive: true })
+
+        writeFileSync(join(sessionsDir, 'rollout-paged-session-id.jsonl'), [
+            JSON.stringify({ type: 'session_meta', payload: { id: 'paged-session-id', cwd: '/tmp/project' } }),
+            JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'first' }] } }),
+            JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'second' }] } }),
+            JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'third' }] } })
+        ].join('\n'))
+
+        const page = getLocalCodexSessionMessagePage('paged-session-id', { offset: 1, limit: 1 })
+
+        expect(page?.id).toBe('paged-session-id')
+        expect(page?.totalMessages).toBe(3)
+        expect(page?.offset).toBe(1)
+        expect(page?.hasMore).toBe(true)
+        expect(page?.nextOffset).toBe(2)
+        expect(page?.messages).toHaveLength(1)
+        expect(page?.messages[0]?.content).toEqual({ type: 'text', text: 'second' })
         rmSync(root, { recursive: true, force: true })
     })
 })

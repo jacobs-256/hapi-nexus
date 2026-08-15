@@ -212,6 +212,8 @@ export type CodexLocalSessionSummary = {
     source?: string | null
     threadSource?: string | null
     forkedFromId?: string | null
+    imported?: boolean
+    hapiSessionIds?: string[]
 }
 
 export type CodexLocalSessionsResponse = {

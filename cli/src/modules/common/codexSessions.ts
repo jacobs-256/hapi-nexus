@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join, relative } from 'node:path'
 import { homedir } from 'node:os'
@@ -6,10 +6,21 @@ import { AGENT_MESSAGE_PAYLOAD_TYPE } from '@hapi/protocol'
 import { isCodexSubagentSource } from '@/codex/utils/codexSessionMetadata'
 
 const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 200
+const CODEX_SESSION_HEAD_SCAN_BYTES = 64 * 1024
+const CODEX_SESSION_HEAD_SCAN_LINES = 200
+const CODEX_SESSION_MESSAGE_PAGE_DEFAULT_LIMIT = 200
+const CODEX_SESSION_MESSAGE_PAGE_MAX_LIMIT = 1000
+const CODEX_SESSION_MESSAGE_CACHE_TTL_MS = 10 * 60_000
+const CODEX_SESSION_MESSAGE_CACHE_MAX_ENTRIES = 8
 
 type CodexSessionIndexTitle = {
     threadName: string
     updatedAt: string
+}
+
+type CodexSessionFileCandidate = {
+    file: string
+    modifiedAt: number
 }
 
 type CodexImportedMessageContent = {
@@ -40,9 +51,26 @@ export type LocalCodexSessionWithMessages = LocalCodexSessionSummary & {
     messages: CodexImportedMessageContent[]
 }
 
+export type LocalCodexSessionMessagePage = LocalCodexSessionSummary & {
+    messages: CodexImportedMessageContent[]
+    totalMessages: number
+    offset: number
+    hasMore: boolean
+    nextOffset: number | null
+}
+
 export type ArchiveLocalCodexSessionOptions = {
     canArchive?: (session: LocalCodexSessionSummary) => boolean | Promise<boolean>
 }
+
+type CachedCodexSessionWithMessages = {
+    file: string
+    modifiedAt: number
+    loadedAt: number
+    session: LocalCodexSessionWithMessages
+}
+
+const codexSessionMessageCache = new Map<string, CachedCodexSessionWithMessages>()
 
 function asRecord(value: unknown): Record<string, unknown> | null {
     return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
@@ -95,6 +123,146 @@ function collectJsonlFiles(root: string, files: string[]): void {
         if (entry.isDirectory()) collectJsonlFiles(fullPath, files)
         else if (entry.isFile() && fullPath.toLowerCase().endsWith('.jsonl')) files.push(fullPath)
     }
+}
+
+function readFileHead(filePath: string, maxBytes = CODEX_SESSION_HEAD_SCAN_BYTES): string {
+    let fd: number | null = null
+    try {
+        fd = openSync(filePath, 'r')
+        const buffer = Buffer.allocUnsafe(maxBytes)
+        const bytesRead = readSync(fd, buffer, 0, maxBytes, 0)
+        return buffer.toString('utf-8', 0, bytesRead)
+    } catch {
+        return ''
+    } finally {
+        if (fd !== null) {
+            try { closeSync(fd) } catch {}
+        }
+    }
+}
+
+function readCodexSessionIdFromHead(filePath: string): string | null {
+    const head = readFileHead(filePath)
+    if (!head) return inferSessionIdFromFileName(filePath)
+
+    const lines = head.split(/\r?\n/).filter(Boolean).slice(0, CODEX_SESSION_HEAD_SCAN_LINES)
+    for (const line of lines) {
+        try {
+            const record = asRecord(JSON.parse(line))
+            if (!record || record.type !== 'session_meta') continue
+            const payload = asRecord(record.payload)
+            if (isCodexSubagentSource(payload?.source)) return null
+            return typeof payload?.id === 'string' && payload.id ? payload.id : inferSessionIdFromFileName(filePath)
+        } catch {
+            continue
+        }
+    }
+    return inferSessionIdFromFileName(filePath)
+}
+
+function getFileModifiedAt(filePath: string): number {
+    try { return statSync(filePath).mtimeMs } catch { return 0 }
+}
+
+function rememberLatestCodexSessionFile(
+    candidates: Map<string, CodexSessionFileCandidate>,
+    sessionId: string,
+    file: string
+): void {
+    const modifiedAt = getFileModifiedAt(file)
+    const previous = candidates.get(sessionId)
+    if (!previous || previous.modifiedAt < modifiedAt) {
+        candidates.set(sessionId, { file, modifiedAt })
+    }
+}
+
+function collectCodexSessionFiles(): string[] {
+    const files: string[] = []
+    for (const root of getCodexSessionRoots()) collectJsonlFiles(root, files)
+    return files
+}
+
+function collectCodexSessionFileCandidatesByIds(ids: Set<string>): Map<string, CodexSessionFileCandidate> {
+    const files = collectCodexSessionFiles()
+    const candidates = new Map<string, CodexSessionFileCandidate>()
+    const filenameMatchedIds = new Set<string>()
+
+    // Targeted imports should not call listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER):
+    // that parses every transcript and can exceed the Hub RPC timeout on large local histories.
+    for (const file of files) {
+        const filename = basename(file)
+        for (const id of ids) {
+            if (!id || !filename.includes(id)) continue
+            rememberLatestCodexSessionFile(candidates, id, file)
+            filenameMatchedIds.add(id)
+        }
+    }
+
+    const unresolvedIds = new Set(Array.from(ids).filter((id) => !filenameMatchedIds.has(id)))
+    if (unresolvedIds.size === 0) return candidates
+
+    for (const file of files) {
+        const sessionId = readCodexSessionIdFromHead(file)
+        if (!sessionId || !unresolvedIds.has(sessionId)) continue
+        rememberLatestCodexSessionFile(candidates, sessionId, file)
+    }
+
+    return candidates
+}
+
+function normalizeMessagePageOffset(value: number | undefined): number {
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value ?? 0)) : 0
+}
+
+function normalizeMessagePageLimit(value: number | undefined): number {
+    if (!Number.isFinite(value)) return CODEX_SESSION_MESSAGE_PAGE_DEFAULT_LIMIT
+    return Math.min(CODEX_SESSION_MESSAGE_PAGE_MAX_LIMIT, Math.max(1, Math.floor(value ?? CODEX_SESSION_MESSAGE_PAGE_DEFAULT_LIMIT)))
+}
+
+function pruneCodexSessionMessageCache(now = Date.now()): void {
+    for (const [sessionId, cached] of codexSessionMessageCache) {
+        if (now - cached.loadedAt > CODEX_SESSION_MESSAGE_CACHE_TTL_MS) {
+            codexSessionMessageCache.delete(sessionId)
+        }
+    }
+    if (codexSessionMessageCache.size <= CODEX_SESSION_MESSAGE_CACHE_MAX_ENTRIES) return
+
+    const removable = Array.from(codexSessionMessageCache.entries())
+        .sort(([, a], [, b]) => a.loadedAt - b.loadedAt)
+    for (const [sessionId] of removable) {
+        if (codexSessionMessageCache.size <= CODEX_SESSION_MESSAGE_CACHE_MAX_ENTRIES) break
+        codexSessionMessageCache.delete(sessionId)
+    }
+}
+
+function getCachedCodexSessionWithMessages(sessionId: string): LocalCodexSessionWithMessages | null {
+    pruneCodexSessionMessageCache()
+    const candidate = collectCodexSessionFileCandidatesByIds(new Set([sessionId])).get(sessionId)
+    if (!candidate) {
+        codexSessionMessageCache.delete(sessionId)
+        return null
+    }
+
+    const cached = codexSessionMessageCache.get(sessionId)
+    if (cached && cached.file === candidate.file && cached.modifiedAt === candidate.modifiedAt) {
+        cached.loadedAt = Date.now()
+        return cached.session
+    }
+
+    const sessionIndexTitles = readCodexSessionIndexTitles()
+    const parsed = parseCodexLocalSession(candidate.file, true, sessionIndexTitles)
+    if (!parsed || parsed.id !== sessionId || !('messages' in parsed)) {
+        codexSessionMessageCache.delete(sessionId)
+        return null
+    }
+    codexSessionMessageCache.set(sessionId, {
+        file: candidate.file,
+        modifiedAt: candidate.modifiedAt,
+        loadedAt: Date.now(),
+        session: parsed
+    })
+    pruneCodexSessionMessageCache()
+    return parsed
 }
 
 function getCodexHome(): string {
@@ -379,8 +547,7 @@ function parseCodexLocalSession(
 function listLocalCodexSessions(includeMessages: false, limit?: number): LocalCodexSessionSummary[]
 function listLocalCodexSessions(includeMessages: true, limit?: number): LocalCodexSessionWithMessages[]
 function listLocalCodexSessions(includeMessages: boolean, limit = DEFAULT_CODEX_SESSION_SCAN_LIMIT): Array<LocalCodexSessionSummary | LocalCodexSessionWithMessages> {
-    const files: string[] = []
-    for (const root of getCodexSessionRoots()) collectJsonlFiles(root, files)
+    const files = collectCodexSessionFiles()
     const sessionIndexTitles = readCodexSessionIndexTitles()
     const deduped = new Map<string, LocalCodexSessionSummary | LocalCodexSessionWithMessages>()
     for (const file of files) {
@@ -402,11 +569,40 @@ export function listLocalCodexSessionsWithMessages(limit = DEFAULT_CODEX_SESSION
 
 export function listLocalCodexSessionsWithMessagesByIds(ids: Set<string>): LocalCodexSessionWithMessages[] {
     if (ids.size === 0) return []
+    const normalizedIds = new Set(Array.from(ids).map((id) => id.trim()).filter(Boolean))
+    if (normalizedIds.size === 0) return []
     const sessionIndexTitles = readCodexSessionIndexTitles()
-    return listLocalCodexSessionSummaries(Number.MAX_SAFE_INTEGER)
-        .filter((session) => ids.has(session.id))
-        .map((session) => parseCodexLocalSession(session.file, true, sessionIndexTitles))
-        .filter((session): session is LocalCodexSessionWithMessages => Boolean(session))
+    const candidates = collectCodexSessionFileCandidatesByIds(normalizedIds)
+    return Array.from(candidates.values())
+        .sort((a, b) => b.modifiedAt - a.modifiedAt)
+        .map((candidate) => parseCodexLocalSession(candidate.file, true, sessionIndexTitles))
+        .filter((session): session is LocalCodexSessionWithMessages => session !== null && normalizedIds.has(session.id))
+}
+
+export function getLocalCodexSessionMessagePage(
+    sessionId: string,
+    options: { offset?: number; limit?: number } = {}
+): LocalCodexSessionMessagePage | null {
+    const normalizedId = sessionId.trim()
+    if (!normalizedId) return null
+
+    const session = getCachedCodexSessionWithMessages(normalizedId)
+    if (!session) return null
+
+    const offset = normalizeMessagePageOffset(options.offset)
+    const limit = normalizeMessagePageLimit(options.limit)
+    const totalMessages = session.messages.length
+    const end = Math.min(totalMessages, offset + limit)
+    const nextOffset = end < totalMessages ? end : null
+
+    return {
+        ...session,
+        messages: session.messages.slice(offset, end),
+        totalMessages,
+        offset,
+        hasMore: nextOffset !== null,
+        nextOffset
+    }
 }
 
 

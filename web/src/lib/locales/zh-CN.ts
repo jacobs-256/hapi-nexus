@@ -91,6 +91,7 @@ export default {
   'sessions.group.expand': '展开 {n} 个',
   'sessions.group.collapse': '收起 {n} 个',
   'sessions.group.new': '在此目录新建会话',
+  'sessions.group.syncCodex': '同步 Codex 会话',
   'sessions.group.actions.open': '分组操作',
   'sessions.group.copyPath': '复制路径',
   'sessions.group.copyPathCopied': '已复制',

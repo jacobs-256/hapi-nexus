@@ -71,6 +71,11 @@ type CodexLocalSessionSummary = {
     modifiedAt: number
     originator?: string | null
     cliVersion?: string | null
+    source?: string | null
+    threadSource?: string | null
+    forkedFromId?: string | null
+    imported?: boolean
+    hapiSessionIds?: string[]
 }
 
 type CodexLocalSessionsResponse = {
@@ -119,6 +124,13 @@ type CodexSessionIndexTitle = {
     updatedAt: string
 }
 type RemoteCodexSession = CodexTranscriptImportData
+
+type RemoteCodexSessionMessagePage = CodexTranscriptImportData & {
+    totalMessages: number
+    offset: number
+    hasMore: boolean
+    nextOffset: number | null
+}
 
 type ImportCandidate = {
     sessionId: string
@@ -242,6 +254,7 @@ const CODEX_TRANSCRIPT_IMPORT_NAMESPACE_ERROR = 'Codex transcript import is not 
 const DEFAULT_SCRIPT_TIMEOUT_MS = 60_000
 const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 500
 const CODEX_IMPORT_CHUNK_SIZE = 200
+const CODEX_IMPORT_RPC_MESSAGE_CHUNK_SIZE = 200
 const MAX_CODEX_IMPORT_JOBS = 50
 
 function resolveLocalPath(pathValue: string): string {
@@ -1015,6 +1028,24 @@ function asRemoteCodexSessions(value: unknown, requireMessages: boolean): Remote
     })
 }
 
+function asRemoteCodexSessionMessagePage(value: unknown): RemoteCodexSessionMessagePage | null {
+    const record = asRecord(value)
+    if (
+        typeof record?.id !== 'string'
+        || typeof record.title !== 'string'
+        || typeof record.file !== 'string'
+        || typeof record.modifiedAt !== 'number'
+        || !Array.isArray(record.messages)
+        || typeof record.totalMessages !== 'number'
+        || typeof record.offset !== 'number'
+        || typeof record.hasMore !== 'boolean'
+        || !(record.nextOffset === null || typeof record.nextOffset === 'number')
+    ) {
+        return null
+    }
+    return record as RemoteCodexSessionMessagePage
+}
+
 async function listCodexSessionsViaMachine(options: {
     engine: SyncEngine | null
     namespace: string
@@ -1034,6 +1065,137 @@ async function listCodexSessionsViaMachine(options: {
         return { sessions: [], machineId, error: typeof (result as { error?: unknown }).error === 'string' ? (result as { error: string }).error : 'Failed to list local Codex sessions' }
     }
     return { sessions: asRemoteCodexSessions((result as { sessions?: unknown }).sessions, Boolean(options.sessionIds?.length)), machineId }
+}
+
+async function fetchCodexTranscriptViaMachine(options: {
+    engine: SyncEngine | null
+    namespace: string
+    cwd?: string | null
+    machineId?: string | null
+    sessionId: string
+}): Promise<{ session?: RemoteCodexSession; machineId?: string; error?: string }> {
+    const machineId = resolveCodexImportMachineId(options.cwd, options.namespace, options.engine, options.machineId)
+    if (!machineId || !options.engine) {
+        return { error: 'No online machine available for Codex history import' }
+    }
+
+    const engineWithPages = options.engine as SyncEngine & {
+        getCodexSessionMessagesForMachine?: (
+            machineId: string,
+            sessionId: string,
+            offset: number,
+            limit: number
+        ) => Promise<unknown>
+    }
+    if (typeof engineWithPages.getCodexSessionMessagesForMachine !== 'function') {
+        const legacy = await listCodexSessionsViaMachine({
+            engine: options.engine,
+            namespace: options.namespace,
+            cwd: options.cwd,
+            machineId,
+            sessionIds: [options.sessionId]
+        })
+        return {
+            session: legacy.sessions.find((session) => session.id === options.sessionId),
+            machineId: legacy.machineId,
+            error: legacy.error
+        }
+    }
+
+    const messages: CodexImportedMessageContent[] = []
+    let summary: CodexLocalSessionSummary | null = null
+    let offset = 0
+    while (true) {
+        const result = await engineWithPages.getCodexSessionMessagesForMachine(
+            machineId,
+            options.sessionId,
+            offset,
+            CODEX_IMPORT_RPC_MESSAGE_CHUNK_SIZE
+        )
+        if (!result || typeof result !== 'object') {
+            return { machineId, error: 'Unexpected Codex session messages RPC response' }
+        }
+        if ((result as { success?: unknown }).success !== true) {
+            return {
+                machineId,
+                error: typeof (result as { error?: unknown }).error === 'string'
+                    ? (result as { error: string }).error
+                    : 'Failed to read local Codex session messages'
+            }
+        }
+
+        const page = asRemoteCodexSessionMessagePage((result as { session?: unknown }).session)
+        if (!page || page.id !== options.sessionId) {
+            return { machineId, error: 'Unexpected Codex session messages RPC payload' }
+        }
+        if (!summary) {
+            const {
+                messages: _messages,
+                totalMessages: _totalMessages,
+                offset: _offset,
+                hasMore: _hasMore,
+                nextOffset: _nextOffset,
+                ...pageSummary
+            } = page
+            summary = pageSummary
+        }
+        messages.push(...page.messages)
+
+        if (!page.hasMore || page.nextOffset === null) {
+            break
+        }
+        if (page.nextOffset <= offset) {
+            return { machineId, error: 'Invalid Codex session messages pagination state' }
+        }
+        offset = page.nextOffset
+    }
+
+    if (!summary) {
+        return { machineId, error: `Transcript not found for Codex session: ${options.sessionId}` }
+    }
+
+    return {
+        machineId,
+        session: {
+            ...summary,
+            messages
+        }
+    }
+}
+
+async function fetchCodexTranscriptsViaMachine(options: {
+    engine: SyncEngine | null
+    namespace: string
+    cwd?: string | null
+    machineId?: string | null
+    sessionIds: string[]
+}): Promise<{ sessions: RemoteCodexSession[]; machineId?: string; error?: string }> {
+    const engineWithPages = options.engine as (SyncEngine & { getCodexSessionMessagesForMachine?: unknown }) | null
+    if (options.engine && typeof engineWithPages?.getCodexSessionMessagesForMachine !== 'function') {
+        return listCodexSessionsViaMachine(options)
+    }
+
+    const sessions: RemoteCodexSession[] = []
+    let resolvedMachineId = options.machineId ?? null
+    for (const sessionId of options.sessionIds) {
+        const result = await fetchCodexTranscriptViaMachine({
+            engine: options.engine,
+            namespace: options.namespace,
+            cwd: options.cwd,
+            machineId: resolvedMachineId,
+            sessionId
+        })
+        if (result.error) {
+            return { sessions, machineId: result.machineId ?? resolvedMachineId ?? undefined, error: result.error }
+        }
+        if (result.machineId) {
+            resolvedMachineId = result.machineId
+        }
+        if (result.session) {
+            sessions.push(result.session)
+        }
+    }
+    return { sessions, machineId: resolvedMachineId ?? undefined }
 }
 
 function buildImportedSessionMetadata(
@@ -1210,6 +1372,38 @@ function collectImportCandidates(
 function getCodexImportIds(metadata: Record<string, unknown> | null | undefined): string[] {
     return Array.from(new Set([metadata?.codexSessionId, metadata?.codexSourceSessionId]
         .filter((id): id is string => typeof id === 'string' && id.length > 0)))
+}
+
+function listImportedCodexSessionMatches(options: {
+    store: Store
+    namespace: string
+    machineId?: string | null
+    getSyncEngine?: () => SyncEngine | null
+    userId?: number
+}): Map<string, string[]> {
+    const matches = new Map<string, string[]>()
+
+    for (const candidate of collectImportCandidates(options.store, options.namespace, options.getSyncEngine, options.userId)) {
+        if (!candidate.persisted || !isImportCandidateReusable(candidate)) {
+            continue
+        }
+        const candidateMachineId = typeof candidate.metadata?.machineId === 'string'
+            ? candidate.metadata.machineId
+            : null
+        if (options.machineId && candidateMachineId && candidateMachineId !== options.machineId) {
+            continue
+        }
+
+        for (const codexSessionId of getCodexImportIds(candidate.metadata)) {
+            const current = matches.get(codexSessionId) ?? []
+            if (!current.includes(candidate.sessionId)) {
+                current.push(candidate.sessionId)
+            }
+            matches.set(codexSessionId, current)
+        }
+    }
+
+    return matches
 }
 
 function isImportCandidateReusable(candidate: ImportCandidate): boolean {
@@ -2653,18 +2847,18 @@ class CodexImportQueue {
     }
 
     private async processItem(job: CodexImportJobInternal, item: CodexImportJobItem): Promise<void> {
-        const remote = await listCodexSessionsViaMachine({
+        const remote = await fetchCodexTranscriptViaMachine({
             engine: this.options.getSyncEngine(),
             namespace: job.namespace,
             cwd: job.cwd,
             machineId: job.machineId,
-            sessionIds: [item.codexSessionId]
+            sessionId: item.codexSessionId
         })
         if (remote.error) {
             throw new Error(remote.error)
         }
 
-        const transcript = remote.sessions.find((session) => session.id === item.codexSessionId)
+        const transcript = remote.session
         if (!transcript) {
             throw new Error(`Transcript not found for Codex session: ${item.codexSessionId}`)
         }
@@ -2786,9 +2980,23 @@ export function createCodexDesktopRoutes(options: {
                 ...(remote.machineId ? { machineId: remote.machineId } : {})
             } satisfies CodexLocalSessionsResponse, 503)
         }
+        const importedMatches = listImportedCodexSessionMatches({
+            store: options.store,
+            namespace: c.get('namespace'),
+            userId: c.get('userId'),
+            machineId: remote.machineId ?? machineId,
+            getSyncEngine: options.getSyncEngine
+        })
         return c.json({
             success: true,
-            sessions: remote.sessions.map(({ messages: _messages, ...summary }) => summary),
+            sessions: remote.sessions.map(({ messages: _messages, ...summary }) => {
+                const hapiSessionIds = importedMatches.get(summary.id) ?? []
+                return {
+                    ...summary,
+                    imported: hapiSessionIds.length > 0,
+                    ...(hapiSessionIds.length > 0 ? { hapiSessionIds } : {})
+                }
+            }),
             ...(remote.machineId ? { machineId: remote.machineId } : {})
         } satisfies CodexLocalSessionsResponse)
     })
@@ -2895,7 +3103,7 @@ export function createCodexDesktopRoutes(options: {
         }
 
         // 中文注释：hub 可能运行在服务器上；Codex transcript 必须通过用户本机 runner RPC 读取，不能扫描服务器磁盘。
-        const remote = await listCodexSessionsViaMachine({
+        const remote = await fetchCodexTranscriptsViaMachine({
             engine: options.getSyncEngine(),
             namespace: c.get('namespace'),
             cwd: parsed.cwd,
@@ -2976,7 +3184,7 @@ export function createCodexDesktopRoutes(options: {
             return c.json(createSyncFolderEmptyResponse(parsed, codexStatus))
         }
 
-        const sessionsWithMessages = await listCodexSessionsViaMachine({
+        const sessionsWithMessages = await fetchCodexTranscriptsViaMachine({
             engine: options.getSyncEngine(),
             namespace: c.get('namespace'),
             cwd: parsed.cwd,

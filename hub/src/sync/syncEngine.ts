@@ -32,6 +32,7 @@ import {
     type RpcGeneratedImageResponse,
     type RpcListDirectoryResponse,
     type RpcStatFilesResponse,
+    type RpcCodexSessionMessagesResponse,
     type RpcListCodexModelsResponse,
     type RpcArchiveCodexSessionResponse,
     type RpcListCursorModelsResponse,
@@ -58,6 +59,7 @@ export type {
     RpcGeneratedImageResponse,
     RpcListDirectoryResponse,
     RpcStatFilesResponse,
+    RpcCodexSessionMessagesResponse,
     RpcListCodexModelsResponse,
     RpcListCursorModelsResponse,
     RpcListOpencodeModelsResponse,
@@ -2300,6 +2302,10 @@ async uploadScratchlistAttachment(
 
     async listCodexSessionsForMachine(machineId: string, cwd?: string | null, sessionIds?: string[]) {
         return await this.rpcGateway.listCodexSessionsForMachine(machineId, cwd, sessionIds)
+    }
+
+    async getCodexSessionMessagesForMachine(machineId: string, sessionId: string, offset: number, limit: number): Promise<RpcCodexSessionMessagesResponse> {
+        return await this.rpcGateway.getCodexSessionMessagesForMachine(machineId, sessionId, offset, limit)
     }
 
     async archiveCodexSessionForMachine(machineId: string, sessionId: string): Promise<RpcArchiveCodexSessionResponse> {

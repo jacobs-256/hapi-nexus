@@ -91,6 +91,7 @@ export default {
   'sessions.group.expand': 'Expand {n}',
   'sessions.group.collapse': 'Collapse {n}',
   'sessions.group.new': 'New session in this directory',
+  'sessions.group.syncCodex': 'Sync Codex sessions',
   'sessions.group.actions.open': 'Group actions',
   'sessions.group.copyPath': 'Copy path',
   'sessions.group.copyPathCopied': 'Copied',

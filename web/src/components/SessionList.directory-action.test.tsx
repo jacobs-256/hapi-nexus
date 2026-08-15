@@ -145,6 +145,114 @@ describe('SessionList directory action', () => {
         })
     })
 
+    it('opens Codex sync from the group menu and queues selected local sessions', async () => {
+        const project = makeProject({
+            id: 'project-1',
+            name: 'Project',
+            workspaces: []
+        })
+        const getCodexSessions = vi.fn(async () => ({
+            success: true as const,
+            machineId: 'machine-1',
+            sessions: [{
+                id: 'codex-local-1',
+                title: 'Local Codex session',
+                cwd: '/home/ubuntu',
+                file: '/Users/mac/.codex/sessions/local.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 2, 3, 4, 5)
+            }, {
+                id: 'codex-other-1',
+                title: 'Other folder Codex session',
+                cwd: '/home/other',
+                file: '/Users/mac/.codex/sessions/other.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 3, 3, 4, 5)
+            }]
+        }))
+        const createCodexImportJob = vi.fn(async () => ({
+            success: true as const,
+            job: {
+                id: 'job-1',
+                namespace: 'default',
+                projectId: 'project-1',
+                cwd: '/home/ubuntu',
+                machineId: 'machine-1',
+                status: 'queued' as const,
+                createdAt: 100,
+                totalItems: 1,
+                completedItems: 0,
+                failedItems: 0,
+                skippedItems: 0,
+                totalMessages: 0,
+                importedMessages: 0,
+                items: [{
+                    codexSessionId: 'codex-local-1',
+                    status: 'queued' as const,
+                    totalMessages: 0,
+                    messagesToImport: 0,
+                    importedMessages: 0,
+                    appendedMessages: 0
+                }]
+            }
+        }))
+        const api = {
+            getProjects: vi.fn(async () => ({ projects: [project] })),
+            getCodexSessions,
+            getCodexImportJobs: vi.fn(async () => ({ success: true as const, jobs: [] })),
+            createCodexImportJob,
+            restartCodexDesktop: vi.fn(async () => ({ success: true as const }))
+        } as unknown as ApiClient
+        const session = makeSession({
+            id: 'session-1',
+            projectId: project.id,
+            updatedAt: Date.now(),
+            metadata: {
+                path: '/home/ubuntu',
+                machineId: 'machine-1',
+                name: 'Greeting',
+                flavor: 'codex',
+            }
+        })
+
+        renderWithProviders(
+            <SessionList
+                sessions={[session]}
+                selectedSessionId={null}
+                onSelect={vi.fn()}
+                onNewSession={vi.fn()}
+                onNewSessionInDirectory={vi.fn()}
+                onRefresh={vi.fn()}
+                isLoading={false}
+                renderHeader={false}
+                api={api}
+                machineLabelsById={{ 'machine-1': 'Mint' }}
+            />
+        )
+
+        await waitFor(() => expect(api.getProjects).toHaveBeenCalled())
+        openGroupActions()
+        const syncItem = screen.getByRole('menuitem', { name: 'Sync Codex sessions' })
+        const newItem = screen.getByRole('menuitem', { name: 'New session in this directory' })
+        expect(syncItem.compareDocumentPosition(newItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+        fireEvent.click(syncItem)
+
+        expect(await screen.findByRole('dialog')).toBeInTheDocument()
+        expect(getCodexSessions).toHaveBeenCalledWith('/home/ubuntu', 'machine-1')
+        expect(await screen.findByText('Local Codex session')).toBeInTheDocument()
+        expect(screen.queryByText('Other folder Codex session')).toBeNull()
+        fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
+
+        await waitFor(() => {
+            expect(createCodexImportJob).toHaveBeenCalledWith({
+                sessionIds: ['codex-local-1'],
+                projectId: 'project-1',
+                cwd: '/home/ubuntu',
+                machineId: 'machine-1'
+            })
+        })
+    })
+
     it('keeps the sticky project header opaque and aligned with the list viewport', () => {
         const session = makeSession({
             id: 'session-1',
@@ -606,18 +714,20 @@ describe('SessionList collapse behavior', () => {
                     mutations: { retry: false },
                 }
             })}>
-                <I18nProvider>
-                    <SessionList
-                        sessions={sessions}
-                        selectedSessionId={selectedSessionId}
-                        onSelect={vi.fn()}
-                        onNewSession={vi.fn()}
-                        onRefresh={vi.fn()}
-                        isLoading={false}
-                        renderHeader={false}
-                        api={null}
-                    />
-                </I18nProvider>
+                <ToastProvider>
+                    <I18nProvider>
+                        <SessionList
+                            sessions={sessions}
+                            selectedSessionId={selectedSessionId}
+                            onSelect={vi.fn()}
+                            onNewSession={vi.fn()}
+                            onRefresh={vi.fn()}
+                            isLoading={false}
+                            renderHeader={false}
+                            api={null}
+                        />
+                    </I18nProvider>
+                </ToastProvider>
             </QueryClientProvider>
         )
     }

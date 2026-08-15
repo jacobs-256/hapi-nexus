@@ -59,6 +59,16 @@ function isForkedCodexSession(session: CodexLocalSessionSummary): boolean {
     return typeof session.forkedFromId === 'string' && session.forkedFromId.trim().length > 0
 }
 
+function isCodexSessionImported(
+    session: CodexLocalSessionSummary,
+    importedSessions: Record<string, number>
+): boolean {
+    if (typeof session.imported === 'boolean') {
+        return session.imported
+    }
+    return Boolean(importedSessions[session.id])
+}
+
 export function CodexSessionSyncDialog(props: {
     isOpen: boolean
     onClose: () => void
@@ -71,6 +81,7 @@ export function CodexSessionSyncDialog(props: {
     onRestartCodexDesktop: () => Promise<void>
     onArchiveSession?: (session: CodexLocalSessionSummary) => Promise<void>
     importJobs?: CodexImportJob[]
+    error?: string | null
     isPending: boolean
     isRestartingCodexDesktop: boolean
     isLoading: boolean
@@ -87,6 +98,7 @@ export function CodexSessionSyncDialog(props: {
         onRestartCodexDesktop,
         onArchiveSession,
         importJobs = [],
+        error,
         isPending,
         isRestartingCodexDesktop,
         isLoading,
@@ -136,6 +148,10 @@ export function CodexSessionSyncDialog(props: {
                 .some((value) => value.toLowerCase().includes(query))
         })
     }, [searchQuery, sessions, workdirFilter])
+    const selectableFilteredSessions = useMemo(
+        () => filteredSessions.filter((session) => !isCodexSessionImported(session, importedSessions)),
+        [filteredSessions, importedSessions]
+    )
     const visibleImportJobs = useMemo(
         () => importJobs
             .filter((job) => isActiveImportJob(job) || Date.now() - (job.finishedAt ?? job.createdAt) < 5 * 60_000)
@@ -185,13 +201,24 @@ export function CodexSessionSyncDialog(props: {
         if (!isOpen || isLoading || hasInitializedSelection) return
 
         // 中文注释：弹窗打开后等本地 Codex 会话列表加载完成，再尝试默认勾选当前 Hapi 会话关联的 Codex thread，避免异步加载时默认值丢失。
-        const defaultSelected = currentCodexSessionId && sessionIdSet.has(currentCodexSessionId) && !importedSessions[currentCodexSessionId]
-            ? [currentCodexSessionId]
+        const currentSession = currentCodexSessionId
+            ? sessions.find((session) => session.id === currentCodexSessionId)
+            : null
+        const defaultSelected = currentSession && sessionIdSet.has(currentSession.id) && !isCodexSessionImported(currentSession, importedSessions)
+            ? [currentSession.id]
             : []
         setSelectedSessionIds(defaultSelected)
         setHasInitializedSelection(true)
-    }, [currentCodexSessionId, hasInitializedSelection, importedSessions, isLoading, isOpen, sessionIdSet])
+    }, [currentCodexSessionId, hasInitializedSelection, importedSessions, isLoading, isOpen, sessionIdSet, sessions])
 
+    useEffect(() => {
+        if (!isOpen || selectedSessionIds.length === 0) return
+        const sessionsById = new Map(sessions.map((session) => [session.id, session]))
+        setSelectedSessionIds((current) => current.filter((sessionId) => {
+            const session = sessionsById.get(sessionId)
+            return Boolean(session && !isCodexSessionImported(session, importedSessions))
+        }))
+    }, [importedSessions, isOpen, selectedSessionIds.length, sessions])
 
     const clearLongPressTimer = () => {
         if (longPressTimerRef.current) {
@@ -221,6 +248,8 @@ export function CodexSessionSyncDialog(props: {
 
     const toggleSession = (sessionId: string) => {
         if (isPending || isLoading) return
+        const session = sessions.find((candidate) => candidate.id === sessionId)
+        if (!session || isCodexSessionImported(session, importedSessions)) return
 
         if (selectionMode === 'single') {
             setSelectedSessionIds([sessionId])
@@ -234,7 +263,7 @@ export function CodexSessionSyncDialog(props: {
     }
 
     const selectAll = () => {
-        setSelectedSessionIds(filteredSessions.map((session) => session.id))
+        setSelectedSessionIds(selectableFilteredSessions.map((session) => session.id))
     }
 
     const clearAll = () => {
@@ -281,9 +310,9 @@ export function CodexSessionSyncDialog(props: {
                 </div>
 
                 <div className="mt-4 space-y-3">
-                    {archiveError ? (
+                    {error || archiveError ? (
                         <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
-                            {archiveError}
+                            {error || archiveError}
                         </div>
                     ) : null}
                     <div className="flex items-center justify-between gap-2">
@@ -306,7 +335,7 @@ export function CodexSessionSyncDialog(props: {
                                     variant="secondary"
                                     size="sm"
                                     onClick={selectAll}
-                                    disabled={isPending || isLoading || filteredSessions.length === 0}
+                                    disabled={isPending || isLoading || selectableFilteredSessions.length === 0}
                                 >
                                     {t('codexSync.confirm.selectAll')}
                                 </Button>
@@ -366,7 +395,7 @@ export function CodexSessionSyncDialog(props: {
                             <div className="divide-y divide-[var(--app-border)]">
                                 {filteredSessions.map((session) => {
                                     const checked = selectedSessionIdSet.has(session.id)
-                                    const isImported = Boolean(importedSessions[session.id])
+                                    const isImported = isCodexSessionImported(session, importedSessions)
                                     const time = formatCodexSessionTime(session.modifiedAt)
                                     const preview = getCodexSessionPreview(session)
                                     const cwd = getCodexSessionCwd(session)
@@ -375,7 +404,7 @@ export function CodexSessionSyncDialog(props: {
                                     return (
                                         <div
                                             key={session.id}
-                                            className="relative flex cursor-pointer items-start gap-3 px-3 py-2 transition-colors hover:bg-[var(--app-subtle-bg)]"
+                                            className={`relative flex items-start gap-3 px-3 py-2 transition-colors hover:bg-[var(--app-subtle-bg)] ${isImported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                                             onContextMenu={(event) => {
                                                 if (!onArchiveSession) return
                                                 event.preventDefault()
@@ -396,7 +425,7 @@ export function CodexSessionSyncDialog(props: {
                                                 type={selectionMode === 'single' ? 'radio' : 'checkbox'}
                                                 className="mt-1 h-4 w-4 accent-[var(--app-link)]"
                                                 checked={checked}
-                                                disabled={isPending || isLoading}
+                                                disabled={isPending || isLoading || isImported}
                                                 onChange={() => toggleSession(session.id)}
                                             />
                                             <div className="min-w-0 flex-1">

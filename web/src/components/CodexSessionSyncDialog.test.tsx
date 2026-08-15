@@ -153,6 +153,66 @@ describe('CodexSessionSyncDialog', () => {
         expect(onConfirm).toHaveBeenCalledWith(['codex-session-2'])
     })
 
+    it('prevents already imported sessions from being selected', async () => {
+        const onConfirm = vi.fn(async () => {})
+        renderDialog([
+            {
+                id: 'imported-session',
+                title: 'Imported session',
+                cwd: '/home/user/project',
+                file: '/home/user/.codex/sessions/imported.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 2, 3, 4, 5),
+                imported: true
+            },
+            {
+                id: 'new-session',
+                title: 'New session',
+                cwd: '/home/user/project',
+                file: '/home/user/.codex/sessions/new.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 3, 3, 4, 5)
+            }
+        ], onConfirm)
+
+        const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[]
+        expect(checkboxes[0]).toBeDisabled()
+        expect(checkboxes[1]).toBeEnabled()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Select all' }))
+
+        await waitFor(() => {
+            expect(screen.getByText('1 sessions selected')).toBeInTheDocument()
+        })
+
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
+
+        expect(onConfirm).toHaveBeenCalledWith(['new-session'])
+    })
+
+    it('allows a locally remembered import to be selected again after the server reports it is no longer imported', async () => {
+        window.localStorage.setItem('hapi.codexImportedSessions', JSON.stringify({
+            'deleted-import-session': Date.now()
+        }))
+        const onConfirm = vi.fn(async () => {})
+        renderDialog([
+            {
+                id: 'deleted-import-session',
+                title: 'Deleted import session',
+                cwd: '/home/user/project',
+                file: '/home/user/.codex/sessions/deleted.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 2, 3, 4, 5),
+                imported: false
+            }
+        ], onConfirm)
+
+        const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+        expect(checkbox).toBeEnabled()
+
+        fireEvent.click(checkbox)
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
+
+        expect(onConfirm).toHaveBeenCalledWith(['deleted-import-session'])
+    })
+
     it('replaces hidden selections when selecting all filtered sessions', async () => {
         const onConfirm = vi.fn(async () => {})
         renderDialog([

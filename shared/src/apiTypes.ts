@@ -338,6 +338,25 @@ export const ListCodexSessionsRpcResponseSchema = z.union([
     z.object({ success: z.literal(false), error: z.string() })
 ])
 
+export const CodexSessionMessagesRpcRequestSchema = z.object({
+    sessionId: z.string().min(1),
+    offset: z.number().int().nonnegative().optional(),
+    limit: z.number().int().positive().max(1000).optional()
+})
+
+export const CodexSessionMessagePageSchema = CodexLocalSessionSummarySchema.extend({
+    messages: z.array(CodexImportedMessageSchema),
+    totalMessages: z.number().int().nonnegative(),
+    offset: z.number().int().nonnegative(),
+    hasMore: z.boolean(),
+    nextOffset: z.number().int().nonnegative().nullable()
+})
+
+export const CodexSessionMessagesRpcResponseSchema = z.union([
+    z.object({ success: z.literal(true), session: CodexSessionMessagePageSchema }),
+    z.object({ success: z.literal(false), error: z.string() })
+])
+
 export const ArchiveCodexSessionRpcRequestSchema = z.object({ sessionId: z.string().min(1) })
 export const ArchiveCodexSessionRpcResponseSchema = z.union([
     z.object({ success: z.literal(true), archivedPath: z.string() }),
@@ -346,6 +365,8 @@ export const ArchiveCodexSessionRpcResponseSchema = z.union([
 
 export type ListCodexSessionsRpcRequest = z.infer<typeof ListCodexSessionsRpcRequestSchema>
 export type ListCodexSessionsRpcResponse = z.infer<typeof ListCodexSessionsRpcResponseSchema>
+export type CodexSessionMessagesRpcRequest = z.infer<typeof CodexSessionMessagesRpcRequestSchema>
+export type CodexSessionMessagesRpcResponse = z.infer<typeof CodexSessionMessagesRpcResponseSchema>
 export type ArchiveCodexSessionRpcRequest = z.infer<typeof ArchiveCodexSessionRpcRequestSchema>
 export type ArchiveCodexSessionRpcResponse = z.infer<typeof ArchiveCodexSessionRpcResponseSchema>
 
