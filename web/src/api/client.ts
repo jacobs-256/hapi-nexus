@@ -4,6 +4,8 @@ import type {
     CodexLocalSessionsResponse,
     CodexDuplicateSessionsResponse,
     CodexMergeDuplicateSessionsResponse,
+    CodexImportJobResponse,
+    CodexImportJobsResponse,
     CodexDesktopScriptResponse,
     CodexDesktopSyncRequest,
     CodexFolderSyncRequest,
@@ -404,6 +406,21 @@ export class ApiClient {
             method: 'POST',
             ...(payload ? { body: JSON.stringify(payload) } : {})
         })
+    }
+
+    async createCodexImportJob(payload: CodexDesktopSyncRequest): Promise<CodexImportJobResponse> {
+        return await this.request<CodexImportJobResponse>('/api/codex/import-jobs', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        })
+    }
+
+    async getCodexImportJobs(): Promise<CodexImportJobsResponse> {
+        return await this.request<CodexImportJobsResponse>('/api/codex/import-jobs')
+    }
+
+    async getCodexImportJob(jobId: string): Promise<CodexImportJobResponse> {
+        return await this.request<CodexImportJobResponse>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}`)
     }
 
     async syncCodexFolder(payload: CodexFolderSyncRequest): Promise<CodexDesktopScriptResponse> {

@@ -367,6 +367,43 @@ function createRemoteCodexSession(id: string, cwd: string, modifiedAt: number) {
     }
 }
 
+function createRemoteCodexSessionWithUserMessages(id: string, cwd: string, count: number) {
+    return {
+        id,
+        title: `Codex ${id}`,
+        lastUserMessage: `Prompt ${count - 1}`,
+        cwd,
+        file: `/home/user/.codex/sessions/${id}.jsonl`,
+        modifiedAt: 10_000,
+        originator: 'codex_cli_rs',
+        cliVersion: '0.0.0-test',
+        messages: Array.from({ length: count }, (_, index) => ({
+            role: 'user' as const,
+            content: { type: 'text' as const, text: `Prompt ${index}` },
+            meta: { sentFrom: 'cli' as const }
+        }))
+    }
+}
+
+async function waitForImportJob(app: Hono<WebAppEnv>, jobId: string) {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+        const response = await app.request(`/api/codex/import-jobs/${jobId}`)
+        const body = await response.json() as {
+            success: true
+            job: {
+                id: string
+                status: 'queued' | 'running' | 'succeeded' | 'failed'
+                items: Array<{ status: string }>
+            }
+        }
+        if (body.success && (body.job.status === 'succeeded' || body.job.status === 'failed')) {
+            return body.job
+        }
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10))
+    }
+    throw new Error(`Timed out waiting for import job ${jobId}`)
+}
+
 function createImportSyncEngine(store: Store, machines: Machine[]): SyncEngine {
     return {
         getOnlineMachinesByNamespace: (namespace: string) => machines.filter((machine) => (
@@ -1208,6 +1245,156 @@ describe('Codex Desktop import routes', () => {
                 codexSessionId: 'folder-latest'
             })
             expect(store.messages.getMessages(latest!.id)).toHaveLength(2)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('queues selected Codex imports and skips repeated imports without duplicating messages', async () => {
+        const store = new Store(':memory:')
+        const remoteSessions = [
+            createRemoteCodexSession('queued-thread', '/work/project', 3000)
+        ]
+        const machine = createMachine('machine-1', ['/work'])
+        const realtimeEvents: Array<{ type: string }> = []
+        const engine = {
+            getOnlineMachinesByNamespace: (namespace: string) => namespace === 'default' ? [machine] : [],
+            getSessionsByNamespace: (namespace: string) => (
+                store.sessions.getSessionsByNamespace(namespace) as unknown as ReturnType<SyncEngine['getSessionsByNamespace']>
+            ),
+            getOrCreateSession: (
+                tag: string,
+                metadata: unknown,
+                agentState: unknown,
+                namespace: string
+            ) => (
+                store.sessions.getOrCreateSession(tag, metadata, agentState, namespace) as unknown as ReturnType<SyncEngine['getOrCreateSession']>
+            ),
+            handleRealtimeEvent: (event: { type: string }) => {
+                realtimeEvents.push(event)
+            },
+            recordSessionActivity: (sessionId: string, updatedAt: number) => {
+                store.sessions.touchSessionUpdatedAt(sessionId, updatedAt, 'default')
+            },
+            listCodexSessionsForMachine: async (_machineId: string, _cwd?: string | null, sessionIds?: string[]) => {
+                const requestedIds = sessionIds ? new Set(sessionIds) : null
+                return {
+                    success: true,
+                    sessions: requestedIds
+                        ? remoteSessions.filter((session) => requestedIds.has(session.id))
+                        : remoteSessions
+                }
+            }
+        } as unknown as SyncEngine
+        const app = new Hono<WebAppEnv>()
+        app.use('*', async (c, next) => {
+            c.set('namespace', 'default')
+            await next()
+        })
+        app.route('/api', createCodexDesktopRoutes({ store, getSyncEngine: () => engine }))
+
+        try {
+            const firstResponse = await app.request('/api/codex/import-jobs', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionIds: ['queued-thread', 'queued-thread'], cwd: '/work/project', machineId: 'machine-1' })
+            })
+            expect(firstResponse.status).toBe(200)
+            const firstBody = await firstResponse.json() as { success: true; job: { id: string; totalItems: number } }
+            expect(firstBody.success).toBe(true)
+            expect(firstBody.job.totalItems).toBe(1)
+            const firstJob = await waitForImportJob(app, firstBody.job.id)
+            expect(firstJob.status).toBe('succeeded')
+
+            const imported = store.sessions.getSessionsByNamespace('default')
+            expect(imported).toHaveLength(1)
+            expect(store.messages.getAllMessages(imported[0].id)).toHaveLength(2)
+
+            const secondResponse = await app.request('/api/codex/import-jobs', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionIds: ['queued-thread'], cwd: '/work/project', machineId: 'machine-1' })
+            })
+            const secondBody = await secondResponse.json() as { success: true; job: { id: string } }
+            const secondJob = await waitForImportJob(app, secondBody.job.id)
+            expect(secondJob.status).toBe('succeeded')
+            expect(secondJob.items[0]?.status).toBe('skipped')
+            expect(store.sessions.getSessionsByNamespace('default')).toHaveLength(1)
+            expect(store.messages.getAllMessages(imported[0].id)).toHaveLength(2)
+
+            const toastEvents = realtimeEvents.filter((event) => event.type === 'toast')
+            expect(toastEvents).toHaveLength(4)
+            expect(realtimeEvents.some((event) => event.type === 'message-received')).toBe(false)
+        } finally {
+            store.close()
+        }
+    })
+
+    it('imports queued messages in newest-first chunks while preserving display timestamps', async () => {
+        const store = new Store(':memory:')
+        const remoteSessions = [
+            createRemoteCodexSessionWithUserMessages('large-thread', '/work/project', 401)
+        ]
+        const machine = createMachine('machine-1', ['/work'])
+        const engine = {
+            getOnlineMachinesByNamespace: (namespace: string) => namespace === 'default' ? [machine] : [],
+            getSessionsByNamespace: (namespace: string) => (
+                store.sessions.getSessionsByNamespace(namespace) as unknown as ReturnType<SyncEngine['getSessionsByNamespace']>
+            ),
+            getOrCreateSession: (
+                tag: string,
+                metadata: unknown,
+                agentState: unknown,
+                namespace: string
+            ) => (
+                store.sessions.getOrCreateSession(tag, metadata, agentState, namespace) as unknown as ReturnType<SyncEngine['getOrCreateSession']>
+            ),
+            handleRealtimeEvent: () => {},
+            recordSessionActivity: (sessionId: string, updatedAt: number) => {
+                store.sessions.touchSessionUpdatedAt(sessionId, updatedAt, 'default')
+            },
+            listCodexSessionsForMachine: async (_machineId: string, _cwd?: string | null, sessionIds?: string[]) => {
+                const requestedIds = sessionIds ? new Set(sessionIds) : null
+                return {
+                    success: true,
+                    sessions: requestedIds
+                        ? remoteSessions.filter((session) => requestedIds.has(session.id))
+                        : remoteSessions
+                }
+            }
+        } as unknown as SyncEngine
+        const app = new Hono<WebAppEnv>()
+        app.use('*', async (c, next) => {
+            c.set('namespace', 'default')
+            await next()
+        })
+        app.route('/api', createCodexDesktopRoutes({ store, getSyncEngine: () => engine }))
+
+        try {
+            const response = await app.request('/api/codex/import-jobs', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionIds: ['large-thread'], cwd: '/work/project', machineId: 'machine-1' })
+            })
+            const body = await response.json() as { success: true; job: { id: string } }
+            const job = await waitForImportJob(app, body.job.id)
+            expect(job.status).toBe('succeeded')
+
+            const session = store.sessions.getSessionsByNamespace('default')[0]
+            expect(session).toBeDefined()
+            const messages = store.messages.getAllMessages(session.id)
+            expect(messages).toHaveLength(401)
+            expect((messages[0].content as { content: { text: string } }).content.text).toBe('Prompt 201')
+            expect((messages[messages.length - 1].content as { content: { text: string } }).content.text).toBe('Prompt 0')
+
+            const displayOrdered = messages.slice().sort((a, b) => {
+                const aAt = a.invokedAt ?? a.createdAt
+                const bAt = b.invokedAt ?? b.createdAt
+                if (aAt !== bAt) return aAt - bAt
+                return a.seq - b.seq
+            })
+            expect((displayOrdered[0].content as { content: { text: string } }).content.text).toBe('Prompt 0')
+            expect((displayOrdered[displayOrdered.length - 1].content as { content: { text: string } }).content.text).toBe('Prompt 400')
         } finally {
             store.close()
         }

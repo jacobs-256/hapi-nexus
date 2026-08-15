@@ -145,10 +145,10 @@ describe('CodexSessionSyncDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('1 sessions selected')).toBeInTheDocument()
-            expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
+            expect(screen.getByRole('button', { name: 'Queue import' })).toBeEnabled()
         })
 
-        fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
 
         expect(onConfirm).toHaveBeenCalledWith(['codex-session-2'])
     })
@@ -183,10 +183,10 @@ describe('CodexSessionSyncDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('1 sessions selected')).toBeInTheDocument()
-            expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled()
+            expect(screen.getByRole('button', { name: 'Queue import' })).toBeEnabled()
         })
 
-        fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
 
         expect(onConfirm).toHaveBeenCalledWith(['codex-session-2'])
     })

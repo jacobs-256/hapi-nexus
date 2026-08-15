@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { ApiClient } from '@/api/client'
-import type { CodexDuplicateSessionGroup, CodexLocalSessionSummary, Machine } from '@/types/api'
+import type { CodexDuplicateSessionGroup, CodexImportJob, CodexLocalSessionSummary, Machine } from '@/types/api'
 import type { CodexCollaborationMode, GrokPermissionMode } from '@hapi/protocol'
 import { codexModelAdvertisesFastTier } from '@/components/AssistantChat/codexFastMode'
 import { usePlatform } from '@/hooks/usePlatform'
@@ -128,6 +128,8 @@ export function NewSession(props: {
     const [duplicateSessionGroups, setDuplicateSessionGroups] = useState<CodexDuplicateSessionGroup[]>([])
     const [isDuplicateMergeConfirmOpen, setIsDuplicateMergeConfirmOpen] = useState(false)
     const [isMergingDuplicateSessions, setIsMergingDuplicateSessions] = useState(false)
+    const [codexImportJobs, setCodexImportJobs] = useState<CodexImportJob[]>([])
+    const completedCodexImportJobIdsRef = useRef(new Set<string>())
     const isFormDisabled = Boolean(isCreating || isPending || props.isLoading || isImportingCodexSession || isBulkImportingCodexSessions || isSyncingCodexFolder)
     const worktreeInputRef = useRef<HTMLInputElement>(null)
     const preserveRestoredDraftRef = useRef(false)
@@ -764,6 +766,53 @@ export function NewSession(props: {
         }
     }, [agent, machineId, props.api, trimmedDirectory, t])
 
+    const loadCodexImportJobs = useCallback(async () => {
+        if (agent !== 'codex') return
+        try {
+            const result = await props.api.getCodexImportJobs()
+            if (result.success) {
+                setCodexImportJobs(result.jobs)
+            }
+        } catch {
+            // Best-effort progress polling only; start/fail/success toasts still arrive over SSE.
+        }
+    }, [agent, props.api])
+
+    const hasActiveCodexImportJobs = useMemo(
+        () => codexImportJobs.some((job) => job.status === 'queued' || job.status === 'running'),
+        [codexImportJobs]
+    )
+
+    useEffect(() => {
+        if (agent !== 'codex') return
+        if (!isCodexImportDialogOpen && !hasActiveCodexImportJobs) return
+
+        void loadCodexImportJobs()
+        const timer = setInterval(() => {
+            void loadCodexImportJobs()
+        }, 2000)
+        return () => clearInterval(timer)
+    }, [agent, hasActiveCodexImportJobs, isCodexImportDialogOpen, loadCodexImportJobs])
+
+    useEffect(() => {
+        for (const job of codexImportJobs) {
+            if ((job.status === 'queued' || job.status === 'running') || completedCodexImportJobIdsRef.current.has(job.id)) {
+                continue
+            }
+            completedCodexImportJobIdsRef.current.add(job.id)
+            const importedCodexSessionIds = job.items
+                .filter((item) => item.status === 'succeeded' || (item.status === 'skipped' && Boolean(item.hapiSessionId)))
+                .map((item) => item.codexSessionId)
+            if (importedCodexSessionIds.length > 0) {
+                markCodexSessionsImported(importedCodexSessionIds)
+                setSelectedCodexImportSessionId((current) =>
+                    clearBatchImportedCodexSelection(current, importedCodexSessionIds)
+                )
+            }
+            void refetchSessions()
+        }
+    }, [codexImportJobs, refetchSessions])
+
     const normalizeCodexScriptError = useCallback((message: string | null | undefined, fallback: string): string => {
         const raw = (message ?? '').trim()
         if (!raw) return fallback
@@ -831,56 +880,23 @@ export function NewSession(props: {
 
         setIsBulkImportingCodexSessions(true)
         try {
-            const result = await props.api.syncCodexSession({
+            const result = await props.api.createCodexImportJob({
                 sessionIds,
                 projectId,
                 cwd: trimmedDirectory || null,
                 machineId: codexImportMachineId ?? machineId
             })
             if (!result.success) {
-                throw new Error(normalizeCodexScriptError(result.error, t('codexSync.failed.body')))
+                throw new Error(normalizeCodexScriptError(result.error, t('codexSync.importQueue.failed.body')))
             }
 
-            markCodexSessionsImported(sessionIds)
-            setSelectedCodexImportSessionId((current) =>
-                clearBatchImportedCodexSelection(current, sessionIds)
-            )
-            setIsCodexImportDialogOpen(false)
+            setCodexImportJobs((current) => [result.job, ...current.filter((job) => job.id !== result.job.id)])
             addToast({
-                title: t('codexSync.success.title'),
-                body: t('codexSync.success.body', { n: result.syncedCount ?? sessionIds.length }),
+                title: t('codexSync.importQueue.queued.title'),
+                body: t('codexSync.importQueue.queued.body', { n: result.job.totalItems }),
                 sessionId: '',
                 url: ''
             })
-            await refetchSessions()
-
-            closeDuplicateMergeDialog()
-            setPendingDuplicateHapiSessionIds(result.hapiSessionIds ?? [])
-            try {
-                const duplicateResult = await props.api.getCodexDuplicateSessions({ sessionIds })
-                if (!duplicateResult.success) {
-                    throw new Error(normalizeCodexScriptError(
-                        duplicateResult.error,
-                        t('codexSync.duplicates.detect.failed.body')
-                    ))
-                }
-                if (duplicateResult.duplicates.length > 0) {
-                    setPendingDuplicateSessionIds(sessionIds)
-                    setPendingDuplicateHapiSessionIds(result.hapiSessionIds ?? [])
-                    setDuplicateSessionGroups(duplicateResult.duplicates)
-                    setIsDuplicateMergeConfirmOpen(true)
-                }
-            } catch (duplicateError) {
-                addToast({
-                    title: t('codexSync.duplicates.detect.failed.title'),
-                    body: normalizeCodexScriptError(
-                        duplicateError instanceof Error ? duplicateError.message : null,
-                        t('codexSync.duplicates.detect.failed.body')
-                    ),
-                    sessionId: '',
-                    url: ''
-                })
-            }
         } catch (importError) {
             const reason = normalizeCodexScriptError(
                 importError instanceof Error ? importError.message : null,
@@ -897,7 +913,6 @@ export function NewSession(props: {
         }
     }, [
         addToast,
-        closeDuplicateMergeDialog,
         codexImportMachineId,
         formatCodexImportFailure,
         isBulkImportingCodexSessions,
@@ -906,7 +921,6 @@ export function NewSession(props: {
         normalizeCodexScriptError,
         projectId,
         props.api,
-        refetchSessions,
         t,
         trimmedDirectory
     ])
@@ -1129,13 +1143,6 @@ export function NewSession(props: {
         worktreeName,
         trimmedDirectory
     ])
-
-    const handleSelectCodexImportSession = useCallback((session: CodexLocalSessionSummary) => {
-        setSelectedCodexImportSessionId(session.id)
-        if (session.cwd?.trim()) {
-            setDirectory(session.cwd.trim())
-        }
-    }, [])
 
     const handlePathClick = useCallback((path: string) => {
         setDirectory(path)
@@ -1569,18 +1576,11 @@ export function NewSession(props: {
                 currentWorkDirectory={trimmedDirectory}
                 selectionMode="multiple"
                 onConfirm={async (sessionIds) => {
-                    if (sessionIds.length === 1) {
-                        const session = codexImportSessions.find((candidate) => candidate.id === sessionIds[0])
-                        if (session) {
-                            handleSelectCodexImportSession(session)
-                            setIsCodexImportDialogOpen(false)
-                        }
-                        return
-                    }
                     await handleBulkImportCodexSessions(sessionIds)
                 }}
                 onRestartCodexDesktop={handleRestartCodexDesktop}
                 onArchiveSession={handleArchiveCodexImportSession}
+                importJobs={codexImportJobs}
                 isPending={isBulkImportingCodexSessions}
                 isRestartingCodexDesktop={isRestartingCodexDesktop}
                 isLoading={isLoadingCodexImportSessions}

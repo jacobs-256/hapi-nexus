@@ -6,7 +6,7 @@ import { homedir, hostname, platform } from 'node:os'
 import { AGENT_MESSAGE_PAYLOAD_TYPE } from '@hapi/protocol'
 import type { CodexCollaborationMode } from '@hapi/protocol/types'
 import { Hono } from 'hono'
-import type { Machine, SyncEngine } from '../../sync/syncEngine'
+import type { Machine, SyncEngine, SyncEvent } from '../../sync/syncEngine'
 import type { Store, StoredMessage, StoredProject } from '../../store'
 import type { WebAppEnv } from '../middleware/auth'
 import { findWorkspaceForPath, machineAllowsWorkspace } from './workspaceAccess'
@@ -181,12 +181,68 @@ type DuplicateSessionGroupCandidate = {
     sessions: ImportCandidate[]
 }
 
+type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped'
+type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+
+type CodexImportJobItem = {
+    codexSessionId: string
+    title?: string
+    status: CodexImportItemStatus
+    totalMessages: number
+    messagesToImport: number
+    importedMessages: number
+    appendedMessages: number
+    hapiSessionId?: string
+    error?: string
+    startedAt?: number
+    finishedAt?: number
+}
+
+type CodexImportJob = {
+    id: string
+    namespace: string
+    userId?: number
+    projectId?: string | null
+    cwd?: string | null
+    machineId?: string | null
+    status: CodexImportJobStatus
+    createdAt: number
+    startedAt?: number
+    finishedAt?: number
+    totalItems: number
+    completedItems: number
+    failedItems: number
+    skippedItems: number
+    totalMessages: number
+    importedMessages: number
+    items: CodexImportJobItem[]
+    error?: string
+}
+
+type CodexImportJobResponse = {
+    success: true
+    job: CodexImportJob
+} | {
+    success: false
+    error: string
+}
+
+type CodexImportJobsResponse = {
+    success: true
+    jobs: CodexImportJob[]
+} | {
+    success: false
+    error: string
+}
+
 const CODEX_DESKTOP_NOT_FOUND_ERROR = '尝试重启codex客户端失败，未安装/找不到codex客户端'
 const SCRIPT_TIMEOUT_ERROR = '执行超时'
 const NO_SYNC_SESSION_SELECTED_ERROR = '未选择需要导入的 Codex 会话'
 const CODEX_TRANSCRIPT_IMPORT_NAMESPACE_ERROR = 'Codex transcript import is not available outside the default namespace'
 const DEFAULT_SCRIPT_TIMEOUT_MS = 60_000
 const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 500
+const CODEX_IMPORT_CHUNK_SIZE = 200
+const MAX_CODEX_IMPORT_JOBS = 50
 
 function resolveLocalPath(pathValue: string): string {
     return isAbsolute(pathValue) ? pathValue : resolve(process.cwd(), pathValue)
@@ -1100,6 +1156,17 @@ function getComparableStoredMessageKey(message: StoredMessage): string {
     return normalizeComparableContent(message.content) ?? stableSerialize(message.content)
 }
 
+function getStoredMessagesInImportOrder(store: Store, sessionId: string): StoredMessage[] {
+    return store.messages.getAllMessages(sessionId)
+        .slice()
+        .sort((a, b) => {
+            const aAt = a.invokedAt ?? a.createdAt
+            const bAt = b.invokedAt ?? b.createdAt
+            if (aAt !== bAt) return aAt - bAt
+            return a.seq - b.seq
+        })
+}
+
 function collectImportCandidates(
     store: Store,
     namespace: string,
@@ -1177,7 +1244,7 @@ function selectImportTargetSession(
     let bestPrefixCount = -1
 
     for (const candidate of relatedCandidates) {
-        const comparableMessages = store.messages.getAllMessages(candidate.sessionId)
+        const comparableMessages = getStoredMessagesInImportOrder(store, candidate.sessionId)
             .map((message) => normalizeComparableContent(message.content))
             .filter((value): value is string => value !== null)
 
@@ -1866,7 +1933,8 @@ function parseSyncFolderRequest(body: unknown): SyncFolderRequestParseResult {
         cwd,
         machineId: typeof bodyRecord.machineId === 'string' && bodyRecord.machineId.trim() ? bodyRecord.machineId.trim() : null,
         projectId: typeof bodyRecord.projectId === 'string' && bodyRecord.projectId.trim() ? bodyRecord.projectId.trim() : null,
-        includeSubdirs: bodyRecord.includeSubdirs === true,
+        // 中文注释：导入需求只按当前目录精确匹配；不递归扫描子目录，避免把子项目历史误导入。
+        includeSubdirs: false,
         model: hasModel ? (typeof bodyRecord.model === 'string' && bodyRecord.model.trim() ? bodyRecord.model.trim() : null) : undefined,
         modelReasoningEffort: hasModelReasoningEffort ? (typeof bodyRecord.modelReasoningEffort === 'string' && bodyRecord.modelReasoningEffort.trim() ? bodyRecord.modelReasoningEffort.trim() : null) : undefined,
         serviceTier: hasServiceTier ? bodyRecord.serviceTier as 'fast' | 'standard' | null : undefined,
@@ -1973,6 +2041,219 @@ function createImportSuccessResponse(
     }
 }
 
+type PreparedCodexImportTarget = {
+    transcript: CodexTranscriptImportData
+    sessionId: string
+    created: boolean
+    messagesToAppend: CodexImportedMessageContent[]
+    comparablePrefixCount: number
+    engine: SyncEngine | null
+}
+
+function prepareCodexImportTarget(options: {
+    codexSessionId: string
+    transcript: CodexTranscriptImportData
+    store: Store
+    namespace: string
+    userId?: number
+    getSyncEngine?: () => SyncEngine | null
+    model?: string | null
+    modelReasoningEffort?: string | null
+    yolo?: boolean
+    machineId?: string | null
+    projectId?: string | null
+}): PreparedCodexImportTarget {
+    const importedComparableMessages = options.transcript.messages
+        .map((message) => normalizeComparableContent(message))
+        .filter((value): value is string => value !== null)
+
+    const importProject = resolveImportProject(options.store, options.namespace, options.userId, options.projectId)
+    const candidates = collectImportCandidates(options.store, options.namespace, options.getSyncEngine, options.userId)
+        .filter((candidate) =>
+            !options.projectId
+            || candidate.projectId === null
+            || candidate.projectId === importProject?.id
+        )
+    const target = selectImportTargetSession(
+        options.store,
+        candidates,
+        options.codexSessionId,
+        importedComparableMessages,
+        options.machineId
+    )
+    const engine = options.getSyncEngine?.() ?? null
+    const existingStored = target.sessionId ? options.store.sessions.getSessionByNamespace(target.sessionId, options.namespace) : null
+    if (!existingStored && typeof options.userId === 'number' && !importProject) {
+        throw new Error('No editable project available for Codex import')
+    }
+    const metadata = buildImportedSessionMetadata(
+        options.transcript,
+        asRecord(existingStored?.metadata),
+        options.machineId ?? resolveImportMachineId(options.transcript.cwd, options.namespace, engine) ?? undefined,
+        options.yolo ? 'yolo' : undefined
+    )
+    ensureImportedProjectDirectory({
+        engine,
+        namespace: options.namespace,
+        userId: options.userId,
+        project: importProject,
+        machineId: metadata.machineId,
+        cwd: options.transcript.cwd
+    })
+
+    let sessionId = existingStored?.id ?? null
+    let created = false
+    if (!sessionId) {
+        // 中文注释：找不到可安全续写的历史会话时，直接新建一个 Hapi 会话，避免把已分叉的数据硬写进旧会话。
+        const createdSession = engine?.getOrCreateSession(
+            randomUUID(),
+            metadata,
+            {},
+            options.namespace,
+            options.model ?? undefined,
+            undefined,
+            options.modelReasoningEffort ?? undefined,
+            undefined,
+            importProject && typeof options.userId === 'number'
+                ? { projectId: importProject.id, createdByUserId: options.userId }
+                : undefined
+        ) ?? options.store.sessions.getOrCreateSession(
+            randomUUID(),
+            metadata,
+            {},
+            options.namespace,
+            options.model ?? undefined,
+            undefined,
+            options.modelReasoningEffort ?? undefined,
+            undefined,
+            importProject && typeof options.userId === 'number'
+                ? { projectId: importProject.id, createdByUserId: options.userId }
+                : undefined
+        )
+        sessionId = createdSession.id
+        created = true
+    } else if (existingStored) {
+        if (importProject && existingStored.projectId === null && typeof options.userId === 'number') {
+            options.store.sessions.assignSessionProject(existingStored.id, options.namespace, importProject.id, options.userId)
+        }
+        const updatedMetadata = options.store.sessions.updateSessionMetadata(
+            existingStored.id,
+            metadata,
+            existingStored.metadataVersion,
+            options.namespace
+        )
+        if (updatedMetadata.result !== 'success') {
+            throw new Error(`Failed to update metadata for Hapi session: ${existingStored.id}`)
+        }
+        if (options.model !== undefined) {
+            options.store.sessions.setSessionModel(existingStored.id, options.model, options.namespace, { touchUpdatedAt: false })
+        }
+        if (options.modelReasoningEffort !== undefined) {
+            options.store.sessions.setSessionModelReasoningEffort(existingStored.id, options.modelReasoningEffort, options.namespace, { touchUpdatedAt: false })
+        }
+        engine?.handleRealtimeEvent({ type: 'session-updated', sessionId: existingStored.id })
+    }
+
+    if (!sessionId) {
+        throw new Error(`Failed to determine target Hapi session for Codex thread: ${options.codexSessionId}`)
+    }
+
+    const comparablePrefixCount = target.comparablePrefixCount
+    const messagesToAppend = options.transcript.messages.slice(comparablePrefixCount)
+    const targetIsActive = Boolean(candidates.find((candidate) => candidate.sessionId === sessionId)?.active)
+    if (targetIsActive && messagesToAppend.length > 0) {
+        throw new Error('当前会话正在运行且 Codex transcript 有新消息，停止或归档后再同步，避免消息顺序错乱')
+    }
+
+    return {
+        transcript: options.transcript,
+        sessionId,
+        created,
+        messagesToAppend,
+        comparablePrefixCount,
+        engine
+    }
+}
+
+function buildSingleImportSuccessResponse(
+    codexSessionId: string,
+    sessionId: string,
+    created: boolean,
+    appendedMessagesCount: number
+): ScriptLaunchResponse {
+    const output = [
+        `Codex thread: ${codexSessionId}`,
+        `Hapi session: ${sessionId}`,
+        `Action: ${created ? 'created' : 'updated'}`,
+        `Appended messages: ${appendedMessagesCount}`
+    ].join('\n')
+
+    appendScriptLog(
+        getDirectImportRouteContext().workspace,
+        'sync',
+        `SUCCESS: codexSessionId=${codexSessionId}; hapiSessionId=${sessionId}; created=${created}; appended=${appendedMessagesCount}`
+    )
+
+    return {
+        success: true,
+        message: created ? 'Codex session imported into a new Hapi session' : 'Codex session appended to existing Hapi session',
+        pid: 0,
+        command: DIRECT_IMPORT_COMMAND,
+        cwd: getDirectImportRouteContext().workspace,
+        output,
+        sessionIds: [codexSessionId],
+        hapiSessionIds: [sessionId],
+        syncedCount: 1
+    }
+}
+
+function getImportChunkStartAt(store: Store, sessionId: string, totalToAppend: number): number {
+    const latestPosition = store.messages.getNewestMessagePosition(sessionId)
+    const naturalStart = Date.now() - Math.max(0, totalToAppend - 1)
+    const minimumStart = latestPosition ? latestPosition.at + 1 : 1
+    return Math.max(1, naturalStart, minimumStart)
+}
+
+async function appendImportedMessagesNewestFirst(options: {
+    store: Store
+    sessionId: string
+    messagesToAppend: CodexImportedMessageContent[]
+    chunkSize?: number
+    onChunk?: (state: { importedMessages: number; appendedMessages: StoredMessage[] }) => void
+}): Promise<StoredMessage[]> {
+    const messagesToAppend = options.messagesToAppend
+    if (messagesToAppend.length === 0) {
+        return []
+    }
+
+    const chunkSize = Math.max(1, options.chunkSize ?? CODEX_IMPORT_CHUNK_SIZE)
+    const startAt = getImportChunkStartAt(options.store, options.sessionId, messagesToAppend.length)
+    const appendedMessages: StoredMessage[] = []
+
+    for (let end = messagesToAppend.length; end > 0; end -= chunkSize) {
+        const start = Math.max(0, end - chunkSize)
+        const chunk = messagesToAppend.slice(start, end)
+        const chunkMessages = chunk.map((message, index) => {
+            const createdAt = startAt + start + index
+            return options.store.messages.copyMessageToSession(options.sessionId, {
+                content: message,
+                createdAt,
+                localId: null,
+                invokedAt: createdAt,
+                scheduledAt: null
+            })
+        })
+        appendedMessages.push(...chunkMessages)
+        options.onChunk?.({
+            importedMessages: appendedMessages.length,
+            appendedMessages: chunkMessages
+        })
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 0))
+    }
+
+    return appendedMessages
+}
+
 function importSingleCodexSession(options: {
     codexSessionId: string
     localSessionsById: Map<string, CodexLocalSessionSummary | RemoteCodexSession>
@@ -2011,145 +2292,41 @@ function importSingleCodexSession(options: {
         }
     }
 
-    const importedComparableMessages = transcript.messages
-        .map((message) => normalizeComparableContent(message))
-        .filter((value): value is string => value !== null)
-
     try {
-        const importProject = resolveImportProject(options.store, options.namespace, options.userId, options.projectId)
-        const candidates = collectImportCandidates(options.store, options.namespace, options.getSyncEngine, options.userId)
-            .filter((candidate) =>
-                !options.projectId
-                || candidate.projectId === null
-                || candidate.projectId === importProject?.id
-            )
-        const target = selectImportTargetSession(
-            options.store,
-            candidates,
-            options.codexSessionId,
-            importedComparableMessages,
-            options.machineId
-        )
-        const engine = options.getSyncEngine?.() ?? null
-        const existingStored = target.sessionId ? options.store.sessions.getSessionByNamespace(target.sessionId, options.namespace) : null
-        if (!existingStored && typeof options.userId === 'number' && !importProject) {
-            throw new Error('No editable project available for Codex import')
-        }
-        const metadata = buildImportedSessionMetadata(
+        const prepared = prepareCodexImportTarget({
+            codexSessionId: options.codexSessionId,
             transcript,
-            asRecord(existingStored?.metadata),
-            options.machineId ?? resolveImportMachineId(transcript.cwd, options.namespace, engine) ?? undefined,
-            options.yolo ? 'yolo' : undefined
-        )
-        ensureImportedProjectDirectory({
-            engine,
+            store: options.store,
             namespace: options.namespace,
             userId: options.userId,
-            project: importProject,
-            machineId: metadata.machineId,
-            cwd: transcript.cwd
+            getSyncEngine: options.getSyncEngine,
+            model: options.model,
+            modelReasoningEffort: options.modelReasoningEffort,
+            yolo: options.yolo,
+            machineId: options.machineId,
+            projectId: options.projectId
         })
-
-        let sessionId = existingStored?.id ?? null
-        let created = false
-        if (!sessionId) {
-            // 中文注释：找不到可安全续写的历史会话时，直接新建一个 Hapi 会话，避免把已分叉的数据硬写进旧会话。
-            const createdSession = engine?.getOrCreateSession(
-                randomUUID(),
-                metadata,
-                {},
-                options.namespace,
-                options.model ?? undefined,
-                undefined,
-                options.modelReasoningEffort ?? undefined,
-                undefined,
-                importProject && typeof options.userId === 'number'
-                    ? { projectId: importProject.id, createdByUserId: options.userId }
-                    : undefined
-            ) ?? options.store.sessions.getOrCreateSession(
-                randomUUID(),
-                metadata,
-                {},
-                options.namespace,
-                options.model ?? undefined,
-                undefined,
-                options.modelReasoningEffort ?? undefined,
-                undefined,
-                importProject && typeof options.userId === 'number'
-                    ? { projectId: importProject.id, createdByUserId: options.userId }
-                    : undefined
-            )
-            sessionId = createdSession.id
-            created = true
-        } else if (existingStored) {
-            if (importProject && existingStored.projectId === null && typeof options.userId === 'number') {
-                options.store.sessions.assignSessionProject(existingStored.id, options.namespace, importProject.id, options.userId)
-            }
-            const updatedMetadata = options.store.sessions.updateSessionMetadata(
-                existingStored.id,
-                metadata,
-                existingStored.metadataVersion,
-                options.namespace
-            )
-            if (updatedMetadata.result !== 'success') {
-                throw new Error(`Failed to update metadata for Hapi session: ${existingStored.id}`)
-            }
-            if (options.model !== undefined) {
-                options.store.sessions.setSessionModel(existingStored.id, options.model, options.namespace, { touchUpdatedAt: false })
-            }
-            if (options.modelReasoningEffort !== undefined) {
-                options.store.sessions.setSessionModelReasoningEffort(existingStored.id, options.modelReasoningEffort, options.namespace, { touchUpdatedAt: false })
-            }
-            engine?.handleRealtimeEvent({ type: 'session-updated', sessionId: existingStored.id })
-        }
-
-        if (!sessionId) {
-            throw new Error(`Failed to determine target Hapi session for Codex thread: ${options.codexSessionId}`)
-        }
-
-        const comparablePrefixCount = sessionId ? target.comparablePrefixCount : 0
-        const messagesToAppend = transcript.messages.slice(comparablePrefixCount)
-        const targetIsActive = Boolean(candidates.find((candidate) => candidate.sessionId === sessionId)?.active)
-        if (targetIsActive && messagesToAppend.length > 0) {
-            throw new Error('当前会话正在运行且 Codex transcript 有新消息，停止或归档后再同步，避免消息顺序错乱')
-        }
-        const appendedMessages = messagesToAppend.map((message) => options.store.messages.addMessage(sessionId!, message))
+        const appendedMessages = prepared.messagesToAppend.map((message) => options.store.messages.addMessage(prepared.sessionId, message))
 
         // 中文注释：更新 Hapi 会话的 updatedAt，并在已有会话追加时广播新增消息，让当前打开的聊天页立刻显示客户端新增内容。
-        const latestMessageCreatedAt = appendedMessages[appendedMessages.length - 1]?.createdAt ?? Date.now()
-        if (engine) {
-            engine.recordSessionActivity(sessionId, latestMessageCreatedAt)
+        const latestMessageCreatedAt = appendedMessages.length > 0
+            ? Math.max(...appendedMessages.map((message) => message.invokedAt ?? message.createdAt))
+            : Date.now()
+        if (prepared.engine) {
+            prepared.engine.recordSessionActivity(prepared.sessionId, latestMessageCreatedAt)
         } else {
-            options.store.sessions.touchSessionUpdatedAt(sessionId, latestMessageCreatedAt, options.namespace)
+            options.store.sessions.touchSessionUpdatedAt(prepared.sessionId, latestMessageCreatedAt, options.namespace)
         }
-        if (!created) {
-            emitImportedMessageEvents(engine, sessionId, appendedMessages)
+        if (!prepared.created) {
+            emitImportedMessageEvents(prepared.engine, prepared.sessionId, appendedMessages)
         }
 
-        const output = [
-            `Codex thread: ${options.codexSessionId}`,
-            `Hapi session: ${sessionId}`,
-            `Action: ${created ? 'created' : 'updated'}`,
-            `Appended messages: ${appendedMessages.length}`
-        ].join('\n')
-
-        appendScriptLog(
-            getDirectImportRouteContext().workspace,
-            'sync',
-            `SUCCESS: codexSessionId=${options.codexSessionId}; hapiSessionId=${sessionId}; created=${created}; appended=${appendedMessages.length}`
+        return buildSingleImportSuccessResponse(
+            options.codexSessionId,
+            prepared.sessionId,
+            prepared.created,
+            appendedMessages.length
         )
-
-        return {
-            success: true,
-            message: created ? 'Codex session imported into a new Hapi session' : 'Codex session appended to existing Hapi session',
-            pid: 0,
-            command: DIRECT_IMPORT_COMMAND,
-            cwd: getDirectImportRouteContext().workspace,
-            output,
-            sessionIds: [options.codexSessionId],
-            hapiSessionIds: [sessionId],
-            syncedCount: 1
-        }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         return {
@@ -2227,11 +2404,351 @@ export async function importSelectedCodexSessions(options: {
     return createImportSuccessResponse(codexSessionIds, results)
 }
 
+type CodexImportJobInternal = CodexImportJob & {
+    model?: string | null
+    modelReasoningEffort?: string | null
+    serviceTier?: string | null
+    collaborationMode?: CodexCollaborationMode
+    yolo?: boolean
+}
+
+function cloneCodexImportJob(job: CodexImportJobInternal): CodexImportJob {
+    return {
+        id: job.id,
+        namespace: job.namespace,
+        ...(job.userId !== undefined ? { userId: job.userId } : {}),
+        projectId: job.projectId,
+        cwd: job.cwd,
+        machineId: job.machineId,
+        status: job.status,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        finishedAt: job.finishedAt,
+        totalItems: job.totalItems,
+        completedItems: job.completedItems,
+        failedItems: job.failedItems,
+        skippedItems: job.skippedItems,
+        totalMessages: job.totalMessages,
+        importedMessages: job.importedMessages,
+        error: job.error,
+        items: job.items.map((item) => ({ ...item }))
+    }
+}
+
+function isActiveCodexImportStatus(status: CodexImportJobStatus): boolean {
+    return status === 'queued' || status === 'running'
+}
+
+function isVisibleImportJob(job: CodexImportJobInternal, namespace: string, userId?: number): boolean {
+    if (job.namespace !== namespace) return false
+    return typeof userId === 'number' ? job.userId === userId : true
+}
+
+function createCodexImportToast(
+    type: 'started' | 'succeeded' | 'failed',
+    job: CodexImportJob
+): Extract<SyncEvent, { type: 'toast' }> {
+    const titles = {
+        started: 'Codex import started',
+        succeeded: 'Codex import completed',
+        failed: 'Codex import failed'
+    }
+    const bodies = {
+        started: `Queued ${job.totalItems} Codex conversation(s).`,
+        succeeded: `Imported ${job.completedItems - job.skippedItems} conversation(s), skipped ${job.skippedItems}.`,
+        failed: `Imported ${job.completedItems - job.failedItems - job.skippedItems} conversation(s), failed ${job.failedItems}.`
+    }
+    return {
+        type: 'toast',
+        namespace: job.namespace,
+        data: {
+            title: titles[type],
+            body: bodies[type],
+            sessionId: '',
+            url: ''
+        }
+    }
+}
+
+class CodexImportQueue {
+    private readonly jobs = new Map<string, CodexImportJobInternal>()
+    private processing = false
+
+    constructor(private readonly options: {
+        store: Store
+        getSyncEngine: () => SyncEngine | null
+    }) {}
+
+    createJob(options: {
+        codexSessionIds: string[]
+        namespace: string
+        userId?: number
+        projectId?: string | null
+        cwd?: string | null
+        machineId?: string | null
+        model?: string | null
+        modelReasoningEffort?: string | null
+        serviceTier?: string | null
+        collaborationMode?: CodexCollaborationMode
+        yolo?: boolean
+    }): CodexImportJob {
+        const now = Date.now()
+        const items = options.codexSessionIds.map((codexSessionId): CodexImportJobItem => {
+            if (this.hasActiveImport(options.namespace, codexSessionId, options.machineId)) {
+                return {
+                    codexSessionId,
+                    status: 'skipped',
+                    totalMessages: 0,
+                    messagesToImport: 0,
+                    importedMessages: 0,
+                    appendedMessages: 0,
+                    error: 'Already queued or running',
+                    finishedAt: now
+                }
+            }
+            return {
+                codexSessionId,
+                status: 'queued',
+                totalMessages: 0,
+                messagesToImport: 0,
+                importedMessages: 0,
+                appendedMessages: 0
+            }
+        })
+        const skippedItems = items.filter((item) => item.status === 'skipped').length
+        const hasRunnableItems = items.some((item) => item.status === 'queued')
+        const job: CodexImportJobInternal = {
+            id: randomUUID(),
+            namespace: options.namespace,
+            userId: options.userId,
+            projectId: options.projectId ?? null,
+            cwd: options.cwd ?? null,
+            machineId: options.machineId ?? null,
+            model: options.model,
+            modelReasoningEffort: options.modelReasoningEffort,
+            serviceTier: options.serviceTier,
+            collaborationMode: options.collaborationMode,
+            yolo: options.yolo,
+            status: hasRunnableItems ? 'queued' : 'succeeded',
+            createdAt: now,
+            finishedAt: hasRunnableItems ? undefined : now,
+            totalItems: items.length,
+            completedItems: skippedItems,
+            failedItems: 0,
+            skippedItems,
+            totalMessages: 0,
+            importedMessages: 0,
+            items
+        }
+
+        this.jobs.set(job.id, job)
+        this.pruneJobs()
+        if (hasRunnableItems) {
+            void this.drain()
+        }
+        return cloneCodexImportJob(job)
+    }
+
+    listJobs(namespace: string, userId?: number): CodexImportJob[] {
+        return Array.from(this.jobs.values())
+            .filter((job) => isVisibleImportJob(job, namespace, userId))
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .map(cloneCodexImportJob)
+    }
+
+    getJob(jobId: string, namespace: string, userId?: number): CodexImportJob | null {
+        const job = this.jobs.get(jobId)
+        if (!job || !isVisibleImportJob(job, namespace, userId)) {
+            return null
+        }
+        return cloneCodexImportJob(job)
+    }
+
+    private hasActiveImport(namespace: string, codexSessionId: string, machineId?: string | null): boolean {
+        for (const job of this.jobs.values()) {
+            if (job.namespace !== namespace || !isActiveCodexImportStatus(job.status)) {
+                continue
+            }
+            if (machineId && job.machineId && machineId !== job.machineId) {
+                continue
+            }
+            if (job.items.some((item) => item.codexSessionId === codexSessionId && (item.status === 'queued' || item.status === 'running'))) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private pruneJobs(): void {
+        if (this.jobs.size <= MAX_CODEX_IMPORT_JOBS) {
+            return
+        }
+        const removable = Array.from(this.jobs.values())
+            .filter((job) => !isActiveCodexImportStatus(job.status))
+            .sort((a, b) => a.createdAt - b.createdAt)
+        for (const job of removable) {
+            if (this.jobs.size <= MAX_CODEX_IMPORT_JOBS) {
+                break
+            }
+            this.jobs.delete(job.id)
+        }
+    }
+
+    private async drain(): Promise<void> {
+        if (this.processing) {
+            return
+        }
+        this.processing = true
+        try {
+            while (true) {
+                const nextJob = Array.from(this.jobs.values())
+                    .filter((job) => job.status === 'queued')
+                    .sort((a, b) => a.createdAt - b.createdAt)[0]
+                if (!nextJob) {
+                    return
+                }
+                await this.processJob(nextJob)
+            }
+        } finally {
+            this.processing = false
+        }
+    }
+
+    private emitToast(type: 'started' | 'succeeded' | 'failed', job: CodexImportJobInternal): void {
+        this.options.getSyncEngine()?.handleRealtimeEvent(createCodexImportToast(type, cloneCodexImportJob(job)))
+    }
+
+    private async processJob(job: CodexImportJobInternal): Promise<void> {
+        job.status = 'running'
+        job.startedAt = Date.now()
+        this.emitToast('started', job)
+
+        for (const item of job.items) {
+            if (item.status !== 'queued') {
+                continue
+            }
+            item.status = 'running'
+            item.startedAt = Date.now()
+            try {
+                await this.processItem(job, item)
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                item.status = 'failed'
+                item.error = message
+                item.finishedAt = Date.now()
+                job.completedItems += 1
+                job.failedItems += 1
+                job.error = message
+                appendScriptLog(
+                    getDirectImportRouteContext().workspace,
+                    'sync',
+                    `FAILED: queued Codex import job=${job.id}; codexSessionId=${item.codexSessionId}; error=${message}`
+                )
+            }
+        }
+
+        job.status = job.failedItems > 0 ? 'failed' : 'succeeded'
+        job.finishedAt = Date.now()
+        this.emitToast(job.status === 'failed' ? 'failed' : 'succeeded', job)
+    }
+
+    private async processItem(job: CodexImportJobInternal, item: CodexImportJobItem): Promise<void> {
+        const remote = await listCodexSessionsViaMachine({
+            engine: this.options.getSyncEngine(),
+            namespace: job.namespace,
+            cwd: job.cwd,
+            machineId: job.machineId,
+            sessionIds: [item.codexSessionId]
+        })
+        if (remote.error) {
+            throw new Error(remote.error)
+        }
+
+        const transcript = remote.sessions.find((session) => session.id === item.codexSessionId)
+        if (!transcript) {
+            throw new Error(`Transcript not found for Codex session: ${item.codexSessionId}`)
+        }
+        if (transcript.messages.length === 0) {
+            throw new Error(`No importable conversation content found in transcript: ${transcript.file}`)
+        }
+
+        item.title = transcript.title
+        item.totalMessages = transcript.messages.length
+
+        const prepared = prepareCodexImportTarget({
+            codexSessionId: item.codexSessionId,
+            transcript,
+            store: this.options.store,
+            namespace: job.namespace,
+            userId: job.userId,
+            getSyncEngine: this.options.getSyncEngine,
+            model: job.model,
+            modelReasoningEffort: job.modelReasoningEffort,
+            yolo: job.yolo,
+            machineId: remote.machineId ?? job.machineId ?? null,
+            projectId: job.projectId
+        })
+
+        item.hapiSessionId = prepared.sessionId
+        item.messagesToImport = prepared.messagesToAppend.length
+        job.totalMessages += prepared.messagesToAppend.length
+
+        if (prepared.messagesToAppend.length === 0) {
+            item.status = 'skipped'
+            item.finishedAt = Date.now()
+            job.completedItems += 1
+            job.skippedItems += 1
+            return
+        }
+
+        const appendedMessages = await appendImportedMessagesNewestFirst({
+            store: this.options.store,
+            sessionId: prepared.sessionId,
+            messagesToAppend: prepared.messagesToAppend,
+            chunkSize: CODEX_IMPORT_CHUNK_SIZE,
+            onChunk: ({ importedMessages, appendedMessages: chunkMessages }) => {
+                item.importedMessages = importedMessages
+                item.appendedMessages += chunkMessages.length
+                job.importedMessages += chunkMessages.length
+            }
+        })
+
+        const latestMessageCreatedAt = appendedMessages.length > 0
+            ? Math.max(...appendedMessages.map((message) => message.invokedAt ?? message.createdAt))
+            : Date.now()
+        if (prepared.engine) {
+            prepared.engine.recordSessionActivity(prepared.sessionId, latestMessageCreatedAt)
+        } else {
+            this.options.store.sessions.touchSessionUpdatedAt(prepared.sessionId, latestMessageCreatedAt, job.namespace)
+        }
+
+        if (job.serviceTier !== undefined || job.collaborationMode !== undefined) {
+            if (!prepared.engine) {
+                throw new Error('Imported session config could not be applied before resume')
+            }
+            await prepared.engine.applySessionConfig(prepared.sessionId, {
+                ...(job.serviceTier !== undefined ? { serviceTier: job.serviceTier } : {}),
+                ...(job.collaborationMode !== undefined ? { collaborationMode: job.collaborationMode } : {})
+            })
+        }
+
+        item.status = 'succeeded'
+        item.finishedAt = Date.now()
+        job.completedItems += 1
+        appendScriptLog(
+            getDirectImportRouteContext().workspace,
+            'sync',
+            `SUCCESS: queued Codex import job=${job.id}; codexSessionId=${item.codexSessionId}; hapiSessionId=${prepared.sessionId}; appended=${appendedMessages.length}`
+        )
+    }
+}
+
 export function createCodexDesktopRoutes(options: {
     store: Store
     getSyncEngine: () => SyncEngine | null
 }): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
+    const importQueue = new CodexImportQueue(options)
 
     app.use('/codex/*', async (c, next) => {
         if (c.get('namespace') !== 'default') {
@@ -2274,6 +2791,62 @@ export function createCodexDesktopRoutes(options: {
             sessions: remote.sessions.map(({ messages: _messages, ...summary }) => summary),
             ...(remote.machineId ? { machineId: remote.machineId } : {})
         } satisfies CodexLocalSessionsResponse)
+    })
+
+    app.get('/codex/import-jobs', (c) => {
+        return c.json({
+            success: true,
+            jobs: importQueue.listJobs(c.get('namespace'), c.get('userId'))
+        } satisfies CodexImportJobsResponse)
+    })
+
+    app.get('/codex/import-jobs/:jobId', (c) => {
+        const job = importQueue.getJob(c.req.param('jobId'), c.get('namespace'), c.get('userId'))
+        if (!job) {
+            return c.json({
+                success: false,
+                error: 'Import job not found'
+            } satisfies CodexImportJobResponse, 404)
+        }
+        return c.json({
+            success: true,
+            job
+        } satisfies CodexImportJobResponse)
+    })
+
+    app.post('/codex/import-jobs', async (c) => {
+        const body = await c.req.json().catch(() => null)
+        const parsed = parseSyncSessionRequest(body)
+        if (parsed.error) {
+            return c.json({
+                success: false,
+                error: parsed.error
+            } satisfies CodexImportJobResponse, 400)
+        }
+        if (parsed.sessionIds.length === 0) {
+            return c.json({
+                success: false,
+                error: NO_SYNC_SESSION_SELECTED_ERROR
+            } satisfies CodexImportJobResponse, 400)
+        }
+
+        const job = importQueue.createJob({
+            codexSessionIds: parsed.sessionIds,
+            namespace: c.get('namespace'),
+            userId: c.get('userId'),
+            projectId: parsed.projectId,
+            cwd: parsed.cwd,
+            machineId: parsed.machineId,
+            model: parsed.model,
+            modelReasoningEffort: parsed.modelReasoningEffort,
+            serviceTier: parsed.serviceTier,
+            collaborationMode: parsed.collaborationMode,
+            yolo: parsed.yolo
+        })
+        return c.json({
+            success: true,
+            job
+        } satisfies CodexImportJobResponse)
     })
 
 

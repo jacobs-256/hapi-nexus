@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CodexLocalSessionSummary } from '@/types/api'
+import type { CodexImportJob, CodexLocalSessionSummary } from '@/types/api'
 import {
     Dialog,
     DialogContent,
@@ -16,6 +16,25 @@ const ALL_WORKDIR_FILTER = '__all__'
 function formatCodexSessionTime(value: number): string | null {
     if (!Number.isFinite(value)) return null
     return new Date(value).toLocaleString()
+}
+
+function isActiveImportJob(job: CodexImportJob): boolean {
+    return job.status === 'queued' || job.status === 'running'
+}
+
+function getImportJobStatusKey(job: CodexImportJob): string {
+    if (job.status === 'queued') return 'codexSync.importQueue.status.queued'
+    if (job.status === 'running') return 'codexSync.importQueue.status.running'
+    if (job.status === 'succeeded') return 'codexSync.importQueue.status.succeeded'
+    return 'codexSync.importQueue.status.failed'
+}
+
+function getImportItemStatusKey(status: string): string {
+    if (status === 'queued') return 'codexSync.importQueue.item.queued'
+    if (status === 'running') return 'codexSync.importQueue.item.running'
+    if (status === 'succeeded') return 'codexSync.importQueue.item.succeeded'
+    if (status === 'skipped') return 'codexSync.importQueue.item.skipped'
+    return 'codexSync.importQueue.item.failed'
 }
 
 function getCodexSessionPreview(session: CodexLocalSessionSummary): string {
@@ -51,6 +70,7 @@ export function CodexSessionSyncDialog(props: {
     selectionMode?: 'single' | 'multiple'
     onRestartCodexDesktop: () => Promise<void>
     onArchiveSession?: (session: CodexLocalSessionSummary) => Promise<void>
+    importJobs?: CodexImportJob[]
     isPending: boolean
     isRestartingCodexDesktop: boolean
     isLoading: boolean
@@ -66,6 +86,7 @@ export function CodexSessionSyncDialog(props: {
         selectionMode = 'multiple',
         onRestartCodexDesktop,
         onArchiveSession,
+        importJobs = [],
         isPending,
         isRestartingCodexDesktop,
         isLoading,
@@ -115,6 +136,12 @@ export function CodexSessionSyncDialog(props: {
                 .some((value) => value.toLowerCase().includes(query))
         })
     }, [searchQuery, sessions, workdirFilter])
+    const visibleImportJobs = useMemo(
+        () => importJobs
+            .filter((job) => isActiveImportJob(job) || Date.now() - (job.finishedAt ?? job.createdAt) < 5 * 60_000)
+            .slice(0, 5),
+        [importJobs]
+    )
 
     useEffect(() => {
         if (isOpen && !wasOpenRef.current) {
@@ -439,6 +466,55 @@ export function CodexSessionSyncDialog(props: {
                             </div>
                         )}
                     </div>
+
+                    {visibleImportJobs.length > 0 ? (
+                        <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3">
+                            <div className="mb-2 text-xs font-medium text-[var(--app-hint)]">
+                                {t('codexSync.importQueue.title')}
+                            </div>
+                            <div className="space-y-2">
+                                {visibleImportJobs.map((job) => (
+                                    <div key={job.id} className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-2">
+                                        <div className="flex items-center justify-between gap-2 text-xs">
+                                            <span className="font-medium text-[var(--app-fg)]">
+                                                {t(getImportJobStatusKey(job))}
+                                            </span>
+                                            <span className="text-[var(--app-hint)]">
+                                                {t('codexSync.importQueue.itemsProgress', {
+                                                    done: job.completedItems,
+                                                    total: job.totalItems
+                                                })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-[11px] text-[var(--app-hint)]">
+                                            {t('codexSync.importQueue.messagesProgress', {
+                                                done: job.importedMessages,
+                                                total: job.totalMessages
+                                            })}
+                                        </div>
+                                        <div className="mt-2 space-y-1">
+                                            {job.items.slice(0, 3).map((item) => (
+                                                <div key={item.codexSessionId} className="flex items-center justify-between gap-2 text-[11px]">
+                                                    <span className="min-w-0 truncate text-[var(--app-hint)]">
+                                                        {item.title || item.codexSessionId}
+                                                    </span>
+                                                    <span className="shrink-0 text-[var(--app-hint)]">
+                                                        {t(getImportItemStatusKey(item.status))}
+                                                        {item.messagesToImport > 0 ? ` ${item.importedMessages}/${item.messagesToImport}` : ''}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            {job.items.length > 3 ? (
+                                                <div className="text-[11px] text-[var(--app-hint)]">
+                                                    {t('codexSync.importQueue.moreItems', { n: job.items.length - 3 })}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className="mt-4 flex justify-end gap-2">

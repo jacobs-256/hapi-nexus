@@ -249,6 +249,60 @@ export type CodexDesktopSyncRequest = {
     yolo?: boolean
 }
 
+export type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped'
+export type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+
+export type CodexImportJobItem = {
+    codexSessionId: string
+    title?: string
+    status: CodexImportItemStatus
+    totalMessages: number
+    messagesToImport: number
+    importedMessages: number
+    appendedMessages: number
+    hapiSessionId?: string
+    error?: string
+    startedAt?: number
+    finishedAt?: number
+}
+
+export type CodexImportJob = {
+    id: string
+    namespace: string
+    userId?: number
+    projectId?: string | null
+    cwd?: string | null
+    machineId?: string | null
+    status: CodexImportJobStatus
+    createdAt: number
+    startedAt?: number
+    finishedAt?: number
+    totalItems: number
+    completedItems: number
+    failedItems: number
+    skippedItems: number
+    totalMessages: number
+    importedMessages: number
+    items: CodexImportJobItem[]
+    error?: string
+}
+
+export type CodexImportJobResponse = {
+    success: true
+    job: CodexImportJob
+} | {
+    success: false
+    error: string
+}
+
+export type CodexImportJobsResponse = {
+    success: true
+    jobs: CodexImportJob[]
+} | {
+    success: false
+    error: string
+}
+
 export type CodexFolderSyncRequest = {
     cwd: string
     projectId?: string | null
