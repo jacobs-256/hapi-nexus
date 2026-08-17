@@ -63,6 +63,7 @@ import SettingsProjectsPage from '@/routes/settings/projects'
 import SettingsMachinesPage from '@/routes/settings/machines'
 import SettingsAboutPage from '@/routes/settings/about'
 import SettingsStoragePage from '@/routes/settings/storage'
+import SettingsTasksPage from '@/routes/settings/tasks'
 import ProjectInvitePage from '@/routes/project-invite'
 import SharePage from '@/routes/share'
 import { setSharePendingTransfer } from '@/lib/sharePendingState'
@@ -108,25 +109,6 @@ function PlusIcon(props: { className?: string }) {
     )
 }
 
-function FolderOpenIcon(props: { className?: string }) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={props.className}
-        >
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-        </svg>
-    )
-}
-
 function SessionsPage() {
     const { api, user } = useAppContext()
     const navigate = useNavigate()
@@ -135,7 +117,7 @@ function SessionsPage() {
     const { t } = useTranslation()
     const { addToast } = useToast()
     const { sessions, isLoading, error, refetch } = useSessions(api)
-    const { machines } = useMachines(api, true)
+    const { machines } = useMachines(api, true, { includeOffline: true })
     const handleRefresh = useCallback(() => {
         return (async () => {
             try {
@@ -210,14 +192,6 @@ function SessionsPage() {
                         renderHeader={false}
                         headerActions={(
                             <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate({ to: '/browse' })}
-                                    className="rounded-[7px] p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
-                                    title={t('browse.nav')}
-                                >
-                                    <FolderOpenIcon className="h-5 w-5" />
-                                </button>
                                 <button
                                     type="button"
                                     onClick={() => navigate({ to: '/sessions/new' })}
@@ -1082,6 +1056,12 @@ const settingsStorageRoute = createRoute({
     component: SettingsStoragePage,
 })
 
+const settingsTasksRoute = createRoute({
+    getParentRoute: () => settingsRoute,
+    path: 'tasks',
+    component: SettingsTasksPage,
+})
+
 // Web Share Target landing route. Service worker (`web/src/sw.ts`)
 // intercepts the manifest's `POST /share` and 303-redirects here with an
 // IDB transfer id. `error=ingest` is set when the SW failed to write IDB.
@@ -1135,6 +1115,7 @@ export const routeTree = rootRoute.addChildren([
         settingsProjectsRoute,
         settingsMachinesRoute,
         settingsStorageRoute,
+        settingsTasksRoute,
         settingsAboutRoute,
     ]),
     projectInviteRoute,

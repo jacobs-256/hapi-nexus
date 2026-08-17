@@ -29,6 +29,8 @@ function CategoryIcon(props: { id: SettingsCategoryId; active: boolean }) {
             return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} className={common} aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2" /><path d="M8 20h8" /></svg>
         case 'storage':
             return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} className={common} aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3" /></svg>
+        case 'tasks':
+            return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} className={common} aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11" /><path d="m4 6 1 1 2-2M4 12h3M4 18h3" /></svg>
         case 'about':
             return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} className={common} aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 11v5M12 8h.01" /></svg>
     }
@@ -52,6 +54,7 @@ export function SettingsNav(props: { activeId?: string; mobile?: boolean }) {
         projects: t('settings.hub.projects.summary'),
         machines: t('settings.hub.machines.summary'),
         storage: t('settings.storage.summary'),
+        tasks: t('settings.tasks.summary'),
         about: `v${__APP_VERSION__}`,
     }
     const visibleCategories = getVisibleSettingsCategories({ token, user })

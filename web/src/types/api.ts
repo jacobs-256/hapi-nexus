@@ -251,8 +251,15 @@ export type CodexDesktopSyncRequest = {
     yolo?: boolean
 }
 
-export type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped'
-export type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled'
+export type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+export type CodexImportJobLog = {
+    at: number
+    level: 'info' | 'error'
+    message: string
+    codexSessionId?: string
+}
 
 export type CodexImportJobItem = {
     codexSessionId: string
@@ -286,6 +293,7 @@ export type CodexImportJob = {
     totalMessages: number
     importedMessages: number
     items: CodexImportJobItem[]
+    logs: CodexImportJobLog[]
     error?: string
 }
 

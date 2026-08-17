@@ -18,7 +18,6 @@ import { isFastServiceTier } from '@/components/AssistantChat/codexFastMode'
 import { getSessionTitle } from '@/lib/sessionTitle'
 import { useToast } from '@/lib/toast-context'
 import { queryKeys } from '@/lib/query-keys'
-import { markCodexSessionsImported } from '@/lib/codexImportedSessions'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useMachineLabels } from '@/hooks/useMachineLabels'
 import { formatAbsoluteDateTime, formatRelativeTime } from '@/lib/relativeTime'
@@ -208,26 +207,19 @@ export function SessionHeader(props: {
         setIsSyncingCodex(true)
         try {
             // 中文注释：手动同步必须携带当前会话归属机器和目录；多台 runner 在线时后端不能靠猜。
-            const result = await api.syncCodexSession({
+            const result = await api.createCodexImportJob({
                 sessionIds: [codexSessionId],
                 cwd: typeof session.metadata?.path === 'string' ? session.metadata.path : undefined,
                 machineId: typeof session.metadata?.machineId === 'string' ? session.metadata.machineId : undefined
             })
             if (!result.success) {
-                throw new Error(result.error || t('codexSync.failed.body'))
+                throw new Error(result.error || t('codexSync.importQueue.failed.body'))
             }
 
-            markCodexSessionsImported([codexSessionId])
-            await Promise.all([
-                queryClient.invalidateQueries({ queryKey: queryKeys.session(session.id) }),
-                queryClient.invalidateQueries({ queryKey: queryKeys.messages(session.id) }),
-                queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
-            ])
+            await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
             addToast({
-                title: t('codexSync.manual.success.title'),
-                body: (result.syncedCount ?? 1) === 0
-                    ? t('codexSync.manual.success.noNewMessages')
-                    : t('codexSync.manual.success.body', { n: result.syncedCount ?? 1 }),
+                title: t('codexSync.importQueue.queued.title'),
+                body: t('codexSync.importQueue.queued.body', { n: result.job.totalItems }),
                 sessionId: session.id,
                 url: `/sessions/${session.id}`
             })
@@ -259,7 +251,7 @@ export function SessionHeader(props: {
     return (
         <>
             <div className="border-b border-[var(--border)] bg-[var(--card)] pt-[var(--app-page-safe-area-top)]">
-                <div className="mx-auto flex h-11 w-full max-w-content items-center gap-2 px-3">
+                <div className="mx-auto flex h-11 w-full max-w-none items-center gap-2 px-3">
                     {/* Back button */}
                     <button
                         type="button"

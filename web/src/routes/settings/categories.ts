@@ -10,6 +10,7 @@ export const settingsCategories = [
     { id: 'projects', path: '/settings/projects', titleKey: 'settings.projects.title' },
     { id: 'machines', path: '/settings/machines', titleKey: 'settings.machines.title' },
     { id: 'storage', path: '/settings/storage', titleKey: 'settings.storage.title' },
+    { id: 'tasks', path: '/settings/tasks', titleKey: 'settings.tasks.title' },
     { id: 'about', path: '/settings/about', titleKey: 'settings.about.title' },
 ] as const
 
@@ -19,7 +20,7 @@ export type SettingsCategoryId = SettingsCategory['id']
 export const settingsCategoryGroups: Array<{ id: string; titleKey: string; categoryIds: SettingsCategoryId[] }> = [
     { id: 'workspace', titleKey: 'settings.nav.workspace', categoryIds: ['general', 'display', 'chat', 'voice'] },
     { id: 'enterprise', titleKey: 'settings.nav.enterprise', categoryIds: ['account', 'users', 'projects', 'machines'] },
-    { id: 'system', titleKey: 'settings.nav.system', categoryIds: ['storage', 'about'] },
+    { id: 'system', titleKey: 'settings.nav.system', categoryIds: ['storage', 'tasks', 'about'] },
 ]
 
 export function getNamespace(token: string): string | null {
@@ -40,6 +41,7 @@ export function getVisibleSettingsCategories(args: {
 }): SettingsCategory[] {
     return settingsCategories.filter((category) => {
         if (category.id === 'storage') return getNamespace(args.token) === 'default' && args.user?.role === 'admin'
+        if (category.id === 'tasks') return args.user?.role === 'admin'
         if (category.id === 'users') return args.user?.role === 'admin'
         return true
     })

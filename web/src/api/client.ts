@@ -430,12 +430,28 @@ export class ApiClient {
         })
     }
 
-    async getCodexImportJobs(): Promise<CodexImportJobsResponse> {
-        return await this.request<CodexImportJobsResponse>('/api/codex/import-jobs')
+    async getCodexImportJobs(options?: { all?: boolean }): Promise<CodexImportJobsResponse> {
+        const query = options?.all ? '?all=true' : ''
+        return await this.request<CodexImportJobsResponse>(`/api/codex/import-jobs${query}`)
     }
 
-    async getCodexImportJob(jobId: string): Promise<CodexImportJobResponse> {
-        return await this.request<CodexImportJobResponse>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}`)
+    async getCodexImportJob(jobId: string, options?: { all?: boolean }): Promise<CodexImportJobResponse> {
+        const query = options?.all ? '?all=true' : ''
+        return await this.request<CodexImportJobResponse>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}${query}`)
+    }
+
+    async cancelCodexImportJob(jobId: string, options?: { all?: boolean }): Promise<CodexImportJobResponse> {
+        const query = options?.all ? '?all=true' : ''
+        return await this.request<CodexImportJobResponse>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}/cancel${query}`, {
+            method: 'POST'
+        })
+    }
+
+    async deleteCodexImportJob(jobId: string, options?: { all?: boolean }): Promise<{ success: true } | { success: false; error: string }> {
+        const query = options?.all ? '?all=true' : ''
+        return await this.request<{ success: true } | { success: false; error: string }>(`/api/codex/import-jobs/${encodeURIComponent(jobId)}${query}`, {
+            method: 'DELETE'
+        })
     }
 
     async syncCodexFolder(payload: CodexFolderSyncRequest): Promise<CodexDesktopScriptResponse> {
