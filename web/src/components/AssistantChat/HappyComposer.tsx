@@ -1351,7 +1351,7 @@ export function HappyComposer(props: {
 
     return (
         <div className={`px-3 ${bottomPaddingClass} pt-2 bg-[var(--app-bg)]`}>
-            <div className="mx-auto w-full max-w-content">
+            <div className="mx-auto w-full max-w-none">
                 <ComposerPrimitive.Root className="relative" onSubmit={handleSubmit}>
                     {overlays}
 

@@ -83,6 +83,23 @@ describe('ConversationOutlinePanel', () => {
         expect(screen.queryByText('User')).not.toBeInTheDocument()
     })
 
+    it('renders outline items with invalid timestamps without throwing', () => {
+        const { container } = renderPanel({
+            items: [{
+                ...outlineItems[0],
+                id: 'outline:user-text:bad-time',
+                targetMessageId: 'user-text:bad-time',
+                label: 'Bad timestamp',
+                createdAt: Number.NaN
+            }]
+        })
+
+        const timestamp = container.querySelector('time')
+        expect(screen.getByText('Bad timestamp')).toBeInTheDocument()
+        expect(timestamp).not.toHaveAttribute('dateTime')
+        expect(timestamp).not.toHaveAttribute('title')
+    })
+
     it('shows load earlier when older messages exist', () => {
         const onLoadMore = vi.fn()
         renderPanel({ hasMoreMessages: true, onLoadMore })

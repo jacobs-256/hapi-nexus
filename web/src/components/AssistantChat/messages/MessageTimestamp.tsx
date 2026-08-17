@@ -1,5 +1,5 @@
 import { useAssistantState } from '@assistant-ui/react'
-import { formatMessageTimestamp, formatMessageTimestampTitle } from '@/chat/presentation'
+import { formatDateTimeAttribute, formatMessageTimestamp, formatMessageTimestampTitle } from '@/chat/presentation'
 import { cn } from '@/lib/utils'
 
 type MessageTimestampProps = {
@@ -8,11 +8,13 @@ type MessageTimestampProps = {
 
 export function MessageTimestamp(props: MessageTimestampProps) {
     const createdAt = useAssistantState(({ message }) => message.createdAt)
+    const dateTime = formatDateTimeAttribute(createdAt)
+    const title = formatMessageTimestampTitle(createdAt) || undefined
 
     return (
         <time
-            dateTime={createdAt.toISOString()}
-            title={formatMessageTimestampTitle(createdAt)}
+            dateTime={dateTime}
+            title={title}
             className={cn('tabular-nums', props.className)}
         >
             {formatMessageTimestamp(createdAt)}

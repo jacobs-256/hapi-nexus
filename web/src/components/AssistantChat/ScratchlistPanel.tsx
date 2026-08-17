@@ -519,7 +519,7 @@ export function ScratchlistDrawer({
     }, [busyEntryId, onDelete, onPromoteToQueue])
 
     return (
-        <div className="mx-auto w-full max-w-content mb-1">
+        <div className="mx-auto w-full max-w-none mb-1">
             <div
                 className="rounded-lg border border-[var(--app-badge-warning-border)] bg-[var(--app-chat-user-surface-bg)]"
                 data-testid="scratchlist-drawer"
@@ -714,7 +714,7 @@ export function ScratchlistPanel({
     const hasReachedCap = entries.length >= SCRATCHLIST_MAX_ENTRIES
 
     return (
-        <div className="mx-auto w-full max-w-content mb-1">
+        <div className="mx-auto w-full max-w-none mb-1">
             <div
                 className="rounded-lg border border-[var(--app-badge-warning-border)] bg-[var(--app-chat-user-surface-bg)]"
                 data-testid="scratchlist-panel"

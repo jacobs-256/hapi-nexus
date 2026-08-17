@@ -52,6 +52,11 @@ export type HappyRuntimeExtras = Readonly<{
     historyVersion: number
 }>
 
+function coercePresentationTimestamp(value: unknown, fallback: number = 0): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+    return Number.isFinite(new Date(value).getTime()) ? value : fallback
+}
+
 function formatCodexReviewText(review: CodexReview): string {
     const lines = ['Codex review']
     if (review.overallCorrectness) {
@@ -76,19 +81,24 @@ function formatCodexReviewText(review: CodexReview): string {
 
 
 export function getBlockPresentationTimestamp(block: VisibleChatBlock): number {
+    const createdAt = coercePresentationTimestamp(block.createdAt)
     if (visibleBlockRole(block) === 'user') {
-        return block.invokedAt ?? block.createdAt
+        return coercePresentationTimestamp(block.invokedAt, createdAt)
     }
     if (block.kind === 'tool-group') {
         return block.tools.reduce(
-            (latest, tool) => Math.max(latest, tool.tool.completedAt ?? tool.createdAt),
-            block.createdAt
+            (latest, tool) => {
+                const toolCreatedAt = coercePresentationTimestamp(tool.createdAt, latest)
+                const completedAt = coercePresentationTimestamp(tool.tool.completedAt, toolCreatedAt)
+                return Math.max(latest, completedAt)
+            },
+            createdAt
         )
     }
     if (block.kind === 'tool-call') {
-        return Math.max(block.createdAt, block.tool.completedAt ?? block.createdAt)
+        return Math.max(createdAt, coercePresentationTimestamp(block.tool.completedAt, createdAt))
     }
-    return block.createdAt
+    return createdAt
 }
 
 /**
@@ -365,11 +375,13 @@ function toThreadMessageLike(
     threadMessageId: string,
     timestamp: number
 ): ThreadMessageLike {
+    const createdAt = new Date(coercePresentationTimestamp(timestamp))
+
     if (block.kind === 'user-text') {
         return {
             role: 'user',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'text', text: block.text }],
             metadata: {
                 custom: {
@@ -388,7 +400,7 @@ function toThreadMessageLike(
         return {
             role: 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'text', text: block.text }],
             metadata: {
                 custom: {
@@ -406,7 +418,7 @@ function toThreadMessageLike(
         return {
             role: 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{
                 type: 'tool-call',
                 toolCallId: block.id,
@@ -428,7 +440,7 @@ function toThreadMessageLike(
         return {
             role: 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'reasoning', text: block.text }],
             metadata: {
                 custom: {
@@ -446,7 +458,7 @@ function toThreadMessageLike(
         return {
             role: 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'text', text: formatCodexReviewText(block.review) }],
             metadata: {
                 custom: {
@@ -465,7 +477,7 @@ function toThreadMessageLike(
         return {
             role: 'system',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'text', text: renderEventLabel(block.event) }],
             metadata: {
                 custom: {
@@ -482,7 +494,7 @@ function toThreadMessageLike(
         return {
             role: block.source === 'user' ? 'user' : 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{ type: 'text', text: block.text }],
             metadata: {
                 custom: {
@@ -502,7 +514,7 @@ function toThreadMessageLike(
         return {
             role: 'assistant',
             id: threadMessageId,
-            createdAt: new Date(timestamp),
+            createdAt,
             content: [{
                 type: 'tool-call',
                 toolCallId: groupBlock.id,
@@ -526,7 +538,7 @@ function toThreadMessageLike(
     return {
         role: 'assistant',
         id: threadMessageId,
-        createdAt: new Date(timestamp),
+        createdAt,
         content: [{
             type: 'tool-call',
             toolCallId: toolBlock.id,

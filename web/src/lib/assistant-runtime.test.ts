@@ -150,6 +150,22 @@ describe('message presentation timestamps', () => {
         }))).toBe(500)
     })
 
+    it('falls back to a stable valid timestamp for invalid message times', () => {
+        expect(getBlockPresentationTimestamp(userText('bad-user', {
+            createdAt: Number.NaN,
+            invokedAt: Number.POSITIVE_INFINITY
+        }))).toBe(0)
+
+        expect(getBlockPresentationTimestamp(toolCall('bad-tool', {
+            createdAt: Number.NaN,
+            tool: {
+                ...toolCall('seed').tool,
+                createdAt: Number.NaN,
+                completedAt: Number.NaN
+            }
+        }))).toBe(0)
+    })
+
     it('keeps a joined response timestamp stable when older assistant blocks are prepended', () => {
         const middle = agentText('middle', { createdAt: 200 })
         const tail = agentText('tail', { createdAt: 300 })

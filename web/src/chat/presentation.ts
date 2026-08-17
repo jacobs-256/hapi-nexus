@@ -1,5 +1,13 @@
 import type { AgentEvent } from '@/chat/types'
 
+export function isValidDate(value: unknown): value is Date {
+    return value instanceof Date && Number.isFinite(value.getTime())
+}
+
+export function formatDateTimeAttribute(date: Date | null | undefined): string | undefined {
+    return isValidDate(date) ? date.toISOString() : undefined
+}
+
 function normalizeTimestamp(value: number): Date {
     const ms = value < 1_000_000_000_000 ? value * 1000 : value
     return new Date(ms)
@@ -27,6 +35,8 @@ export function formatResetTime(value: number): string {
 }
 
 export function formatMessageTimestamp(date: Date, now: Date = new Date()): string {
+    if (!isValidDate(date)) return ''
+
     const sameDay = date.getFullYear() === now.getFullYear()
         && date.getMonth() === now.getMonth()
         && date.getDate() === now.getDate()
@@ -48,6 +58,8 @@ export function formatOutlineTimestamp(
     locale: 'en' | 'zh-CN',
     now: Date = new Date()
 ): string {
+    if (!isValidDate(date)) return ''
+
     const sameDay = date.getFullYear() === now.getFullYear()
         && date.getMonth() === now.getMonth()
         && date.getDate() === now.getDate()
@@ -72,6 +84,8 @@ export function formatOutlineTimestamp(
 }
 
 export function formatMessageTimestampTitle(date: Date): string {
+    if (!isValidDate(date)) return ''
+
     return date.toLocaleString(undefined, {
         year: 'numeric',
         month: 'short',

@@ -5,7 +5,7 @@ import type { HappyRuntimeExtras } from '@/lib/assistant-runtime'
 import type { Session, SessionMetadataSummary } from '@/types/api'
 import type { ConversationOutlineItem } from '@/chat/outline'
 import { getConversationMessageAnchorId } from '@/chat/outline'
-import { formatMessageTimestampTitle, formatOutlineTimestamp } from '@/chat/presentation'
+import { formatDateTimeAttribute, formatMessageTimestampTitle, formatOutlineTimestamp } from '@/chat/presentation'
 import {
     HappyChatProvider,
     type OlderHistoryLoadResult
@@ -376,6 +376,8 @@ export function ConversationOutlinePanel(props: {
                     <div className="space-y-1">
                         {filteredItems.map((item) => {
                             const createdAt = new Date(item.createdAt)
+                            const dateTime = formatDateTimeAttribute(createdAt)
+                            const title = formatMessageTimestampTitle(createdAt) || undefined
                             return (
                                 <button
                                     key={item.id}
@@ -386,8 +388,8 @@ export function ConversationOutlinePanel(props: {
                                     <span className="flex min-w-0 items-center gap-2 text-[11px] font-medium tabular-nums text-[var(--app-hint)]">
                                         <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--app-button)]" aria-hidden="true" />
                                         <time
-                                            dateTime={createdAt.toISOString()}
-                                            title={formatMessageTimestampTitle(createdAt)}
+                                            dateTime={dateTime}
+                                            title={title}
                                             className="truncate"
                                         >
                                             {formatOutlineTimestamp(createdAt, locale)}
@@ -1417,7 +1419,7 @@ export function HappyThread(props: {
                         className="app-scroll-y min-h-0 flex-1 overflow-x-hidden"
                         tabIndex={0}
                     >
-                        <div ref={contentRef} className="mx-auto w-full max-w-content min-w-0 p-3">
+                        <div ref={contentRef} className="mx-auto w-full max-w-none min-w-0 p-3">
                             <div ref={topSentinelRef} className="h-px w-full" aria-hidden="true" />
                             {showSkeleton ? (
                                 <MessageSkeleton />

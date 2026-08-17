@@ -1348,7 +1348,7 @@ function SessionChatInner(props: SessionChatProps) {
 
             {sessionInactive ? (
                 <div className="px-3 pt-3">
-                    <div className="mx-auto w-full max-w-content rounded-md bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-hint)]">
+                    <div className="mx-auto w-full max-w-none rounded-md bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-hint)]">
                         {inactiveCanResume
                             ? t('session.inactive.autoResume')
                             : t('session.inactive.cannotResume')}
@@ -1394,7 +1394,7 @@ function SessionChatInner(props: SessionChatProps) {
                     <div className={outlineOpen ? 'max-sm:hidden' : undefined}>
                         {codexCollaborationModeSupported && codexModelsState.error ? (
                             <div className="px-3 pb-2">
-                                <div className="mx-auto w-full max-w-content rounded-md bg-[var(--app-subtle-bg)] p-3 text-sm text-red-600">
+                                <div className="mx-auto w-full max-w-none rounded-md bg-[var(--app-subtle-bg)] p-3 text-sm text-red-600">
                                     {t('session.codexModelsLoadFailed')}: {codexModelsState.error}
                                 </div>
                             </div>

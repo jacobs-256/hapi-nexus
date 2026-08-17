@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { getEventPresentation, formatMessageTimestamp, formatOutlineTimestamp, formatResetTime } from './presentation'
+import {
+    formatDateTimeAttribute,
+    formatMessageTimestamp,
+    formatMessageTimestampTitle,
+    formatOutlineTimestamp,
+    formatResetTime,
+    getEventPresentation
+} from './presentation'
 
 describe('formatOutlineTimestamp', () => {
     it('shows only the time for same-day messages', () => {
@@ -37,6 +44,10 @@ describe('formatOutlineTimestamp', () => {
 
         expect(formatOutlineTimestamp(date, 'zh-CN', now)).toBe(`2025年09月09日 ${zhTime}`)
         expect(formatOutlineTimestamp(date, 'en', now)).toBe(`2025/09/09 ${enTime}`)
+    })
+
+    it('returns an empty label for invalid dates', () => {
+        expect(formatOutlineTimestamp(new Date(Number.NaN), 'en')).toBe('')
     })
 })
 
@@ -220,5 +231,13 @@ describe('formatMessageTimestamp', () => {
         const now = new Date(2026, 4, 22, 14, 30)
         const result = formatMessageTimestamp(new Date(2025, 11, 31, 23, 59), now)
         expect(result).toContain('2025')
+    })
+
+    it('returns empty values for invalid message dates', () => {
+        const invalid = new Date(Number.NaN)
+
+        expect(formatMessageTimestamp(invalid)).toBe('')
+        expect(formatMessageTimestampTitle(invalid)).toBe('')
+        expect(formatDateTimeAttribute(invalid)).toBeUndefined()
     })
 })

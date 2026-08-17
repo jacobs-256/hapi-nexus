@@ -52,7 +52,7 @@ export function CursorMigrationBanner({ metadata }: { metadata: Metadata | undef
                 <div
                     role="status"
                     aria-live="polite"
-                    className="mx-auto flex w-full max-w-content items-start gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-text)]"
+                    className="mx-auto flex w-full max-w-none items-start gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-text)]"
                 >
                     <span
                         aria-hidden="true"
@@ -74,7 +74,7 @@ export function CursorMigrationBanner({ metadata }: { metadata: Metadata | undef
                 <div
                     role="alert"
                     aria-live="polite"
-                    className="mx-auto flex w-full max-w-content items-start gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-text)]"
+                    className="mx-auto flex w-full max-w-none items-start gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-subtle-bg)] p-3 text-sm text-[var(--app-text)]"
                 >
                     <span
                         aria-hidden="true"
