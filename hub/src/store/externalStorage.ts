@@ -16,11 +16,12 @@ const CORE_TABLES = [
     'fcm_devices',
     'session_scratchlist',
     'app_settings',
+    'codex_import_jobs',
     'schema_migrations'
 ] as const
 
 const CONVERSATION_TABLES = ['messages', 'message_epochs'] as const
-const OPTIONAL_CORE_TABLES: readonly TableName[] = ['app_settings']
+const OPTIONAL_CORE_TABLES: readonly TableName[] = ['app_settings', 'codex_import_jobs']
 
 type TableGroup = 'core' | 'conversation'
 type TableName = typeof CORE_TABLES[number] | typeof CONVERSATION_TABLES[number]

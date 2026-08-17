@@ -1330,6 +1330,82 @@ describe('Codex Desktop import routes', () => {
         }
     })
 
+    it('persists Codex import jobs across route restarts', async () => {
+        const dir = mkdtempSync(join(tmpdir(), 'hapi-codex-import-jobs-persist-'))
+        const dbPath = join(dir, 'hapi.db')
+        const remoteSessions = [
+            createRemoteCodexSession('persisted-thread', '/work/project', 3000)
+        ]
+        const machine = createMachine('machine-1', ['/work'])
+        let store = new Store(dbPath)
+        const engine = {
+            getOnlineMachinesByNamespace: (namespace: string) => namespace === 'default' ? [machine] : [],
+            getSessionsByNamespace: (namespace: string) => (
+                store.sessions.getSessionsByNamespace(namespace) as unknown as ReturnType<SyncEngine['getSessionsByNamespace']>
+            ),
+            getOrCreateSession: (
+                tag: string,
+                metadata: unknown,
+                agentState: unknown,
+                namespace: string
+            ) => (
+                store.sessions.getOrCreateSession(tag, metadata, agentState, namespace) as unknown as ReturnType<SyncEngine['getOrCreateSession']>
+            ),
+            handleRealtimeEvent: () => {},
+            recordSessionActivity: (sessionId: string, updatedAt: number) => {
+                store.sessions.touchSessionUpdatedAt(sessionId, updatedAt, 'default')
+            },
+            listCodexSessionsForMachine: async (_machineId: string, _cwd?: string | null, sessionIds?: string[]) => {
+                const requestedIds = sessionIds ? new Set(sessionIds) : null
+                return {
+                    success: true,
+                    sessions: requestedIds
+                        ? remoteSessions.filter((session) => requestedIds.has(session.id))
+                        : remoteSessions
+                }
+            }
+        } as unknown as SyncEngine
+
+        try {
+            const app = new Hono<WebAppEnv>()
+            app.use('*', async (c, next) => {
+                c.set('namespace', 'default')
+                await next()
+            })
+            app.route('/api', createCodexDesktopRoutes({ store, getSyncEngine: () => engine }))
+
+            const createResponse = await app.request('/api/codex/import-jobs', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionIds: ['persisted-thread'], cwd: '/work/project', machineId: 'machine-1' })
+            })
+            expect(createResponse.status).toBe(200)
+            const createBody = await createResponse.json() as { success: true; job: { id: string } }
+            const finishedJob = await waitForImportJob(app, createBody.job.id)
+            expect(finishedJob.status).toBe('succeeded')
+            store.close()
+
+            store = new Store(dbPath)
+            const restartedApp = new Hono<WebAppEnv>()
+            restartedApp.use('*', async (c, next) => {
+                c.set('namespace', 'default')
+                await next()
+            })
+            restartedApp.route('/api', createCodexDesktopRoutes({ store, getSyncEngine: () => engine }))
+
+            const listResponse = await restartedApp.request('/api/codex/import-jobs')
+            expect(listResponse.status).toBe(200)
+            const listBody = await listResponse.json() as { success: true; jobs: Array<{ id: string; status: string; items: Array<{ codexSessionId: string }> }> }
+            expect(listBody.jobs.map((job) => job.id)).toContain(createBody.job.id)
+            const persistedJob = listBody.jobs.find((job) => job.id === createBody.job.id)
+            expect(persistedJob?.status).toBe('succeeded')
+            expect(persistedJob?.items[0]?.codexSessionId).toBe('persisted-thread')
+        } finally {
+            store.close()
+            rmSync(dir, { recursive: true, force: true })
+        }
+    })
+
     it('imports queued messages in newest-first chunks while preserving display timestamps', async () => {
         const store = new Store(':memory:')
         const remoteSessions = [

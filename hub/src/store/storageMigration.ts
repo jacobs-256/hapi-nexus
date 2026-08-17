@@ -84,6 +84,8 @@ const CORE_TABLES = [
     'push_subscriptions',
     'fcm_devices',
     'session_scratchlist',
+    'app_settings',
+    'codex_import_jobs',
     'schema_migrations'
 ]
 

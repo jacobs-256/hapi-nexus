@@ -128,6 +128,87 @@ describe('GET/PUT /api/storage', () => {
         migrated.close()
     })
 
+
+    it('migrates only changed external storage sections when saving settings', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'hapi-storage-settings-'))
+        directories.push(directory)
+        const dbPath = join(directory, 'hapi.db')
+        const conversationMirrorPath = join(directory, 'conversation-mirror.db')
+        const settingsFile = join(directory, 'settings.json')
+        await Promise.all([
+            writeFile(dbPath, ''),
+            writeFile(conversationMirrorPath, '')
+        ])
+
+        const current: StorageConfig = {
+            conversation: {
+                backend: 'elasticsearch',
+                elasticsearch: {
+                    url: 'http://es.local:9200',
+                    index: 'hapi-conversations',
+                    username: '',
+                    password: '',
+                    apiKey: ''
+                }
+            },
+            core: { backend: 'sqlite', sqlite: { path: dbPath } }
+        }
+        const next: StorageConfig = {
+            conversation: current.conversation,
+            core: {
+                backend: 'mysql',
+                mysql: {
+                    host: 'mysql.local',
+                    port: 3306,
+                    database: 'hapi',
+                    user: 'hapi',
+                    password: 'secret',
+                    url: '',
+                    socketPath: ''
+                }
+            }
+        }
+        await writeFile(settingsFile, JSON.stringify({ storage: current }))
+
+        let exportedConfig: StorageConfig | null = null
+        const store = {
+            storageConfig: current,
+            sqliteMirrorStorageConfig: {
+                conversation: { backend: 'sqlite', sqlite: { path: conversationMirrorPath } },
+                core: { backend: 'sqlite', sqlite: { path: dbPath } }
+            },
+            schemaVersion: 18,
+            expectedSchemaVersion: 18,
+            exportExternalSnapshot: async (config: StorageConfig) => {
+                exportedConfig = config
+                return { users: 1 }
+            }
+        } as unknown as StoreType
+        const app = appWithStore(store, 'default', { settingsFile, dataDir: directory, legacyDbPath: dbPath })
+
+        const response = await app.request('/api/storage', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ config: next, migrate: 'copy' })
+        })
+
+        expect(response.status).toBe(200)
+        const capturedExportConfig = exportedConfig as unknown as StorageConfig
+        expect(capturedExportConfig.conversation).toEqual({ backend: 'sqlite', sqlite: { path: conversationMirrorPath } })
+        expect(capturedExportConfig.core.backend).toBe('mysql')
+        expect(capturedExportConfig.core).toMatchObject({
+            mysql: {
+                host: 'mysql.local',
+                database: 'hapi',
+                user: 'hapi',
+                password: 'secret'
+            }
+        })
+        const body = await response.json() as any as any
+        expect(body.migrated).toBe(true)
+        expect(body.migrationMessage).toBe('Exported 1 row(s) to changed external storage.')
+    })
+
     it('rejects non-default namespaces', async () => {
         const { store, dbPath, directory, settingsFile } = await createRealApp()
         const app = appWithStore(store, 'tenant', { settingsFile, dataDir: directory, legacyDbPath: dbPath })

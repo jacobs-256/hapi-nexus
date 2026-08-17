@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { homedir, hostname, platform } from 'node:os'
 import { AGENT_MESSAGE_PAYLOAD_TYPE } from '@hapi/protocol'
 import type { CodexCollaborationMode } from '@hapi/protocol/types'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import type { Machine, SyncEngine, SyncEvent } from '../../sync/syncEngine'
 import type { Store, StoredMessage, StoredProject } from '../../store'
 import type { WebAppEnv } from '../middleware/auth'
@@ -193,8 +193,15 @@ type DuplicateSessionGroupCandidate = {
     sessions: ImportCandidate[]
 }
 
-type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped'
-type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+type CodexImportItemStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'canceled'
+type CodexImportJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+type CodexImportJobLog = {
+    at: number
+    level: 'info' | 'error'
+    message: string
+    codexSessionId?: string
+}
 
 type CodexImportJobItem = {
     codexSessionId: string
@@ -228,6 +235,7 @@ type CodexImportJob = {
     totalMessages: number
     importedMessages: number
     items: CodexImportJobItem[]
+    logs: CodexImportJobLog[]
     error?: string
 }
 
@@ -2599,11 +2607,41 @@ export async function importSelectedCodexSessions(options: {
 }
 
 type CodexImportJobInternal = CodexImportJob & {
+    cancelRequested?: boolean
     model?: string | null
     modelReasoningEffort?: string | null
     serviceTier?: string | null
     collaborationMode?: CodexCollaborationMode
     yolo?: boolean
+}
+
+
+function restorePersistedCodexImportJob(payload: unknown): CodexImportJobInternal | null {
+    const record = asRecord(payload)
+    if (!record) return null
+    if (typeof record.id !== 'string' || typeof record.namespace !== 'string') return null
+    if (typeof record.status !== 'string' || !['queued', 'running', 'succeeded', 'failed', 'canceled'].includes(record.status)) return null
+    if (typeof record.createdAt !== 'number' || typeof record.totalItems !== 'number') return null
+    if (!Array.isArray(record.items) || !Array.isArray(record.logs)) return null
+    return payload as CodexImportJobInternal
+}
+
+function markInterruptedCodexImportJob(job: CodexImportJobInternal, now: number): boolean {
+    if (!isActiveCodexImportStatus(job.status)) return false
+    const error = 'Import job interrupted by server restart'
+    job.status = 'failed'
+    job.finishedAt = now
+    job.error = job.error ?? error
+    for (const item of job.items) {
+        if (item.status !== 'queued' && item.status !== 'running') continue
+        item.status = 'failed'
+        item.error = item.error ?? error
+        item.finishedAt = now
+        job.completedItems += 1
+        job.failedItems += 1
+    }
+    job.logs.push({ at: now, level: 'error', message: error })
+    return true
 }
 
 function cloneCodexImportJob(job: CodexImportJobInternal): CodexImportJob {
@@ -2625,7 +2663,8 @@ function cloneCodexImportJob(job: CodexImportJobInternal): CodexImportJob {
         totalMessages: job.totalMessages,
         importedMessages: job.importedMessages,
         error: job.error,
-        items: job.items.map((item) => ({ ...item }))
+        items: job.items.map((item) => ({ ...item })),
+        logs: job.logs.map((log) => ({ ...log }))
     }
 }
 
@@ -2671,7 +2710,25 @@ class CodexImportQueue {
     constructor(private readonly options: {
         store: Store
         getSyncEngine: () => SyncEngine | null
-    }) {}
+    }) {
+        this.loadPersistedJobs()
+    }
+
+    private loadPersistedJobs(): void {
+        const now = Date.now()
+        for (const record of this.options.store.codexImportJobs.listAll()) {
+            const job = restorePersistedCodexImportJob(record.payload)
+            if (!job) continue
+            const changed = markInterruptedCodexImportJob(job, now)
+            this.jobs.set(job.id, job)
+            if (changed) this.persistJob(job)
+        }
+        this.pruneJobs()
+    }
+
+    private persistJob(job: CodexImportJobInternal): void {
+        this.options.store.codexImportJobs.save(job, job)
+    }
 
     createJob(options: {
         codexSessionIds: string[]
@@ -2732,10 +2789,13 @@ class CodexImportQueue {
             skippedItems,
             totalMessages: 0,
             importedMessages: 0,
-            items
+            items,
+            logs: []
         }
 
         this.jobs.set(job.id, job)
+        this.addLog(job, 'info', `Created Codex import job with ${items.length} item(s)`)
+        this.persistJob(job)
         this.pruneJobs()
         if (hasRunnableItems) {
             void this.drain()
@@ -2756,6 +2816,56 @@ class CodexImportQueue {
             return null
         }
         return cloneCodexImportJob(job)
+    }
+
+    cancelJob(jobId: string, namespace: string, userId?: number): CodexImportJob | null {
+        const job = this.jobs.get(jobId)
+        if (!job || !isVisibleImportJob(job, namespace, userId)) {
+            return null
+        }
+        if (!isActiveCodexImportStatus(job.status)) {
+            return cloneCodexImportJob(job)
+        }
+        job.cancelRequested = true
+        this.addLog(job, 'info', 'Cancel requested')
+        const now = Date.now()
+        for (const item of job.items) {
+            if (item.status === 'queued') {
+                item.status = 'canceled'
+                item.finishedAt = now
+                job.completedItems += 1
+                job.skippedItems += 1
+                this.addLog(job, 'info', `Canceled queued item: ${item.codexSessionId}`, item.codexSessionId)
+            }
+        }
+        if (!job.items.some((item) => item.status === 'running')) {
+            job.status = 'canceled'
+            job.finishedAt = now
+        }
+        this.persistJob(job)
+        return cloneCodexImportJob(job)
+    }
+
+    deleteJob(jobId: string, namespace: string, userId?: number): { deleted: true } | { deleted: false; error: string } | null {
+        const job = this.jobs.get(jobId)
+        if (!job || !isVisibleImportJob(job, namespace, userId)) {
+            return null
+        }
+        if (isActiveCodexImportStatus(job.status)) {
+            return { deleted: false, error: 'Active import jobs cannot be deleted; cancel the task first.' }
+        }
+        this.jobs.delete(jobId)
+        this.options.store.codexImportJobs.delete(jobId)
+        return { deleted: true }
+    }
+
+    private addLog(job: CodexImportJobInternal, level: 'info' | 'error', message: string, codexSessionId?: string): void {
+        job.logs.push({
+            at: Date.now(),
+            level,
+            message,
+            ...(codexSessionId ? { codexSessionId } : {})
+        })
     }
 
     private hasActiveImport(namespace: string, codexSessionId: string, machineId?: string | null): boolean {
@@ -2786,6 +2896,7 @@ class CodexImportQueue {
             }
             this.jobs.delete(job.id)
         }
+        this.options.store.codexImportJobs.prune(MAX_CODEX_IMPORT_JOBS)
     }
 
     private async drain(): Promise<void> {
@@ -2815,38 +2926,57 @@ class CodexImportQueue {
     private async processJob(job: CodexImportJobInternal): Promise<void> {
         job.status = 'running'
         job.startedAt = Date.now()
+        this.addLog(job, 'info', 'Job started')
+        this.persistJob(job)
         this.emitToast('started', job)
 
         for (const item of job.items) {
             if (item.status !== 'queued') {
                 continue
             }
+            if (job.cancelRequested) {
+                item.status = 'canceled'
+                item.finishedAt = Date.now()
+                job.completedItems += 1
+                job.skippedItems += 1
+                this.addLog(job, 'info', `Canceled item before start: ${item.codexSessionId}`, item.codexSessionId)
+                continue
+            }
             item.status = 'running'
             item.startedAt = Date.now()
+            this.addLog(job, 'info', `Import item started: ${item.codexSessionId}`, item.codexSessionId)
+            this.persistJob(job)
             try {
                 await this.processItem(job, item)
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error)
-                item.status = 'failed'
-                item.error = message
+                const canceled = job.cancelRequested && message === 'Import job canceled'
+                item.status = canceled ? 'canceled' : 'failed'
+                item.error = canceled ? undefined : message
                 item.finishedAt = Date.now()
+                this.addLog(job, canceled ? 'info' : 'error', message, item.codexSessionId)
                 job.completedItems += 1
-                job.failedItems += 1
-                job.error = message
+                if (canceled) job.skippedItems += 1
+                else job.failedItems += 1
+                if (!canceled) job.error = message
                 appendScriptLog(
                     getDirectImportRouteContext().workspace,
                     'sync',
                     `FAILED: queued Codex import job=${job.id}; codexSessionId=${item.codexSessionId}; error=${message}`
                 )
+                this.persistJob(job)
             }
         }
 
-        job.status = job.failedItems > 0 ? 'failed' : 'succeeded'
+        job.status = job.cancelRequested ? 'canceled' : (job.failedItems > 0 ? 'failed' : 'succeeded')
         job.finishedAt = Date.now()
+        this.addLog(job, job.status === 'failed' ? 'error' : 'info', `Job ${job.status}`)
+        this.persistJob(job)
         this.emitToast(job.status === 'failed' ? 'failed' : 'succeeded', job)
     }
 
     private async processItem(job: CodexImportJobInternal, item: CodexImportJobItem): Promise<void> {
+        if (job.cancelRequested) throw new Error('Import job canceled')
         const remote = await fetchCodexTranscriptViaMachine({
             engine: this.options.getSyncEngine(),
             namespace: job.namespace,
@@ -2868,6 +2998,8 @@ class CodexImportQueue {
 
         item.title = transcript.title
         item.totalMessages = transcript.messages.length
+
+        if (job.cancelRequested) throw new Error('Import job canceled')
 
         const prepared = prepareCodexImportTarget({
             codexSessionId: item.codexSessionId,
@@ -2892,6 +3024,7 @@ class CodexImportQueue {
             item.finishedAt = Date.now()
             job.completedItems += 1
             job.skippedItems += 1
+            this.persistJob(job)
             return
         }
 
@@ -2901,9 +3034,11 @@ class CodexImportQueue {
             messagesToAppend: prepared.messagesToAppend,
             chunkSize: CODEX_IMPORT_CHUNK_SIZE,
             onChunk: ({ importedMessages, appendedMessages: chunkMessages }) => {
+                if (job.cancelRequested) throw new Error('Import job canceled')
                 item.importedMessages = importedMessages
                 item.appendedMessages += chunkMessages.length
                 job.importedMessages += chunkMessages.length
+                this.persistJob(job)
             }
         })
 
@@ -2926,15 +3061,33 @@ class CodexImportQueue {
             })
         }
 
-        item.status = 'succeeded'
+        item.status = job.cancelRequested ? 'canceled' : 'succeeded'
         item.finishedAt = Date.now()
+        this.addLog(job, 'info', `Import item ${item.status}: ${item.codexSessionId}; appended=${appendedMessages.length}`, item.codexSessionId)
         job.completedItems += 1
+        this.persistJob(job)
         appendScriptLog(
             getDirectImportRouteContext().workspace,
             'sync',
             `SUCCESS: queued Codex import job=${job.id}; codexSessionId=${item.codexSessionId}; hapiSessionId=${prepared.sessionId}; appended=${appendedMessages.length}`
         )
     }
+}
+
+
+function canViewAllCodexImportJobs(c: Context<WebAppEnv>, store: Store): boolean {
+    if (c.get('authPlatform') === 'owner') return true
+    const userId = c.get('userId')
+    const namespace = c.get('namespace')
+    if (typeof userId !== 'number') return false
+    const user = store.users.getUserById(userId, namespace)
+    return user?.role === 'admin' && user.disabledAt === null
+}
+
+function codexImportJobUserScope(c: Context<WebAppEnv>, store: Store): number | undefined {
+    return c.req.query('all') === 'true' && canViewAllCodexImportJobs(c, store)
+        ? undefined
+        : c.get('userId')
 }
 
 export function createCodexDesktopRoutes(options: {
@@ -3004,12 +3157,12 @@ export function createCodexDesktopRoutes(options: {
     app.get('/codex/import-jobs', (c) => {
         return c.json({
             success: true,
-            jobs: importQueue.listJobs(c.get('namespace'), c.get('userId'))
+            jobs: importQueue.listJobs(c.get('namespace'), codexImportJobUserScope(c, options.store))
         } satisfies CodexImportJobsResponse)
     })
 
     app.get('/codex/import-jobs/:jobId', (c) => {
-        const job = importQueue.getJob(c.req.param('jobId'), c.get('namespace'), c.get('userId'))
+        const job = importQueue.getJob(c.req.param('jobId'), c.get('namespace'), codexImportJobUserScope(c, options.store))
         if (!job) {
             return c.json({
                 success: false,
@@ -3020,6 +3173,31 @@ export function createCodexDesktopRoutes(options: {
             success: true,
             job
         } satisfies CodexImportJobResponse)
+    })
+
+    app.post('/codex/import-jobs/:jobId/cancel', (c) => {
+        const job = importQueue.cancelJob(c.req.param('jobId'), c.get('namespace'), codexImportJobUserScope(c, options.store))
+        if (!job) {
+            return c.json({
+                success: false,
+                error: 'Import job not found'
+            } satisfies CodexImportJobResponse, 404)
+        }
+        return c.json({
+            success: true,
+            job
+        } satisfies CodexImportJobResponse)
+    })
+
+    app.delete('/codex/import-jobs/:jobId', (c) => {
+        const result = importQueue.deleteJob(c.req.param('jobId'), c.get('namespace'), codexImportJobUserScope(c, options.store))
+        if (!result) {
+            return c.json({ success: false, error: 'Import job not found' }, 404)
+        }
+        if (!result.deleted) {
+            return c.json({ success: false, error: result.error }, 409)
+        }
+        return c.json({ success: true })
     })
 
     app.post('/codex/import-jobs', async (c) => {

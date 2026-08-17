@@ -13,6 +13,7 @@ import { SessionStore } from './sessionStore'
 import { UserStore } from './userStore'
 import { ProjectStore } from './projectStore'
 import { AppSettingsStore } from './appSettingsStore'
+import { CodexImportJobStore } from './codexImportJobStore'
 
 export type {
     StoredMachine,
@@ -40,11 +41,13 @@ export { SessionStore } from './sessionStore'
 export { UserStore } from './userStore'
 export { ProjectStore } from './projectStore'
 export { AppSettingsStore } from './appSettingsStore'
+export { CodexImportJobStore } from './codexImportJobStore'
 
-export const SCHEMA_VERSION: number = 19
+export const SCHEMA_VERSION: number = 20
 const REQUIRED_TABLES = [
     'schema_migrations',
     'app_settings',
+    'codex_import_jobs',
     'sessions',
     'machines',
     'users',
@@ -75,6 +78,7 @@ export class Store {
     readonly users: UserStore
     readonly projects: ProjectStore
     readonly appSettings: AppSettingsStore
+    readonly codexImportJobs: CodexImportJobStore
     readonly push: PushStore
     readonly fcm: FcmStore
     readonly scratchlist: ScratchlistStore
@@ -152,6 +156,7 @@ export class Store {
         this.users = new UserStore(this.db, () => this.scheduleCoreSync())
         this.projects = new ProjectStore(this.db, () => this.scheduleCoreSync())
         this.appSettings = new AppSettingsStore(this.db, () => this.scheduleCoreSync())
+        this.codexImportJobs = new CodexImportJobStore(this.db, () => this.scheduleCoreSync())
         this.push = new PushStore(this.db, () => this.scheduleCoreSync())
         this.fcm = new FcmStore(this.db, () => this.scheduleCoreSync())
         this.scratchlist = new ScratchlistStore(this.db, () => this.scheduleCoreSync())
@@ -299,10 +304,10 @@ export class Store {
             this.setUserVersion(SCHEMA_VERSION, this.conversationDb)
             return
         }
-        if (currentVersion === 18 && SCHEMA_VERSION === 19) {
-            // V19 only adds the core app_settings table; conversation storage
-            // shape is unchanged, but split SQLite conversation mirrors still
-            // need their user_version bumped so normal startup can continue.
+        if (currentVersion >= 18 && currentVersion < SCHEMA_VERSION) {
+            // V19/V20 only add core tables; conversation storage shape is unchanged,
+            // but split SQLite conversation mirrors still need their user_version bumped
+            // so normal startup can continue.
             this.setUserVersion(SCHEMA_VERSION, this.conversationDb)
             currentVersion = SCHEMA_VERSION
         }
@@ -364,6 +369,7 @@ export class Store {
             16: () => this.migrateFromV16ToV17(),
             17: () => this.migrateFromV17ToV18(),
             18: () => this.migrateFromV18ToV19(),
+            19: () => this.migrateFromV19ToV20(),
         })
 
         if (currentVersion === 0) {
@@ -448,6 +454,22 @@ export class Store {
                 value TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS codex_import_jobs (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                user_id INTEGER,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                payload TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_namespace_created
+                ON codex_import_jobs(namespace, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_user
+                ON codex_import_jobs(namespace, user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_status
+                ON codex_import_jobs(status);
 
             CREATE TABLE IF NOT EXISTS machines (
                 id TEXT PRIMARY KEY,
@@ -1050,6 +1072,10 @@ export class Store {
         this.createAppSettingsTable()
     }
 
+    private migrateFromV19ToV20(): void {
+        this.createCodexImportJobsTable()
+    }
+
     private createAppSettingsTable(): void {
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS app_settings (
@@ -1057,6 +1083,26 @@ export class Store {
                 value TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
             );
+        `)
+    }
+
+    private createCodexImportJobsTable(): void {
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS codex_import_jobs (
+                id TEXT PRIMARY KEY,
+                namespace TEXT NOT NULL DEFAULT 'default',
+                user_id INTEGER,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                payload TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_namespace_created
+                ON codex_import_jobs(namespace, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_user
+                ON codex_import_jobs(namespace, user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_codex_import_jobs_status
+                ON codex_import_jobs(status);
         `)
     }
 

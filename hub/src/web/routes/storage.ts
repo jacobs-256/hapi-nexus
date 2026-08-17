@@ -19,6 +19,22 @@ import {
 import { migrateSqliteStorage } from '../../store/storageMigration'
 import type { StorageConfig } from '@hapi/protocol/storage'
 
+
+function storageSectionEquals<K extends keyof StorageConfig>(a: StorageConfig, b: StorageConfig, key: K): boolean {
+    return JSON.stringify(a[key]) === JSON.stringify(b[key])
+}
+
+function externalMigrationTarget(sourceMirror: StorageConfig, current: StorageConfig, next: StorageConfig): StorageConfig {
+    return {
+        conversation: storageSectionEquals(current, next, 'conversation')
+            ? sourceMirror.conversation
+            : next.conversation,
+        core: storageSectionEquals(current, next, 'core')
+            ? sourceMirror.core
+            : next.core
+    }
+}
+
 function hasStorageAdminAccess(c: Context<WebAppEnv>, store: Store): boolean {
     const namespace = c.get('namespace')
     if (namespace !== 'default') return false
@@ -164,10 +180,11 @@ export function createStorageRoutes(
                     migrated = result.migrated
                     migrationMessage = result.message
                 } else {
-                    const copied = await store.exportExternalSnapshot(nextConfig)
+                    const migrationTarget = externalMigrationTarget(store.sqliteMirrorStorageConfig, currentConfig, nextConfig)
+                    const copied = await store.exportExternalSnapshot(migrationTarget)
                     const total = Object.values(copied).reduce((sum, value) => sum + value, 0)
                     migrated = total > 0
-                    migrationMessage = `Exported ${total} row(s) to configured external storage.`
+                    migrationMessage = `Exported ${total} row(s) to changed external storage.`
                 }
             }
 
