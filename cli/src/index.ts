@@ -2,4 +2,4 @@
 
 import { runCli } from './commands/runCli'
 
-void runCli()
+await runCli()
