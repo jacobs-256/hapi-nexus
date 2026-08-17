@@ -2,10 +2,20 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import type { SessionSummary } from '@/types/api'
+import type { Machine, SessionSummary } from '@/types/api'
 import { I18nProvider } from '@/lib/i18n-context'
 import { ToastProvider } from '@/lib/toast-context'
 import { SessionList } from './SessionList'
+
+const projectsMock = vi.hoisted(() => vi.fn<() => Array<{ id: string; name: string; workspaces: unknown[] }>>(() => []))
+
+vi.mock('@/hooks/queries/useProjects', () => ({
+    useProjects: () => ({ projects: projectsMock(), isLoading: false, error: null, refetch: vi.fn() })
+}))
+
+function openFilterMenu() {
+    fireEvent.click(screen.getByRole('button', { name: 'Filter sessions by machine' }))
+}
 
 afterEach(() => cleanup())
 
@@ -29,6 +39,31 @@ function makeSession(overrides: Partial<SessionSummary> & { id: string }): Sessi
     }
 }
 
+
+function makeMachine(id: string, displayName: string, active = false): Machine {
+    return {
+        id,
+        namespace: 'default',
+        ownerUserId: null,
+        teamId: null,
+        seq: 0,
+        createdAt: 0,
+        updatedAt: 0,
+        active,
+        activeAt: 0,
+        metadata: {
+            host: displayName,
+            displayName,
+            platform: 'darwin',
+            happyCliVersion: '1.3.0'
+        },
+        metadataVersion: 0,
+        runnerState: null,
+        runnerStateVersion: 0,
+        health: null
+    }
+}
+
 function renderWithProviders(children: ReactNode) {
     const queryClient = new QueryClient({
         defaultOptions: {
@@ -48,7 +83,10 @@ function renderWithProviders(children: ReactNode) {
     )
 }
 
-function renderSessionList(sessions: SessionSummary[]) {
+function renderSessionList(sessions: SessionSummary[], options?: {
+    machineLabelsById?: Record<string, string>
+    machinesById?: Record<string, Machine>
+}) {
     return renderWithProviders(
         <SessionList
             sessions={sessions}
@@ -59,7 +97,8 @@ function renderSessionList(sessions: SessionSummary[]) {
             isLoading={false}
             renderHeader={false}
             api={null}
-            machineLabelsById={{ 'machine-1': 'Mint', 'machine-2': 'Teemo' }}
+            machineLabelsById={options?.machineLabelsById ?? { 'machine-1': 'Mint', 'machine-2': 'Teemo' }}
+            machinesById={options?.machinesById}
         />
     )
 }
@@ -80,9 +119,10 @@ const multiMachineSessions = [
 describe('SessionList machine filter', () => {
     beforeEach(() => {
         window.localStorage.clear()
+        projectsMock.mockReturnValue([])
     })
 
-    it('hides the filter bar when all sessions are on a single machine', () => {
+    it('shows the machine filter dropdown even when all sessions are on a single machine', () => {
         renderSessionList([
             makeSession({
                 id: 'session-1',
@@ -91,29 +131,50 @@ describe('SessionList machine filter', () => {
             })
         ])
 
-        expect(screen.queryByRole('group', { name: 'Filter sessions by machine' })).toBeNull()
+        expect(screen.getByRole('button', { name: 'Filter sessions by machine' })).toBeTruthy()
+        openFilterMenu()
+        expect(screen.getByRole('checkbox', { name: /All Machines \(1\)/ })).toBeTruthy()
+        expect(screen.getByRole('checkbox', { name: /Mint \(1\)/ })).toBeTruthy()
         expect(screen.getByTitle('/work/hapi')).toBeTruthy()
     })
 
-    it('shows the filter bar and machine-suffixed group titles with multiple machines', () => {
+    it('shows the machine filter dropdown and machine-suffixed group titles with multiple machines', () => {
         renderSessionList(multiMachineSessions)
 
-        expect(screen.getByRole('group', { name: 'Filter sessions by machine' })).toBeTruthy()
-        expect(screen.getByRole('button', { name: /All \(2\)/ })).toBeTruthy()
+        expect(screen.getByRole('button', { name: 'Filter sessions by machine' })).toBeTruthy()
+        openFilterMenu()
+        expect(screen.getByRole('checkbox', { name: /All Machines \(2\)/ })).toBeTruthy()
         expect(screen.getByText('work/hapi · Mint')).toBeTruthy()
         expect(screen.getByText('work/docs · Teemo')).toBeTruthy()
     })
 
-    it('filters directory groups when a machine chip is selected', () => {
+    it('filters directory groups when a machine is selected', () => {
         renderSessionList(multiMachineSessions)
 
-        fireEvent.click(screen.getByRole('button', { name: /Teemo \(1\)/ }))
+        openFilterMenu()
+        fireEvent.click(screen.getByRole('checkbox', { name: /Teemo \(1\)/ }))
 
         expect(screen.queryByTitle('/work/hapi')).toBeNull()
         expect(screen.getByTitle('/work/docs')).toBeTruthy()
         // Suffix disappears once a single machine is selected
         expect(screen.getByText('work/docs')).toBeTruthy()
-        expect(window.localStorage.getItem('hapi-session-list-machine-filter')).toBe('machine-2')
+        expect(window.localStorage.getItem('hapi-session-list-machine-filter')).toBe(JSON.stringify(['machine-2']))
+    })
+
+
+    it('includes offline known machines in the dropdown and allows selecting them', () => {
+        renderSessionList(multiMachineSessions.slice(0, 1), {
+            machineLabelsById: { 'machine-1': 'Mint', 'machine-offline': 'Offline Mac' },
+            machinesById: { 'machine-offline': makeMachine('machine-offline', 'Offline Mac', false) }
+        })
+
+        openFilterMenu()
+        expect(screen.getByRole('checkbox', { name: /Offline Mac \(0\)/ })).toBeTruthy()
+        fireEvent.click(screen.getByRole('checkbox', { name: /Offline Mac \(0\)/ }))
+
+        expect(screen.queryByTitle('/work/hapi')).toBeNull()
+        expect(screen.getByText('No sessions match your filters.')).toBeTruthy()
+        expect(window.localStorage.getItem('hapi-session-list-machine-filter')).toBe(JSON.stringify(['machine-offline']))
     })
 
     it('falls back to All when the persisted machine no longer has sessions', () => {
@@ -122,7 +183,36 @@ describe('SessionList machine filter', () => {
 
         expect(screen.getByTitle('/work/hapi')).toBeTruthy()
         expect(screen.getByTitle('/work/docs')).toBeTruthy()
-        expect(screen.getByRole('button', { name: /All \(2\)/ }).getAttribute('aria-pressed')).toBe('true')
+        openFilterMenu()
+        expect(screen.getByRole('checkbox', { name: /All Machines \(2\)/ })).toBeChecked()
+    })
+
+    it('filters sessions by project from the same dropdown', () => {
+        projectsMock.mockReturnValue([
+            { id: 'project-a', name: 'Project A', workspaces: [] },
+            { id: 'project-b', name: 'Project B', workspaces: [] }
+        ])
+        renderSessionList([
+            makeSession({
+                id: 'session-a',
+                projectId: 'project-a',
+                updatedAt: 100,
+                metadata: { path: '/work/a', machineId: 'machine-1', agentSessionId: 'thread-a' }
+            }),
+            makeSession({
+                id: 'session-b',
+                projectId: 'project-b',
+                updatedAt: 90,
+                metadata: { path: '/work/b', machineId: 'machine-1', agentSessionId: 'thread-b' }
+            })
+        ])
+
+        openFilterMenu()
+        fireEvent.change(screen.getByRole('combobox', { name: 'Project' }), { target: { value: 'project-b' } })
+
+        expect(screen.queryByTitle('/work/a')).toBeNull()
+        expect(screen.getByTitle('/work/b')).toBeTruthy()
+        expect(window.localStorage.getItem('hapi-session-list-project-filter')).toBe('project-b')
     })
 
     it('shows an empty state when the search only matches sessions on another machine', () => {
@@ -139,9 +229,10 @@ describe('SessionList machine filter', () => {
             })
         ])
 
+        openFilterMenu()
+        fireEvent.click(screen.getByRole('checkbox', { name: /Teemo \(1\)/ }))
         fireEvent.click(screen.getByRole('button', { name: 'Search sessions' }))
         fireEvent.change(screen.getByPlaceholderText('Search sessions…'), { target: { value: 'alpha' } })
-        fireEvent.click(screen.getByRole('button', { name: /Teemo \(1\)/ }))
 
         expect(screen.getByText('No sessions match your filters.')).toBeTruthy()
         expect(screen.queryByTitle('/work/hapi')).toBeNull()

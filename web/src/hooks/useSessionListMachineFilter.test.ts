@@ -9,20 +9,26 @@ describe('useSessionListMachineFilter helpers', () => {
         window.localStorage.clear()
     })
 
-    it('defaults to null (all machines) for missing or blank storage values', () => {
+    it('defaults to an empty array (all machines) for missing or blank storage values', () => {
         expect(getInitialSessionListMachineFilter()).toBe(DEFAULT_SESSION_LIST_MACHINE_FILTER)
-        expect(getInitialSessionListMachineFilter()).toBeNull()
+        expect(getInitialSessionListMachineFilter()).toEqual([])
 
         window.localStorage.setItem('hapi-session-list-machine-filter', '')
-        expect(getInitialSessionListMachineFilter()).toBeNull()
+        expect(getInitialSessionListMachineFilter()).toEqual([])
 
         window.localStorage.setItem('hapi-session-list-machine-filter', '   ')
-        expect(getInitialSessionListMachineFilter()).toBeNull()
+        expect(getInitialSessionListMachineFilter()).toEqual([])
     })
 
-    it('reads a stored machine id', () => {
+    it('reads a legacy stored machine id', () => {
         window.localStorage.setItem('hapi-session-list-machine-filter', 'machine-1')
 
-        expect(getInitialSessionListMachineFilter()).toBe('machine-1')
+        expect(getInitialSessionListMachineFilter()).toEqual(['machine-1'])
+    })
+
+    it('reads stored machine ids', () => {
+        window.localStorage.setItem('hapi-session-list-machine-filter', JSON.stringify(['machine-1', 'machine-2']))
+
+        expect(getInitialSessionListMachineFilter()).toEqual(['machine-1', 'machine-2'])
     })
 })

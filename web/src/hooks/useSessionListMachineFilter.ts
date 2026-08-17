@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
-// null = "All machines" (no filtering). A string is a machine id, or
+// Empty array = "All machines" (no filtering). Items are machine ids, or
 // UNKNOWN_MACHINE_ID ('__unknown__') for sessions without machine metadata.
-export type SessionListMachineFilter = string | null
+export type SessionListMachineFilter = string[]
 
-export const DEFAULT_SESSION_LIST_MACHINE_FILTER: SessionListMachineFilter = null
+export const DEFAULT_SESSION_LIST_MACHINE_FILTER: SessionListMachineFilter = []
 
 function getSessionListMachineFilterStorageKey(): string {
     return 'hapi-session-list-machine-filter'
@@ -48,7 +48,17 @@ function safeRemoveItem(key: string): void {
 }
 
 function parseSessionListMachineFilter(raw: string | null): SessionListMachineFilter {
-    return raw && raw.trim().length > 0 ? raw : DEFAULT_SESSION_LIST_MACHINE_FILTER
+    const trimmed = raw?.trim() ?? ''
+    if (!trimmed) return DEFAULT_SESSION_LIST_MACHINE_FILTER
+    try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (Array.isArray(parsed)) {
+            return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        }
+    } catch {
+        // Backward compatibility: old versions stored a single raw machine id.
+    }
+    return [trimmed]
 }
 
 export function getInitialSessionListMachineFilter(): SessionListMachineFilter {
@@ -80,10 +90,10 @@ export function useSessionListMachineFilter(): {
     const setMachineFilter = useCallback((filter: SessionListMachineFilter) => {
         setMachineFilterState(filter)
 
-        if (filter === null) {
+        if (filter.length === 0) {
             safeRemoveItem(getSessionListMachineFilterStorageKey())
         } else {
-            safeSetItem(getSessionListMachineFilterStorageKey(), filter)
+            safeSetItem(getSessionListMachineFilterStorageKey(), JSON.stringify(filter))
         }
     }, [])
 

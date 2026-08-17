@@ -26,7 +26,7 @@ import { getSessionTitle } from '@/lib/sessionTitle'
 import { getWorktreeSessionLabel } from '@/lib/sessionWorktreeLabel'
 import type { Machine } from '@/types/api'
 import { getMachinePlatform, presentMachineHealth } from '@/lib/machineHealth'
-import { MachineFilterBar } from '@/components/MachineFilterBar'
+import { MachineFilterDropdown, type ProjectFilterItem } from '@/components/MachineFilterBar'
 import { useSessionListMachineFilter } from '@/hooks/useSessionListMachineFilter'
 import { useCursorChatStoreStatus } from '@/hooks/queries/useCursorChatStoreStatus'
 import { SessionRowSummary } from '@/components/SessionRowSummary'
@@ -150,6 +150,21 @@ type MachineGroup = {
 type SessionGroupAliases = Record<string, string>
 
 export const SESSION_GROUP_ALIAS_STORAGE_KEY = 'hapi.sessionGroupAliases.v1'
+export const SESSION_LIST_PROJECT_FILTER_STORAGE_KEY = 'hapi-session-list-project-filter'
+
+function readSessionListProjectFilter(): string | null {
+    const storage = getLocalStorage()
+    const value = storage?.getItem(SESSION_LIST_PROJECT_FILTER_STORAGE_KEY)?.trim() ?? ''
+    return value || null
+}
+
+function writeSessionListProjectFilter(projectId: string | null): void {
+    const storage = getLocalStorage()
+    if (!storage) return
+    if (projectId) storage.setItem(SESSION_LIST_PROJECT_FILTER_STORAGE_KEY, projectId)
+    else storage.removeItem(SESSION_LIST_PROJECT_FILTER_STORAGE_KEY)
+}
+
 
 function getGroupDisplayName(directory: string): string {
     if (directory === 'Other') return directory
@@ -275,6 +290,19 @@ function getPrimaryProjectId(group: SessionGroup): string | null {
 
 function groupHasCodexSessions(group: SessionGroup): boolean {
     return group.sessions.some((session) => session.metadata?.flavor === 'codex')
+}
+
+export function getSessionGroupStatusCounts(group: Pick<SessionGroup, 'sessions'>): {
+    active: number
+    pending: number
+} {
+    let active = 0
+    let pending = 0
+    for (const session of group.sessions) {
+        if (session.active) active += 1
+        if (session.pendingRequestsCount > 0) pending += session.pendingRequestsCount
+    }
+    return { active, pending }
 }
 
 function findWorkspaceForGroup(
@@ -467,16 +495,17 @@ export function expandSelectedSessionCollapseOverrides(
 
 function groupByMachine(
     groups: SessionGroup[],
-    resolveMachineLabel: (id: string | null) => string
+    resolveMachineLabel: (id: string | null) => string,
+    knownMachineIds: readonly string[] = []
 ): MachineGroup[] {
     const map = new Map<string, MachineGroup>()
-    for (const g of groups) {
-        const key = g.machineId ?? UNKNOWN_MACHINE_ID
+    const ensureMachineGroup = (machineId: string | null): MachineGroup => {
+        const key = machineId ?? UNKNOWN_MACHINE_ID
         let mg = map.get(key)
         if (!mg) {
             mg = {
-                machineId: g.machineId,
-                label: resolveMachineLabel(g.machineId),
+                machineId,
+                label: resolveMachineLabel(machineId),
                 projectGroups: [],
                 totalSessions: 0,
                 hasActiveSession: false,
@@ -484,14 +513,24 @@ function groupByMachine(
             }
             map.set(key, mg)
         }
+        return mg
+    }
+
+    for (const g of groups) {
+        const mg = ensureMachineGroup(g.machineId)
         mg.projectGroups.push(g)
         mg.totalSessions += g.sessions.length
         if (g.hasActiveSession) mg.hasActiveSession = true
         if (g.latestUpdatedAt > mg.latestUpdatedAt) mg.latestUpdatedAt = g.latestUpdatedAt
     }
+    for (const machineId of knownMachineIds) {
+        ensureMachineGroup(machineId)
+    }
     return [...map.values()].sort((a, b) => {
         if (a.hasActiveSession !== b.hasActiveSession) return a.hasActiveSession ? -1 : 1
-        return b.latestUpdatedAt - a.latestUpdatedAt
+        if (a.totalSessions !== b.totalSessions) return a.totalSessions > 0 ? -1 : 1
+        if (a.latestUpdatedAt !== b.latestUpdatedAt) return b.latestUpdatedAt - a.latestUpdatedAt
+        return a.label.localeCompare(b.label)
     })
 }
 
@@ -1380,7 +1419,7 @@ function SessionItem(props: {
             <button
                 type="button"
                 {...longPressHandlers}
-                className={`session-list-item group/session-row flex w-full flex-col gap-1 rounded-lg py-2 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] select-none ${selected ? 'bg-[var(--primary)] text-white' : 'text-[var(--sidebar-foreground)]'}`}
+                className={`session-list-item group/session-row flex w-full flex-col gap-1 rounded-lg py-1.5 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] select-none ${selected ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--sidebar-foreground)] hover:bg-[var(--secondary)]'}`}
                 style={{ WebkitTouchCallout: 'none' }}
                 aria-current={selected ? 'page' : undefined}
                 aria-describedby={describedBy}
@@ -1514,6 +1553,11 @@ export function SessionList(props: {
     const { sessionListStatusMode } = useSessionListStatusMode()
     const { showActiveSessionsOnly } = useShowActiveSessionsOnly()
     const { machineFilter, setMachineFilter } = useSessionListMachineFilter()
+    const [projectFilter, setProjectFilterState] = useState<string | null>(readSessionListProjectFilter)
+    const setProjectFilter = (projectId: string | null) => {
+        setProjectFilterState(projectId)
+        writeSessionListProjectFilter(projectId)
+    }
     const queryClient = useQueryClient()
     const { addToast } = useToast()
     const { projects } = useProjects(api, Boolean(api))
@@ -1835,26 +1879,65 @@ export function SessionList(props: {
         () => groupSessionsByDirectory(allSessions),
         [allSessions]
     )
-    const machineFilters = useMemo(
-        () => groupByMachine(allGroups, resolveMachineLabel),
-        [allGroups, machineLabelsById] // eslint-disable-line react-hooks/exhaustive-deps
+    const knownMachineIds = useMemo(
+        () => Object.keys(machinesById),
+        [machinesById]
     )
-    const showMachineFilterBar = machineFilters.length >= 2
-    // A persisted filter whose machine no longer has sessions falls back to
-    // "All"; with at most one machine the bar is hidden and never filters.
-    const activeMachineFilter = showMachineFilterBar && machineFilter !== null
-        && machineFilters.some(mg => (mg.machineId ?? UNKNOWN_MACHINE_ID) === machineFilter)
-        ? machineFilter
+    const machineFilters = useMemo(
+        () => groupByMachine(allGroups, resolveMachineLabel, knownMachineIds),
+        [allGroups, machineLabelsById, knownMachineIds] // eslint-disable-line react-hooks/exhaustive-deps
+    )
+    const showMachineFilterBar = machineFilters.length >= 1
+    const machineFilterItems = useMemo(
+        () => machineFilters.map((mg) => {
+            const machine = mg.machineId ? machinesById[mg.machineId] : undefined
+            return {
+                id: mg.machineId ?? UNKNOWN_MACHINE_ID,
+                label: mg.label,
+                sessionCount: mg.totalSessions,
+                healthPresentation: presentMachineHealth(
+                    machine?.health,
+                    getMachinePlatform(machine)
+                )
+            }
+        }),
+        [machineFilters, machinesById]
+    )
+    // Persisted filters whose machine/project no longer exists fall back to All.
+    const machineFilterIds = useMemo(
+        () => new Set(machineFilters.map(mg => mg.machineId ?? UNKNOWN_MACHINE_ID)),
+        [machineFilters]
+    )
+    const activeMachineFilters = showMachineFilterBar
+        ? machineFilter.filter((id) => machineFilterIds.has(id))
+        : []
+    const projectFilterItems = useMemo<ProjectFilterItem[]>(() => {
+        const counts = new Map<string, number>()
+        for (const session of allSessions) {
+            if (session.projectId) counts.set(session.projectId, (counts.get(session.projectId) ?? 0) + 1)
+        }
+        return projects.map((project) => ({
+            id: project.id,
+            label: project.name,
+            sessionCount: counts.get(project.id) ?? 0
+        })).sort((a, b) => {
+            if (a.sessionCount !== b.sessionCount) return b.sessionCount - a.sessionCount
+            return a.label.localeCompare(b.label)
+        })
+    }, [allSessions, projects])
+    const activeProjectFilter = projectFilter && projectFilterItems.some((project) => project.id === projectFilter)
+        ? projectFilter
         : null
-    const machineFilteredSessions = useMemo(
-        () => activeMachineFilter === null
-            ? visibleSessions
-            : visibleSessions.filter(session => (session.metadata?.machineId ?? UNKNOWN_MACHINE_ID) === activeMachineFilter),
-        [visibleSessions, activeMachineFilter]
+    const filteredSessions = useMemo(
+        () => visibleSessions.filter((session) => (
+            (activeMachineFilters.length === 0 || activeMachineFilters.includes(session.metadata?.machineId ?? UNKNOWN_MACHINE_ID))
+            && (activeProjectFilter === null || session.projectId === activeProjectFilter)
+        )),
+        [visibleSessions, activeMachineFilters, activeProjectFilter]
     )
     const groups = useMemo(
-        () => groupSessionsByDirectory(machineFilteredSessions),
-        [machineFilteredSessions]
+        () => groupSessionsByDirectory(filteredSessions),
+        [filteredSessions]
     )
     const [collapseOverrides, setCollapseOverrides] = useState<Map<string, boolean>>(
         () => new Map()
@@ -2116,7 +2199,18 @@ export function SessionList(props: {
                     ) : null}
                     {!(showSearch && searchExpanded) ? (
                         <>
-                            <div className="flex-1" />
+                            {showMachineFilterBar ? (
+                                <MachineFilterDropdown
+                                    machines={machineFilterItems}
+                                    totalCount={allSessions.length}
+                                    value={activeMachineFilters}
+                                    onChange={setMachineFilter}
+                                    projects={projectFilterItems}
+                                    projectValue={activeProjectFilter}
+                                    onProjectChange={setProjectFilter}
+                                    className="flex-1"
+                                />
+                            ) : <div className="flex-1" />}
                             {renderHeader ? (
                                 <button
                                     type="button"
@@ -2133,25 +2227,6 @@ export function SessionList(props: {
                 </div>
             ) : null}
 
-            {showMachineFilterBar ? (
-                <MachineFilterBar
-                    machines={machineFilters.map((mg) => {
-                        const machine = mg.machineId ? machinesById[mg.machineId] : undefined
-                        return {
-                            id: mg.machineId ?? UNKNOWN_MACHINE_ID,
-                            label: mg.label,
-                            sessionCount: mg.totalSessions,
-                            healthPresentation: presentMachineHealth(
-                                machine?.health,
-                                getMachinePlatform(machine)
-                            )
-                        }
-                    })}
-                    totalCount={allSessions.length}
-                    value={activeMachineFilter}
-                    onChange={setMachineFilter}
-                />
-            ) : null}
             </div>
 
             <div className="relative flex min-h-0 flex-1 flex-col">
@@ -2182,7 +2257,7 @@ export function SessionList(props: {
                     />
                 ) : null}
 
-                {props.sessions.length > 0 && (isFiltering || activeMachineFilter !== null) && groups.length === 0 ? (
+                {props.sessions.length > 0 && (isFiltering || activeMachineFilters.length > 0 || activeProjectFilter !== null) && groups.length === 0 ? (
                     <div className="px-4 py-8 text-center text-sm text-[var(--app-hint)]">
                         {t('sessions.search.noResults')}
                     </div>
@@ -2208,7 +2283,7 @@ export function SessionList(props: {
                     // With multiple machines in the unfiltered view, disambiguate
                     // same-named directories by suffixing the machine label.
                     const groupDisplayName = groupAliases[group.key] ?? group.displayName
-                    const groupMachineSuffix = showMachineFilterBar && activeMachineFilter === null
+                    const groupMachineSuffix = showMachineFilterBar && activeMachineFilters.length === 0
                         ? resolveMachineLabel(group.machineId)
                         : null
                     const groupTitle = groupMachineSuffix
@@ -2237,10 +2312,15 @@ export function SessionList(props: {
                         && moveDirectoryMutation.variables?.groupKey === group.key
                     const groupMachineId = group.machineId
                     const canSyncCodexSessions = Boolean(api && groupMachineId && canStartInGroupDirectory && groupHasCodexSessions(group))
+                    const groupStatusCounts = getSessionGroupStatusCounts(group)
                     return (
                         <div key={group.key}>
                             <div
-                                className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
+                                className={cn(
+                                    'group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg border border-transparent bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]',
+                                    groupStatusCounts.pending > 0 && 'border-amber-500/25 bg-amber-500/5',
+                                    groupStatusCounts.pending === 0 && groupStatusCounts.active > 0 && 'border-[var(--app-link)]/20 bg-[var(--app-link)]/5'
+                                )}
                                 onClick={() => {
                                     if (activeGroupEdit) return
                                     toggleGroup(group.key, isCollapsed)
@@ -2288,6 +2368,23 @@ export function SessionList(props: {
                                         {groupTitle}
                                     </span>
                                 )}
+                                {!activeGroupEdit && groupStatusCounts.pending > 0 ? (
+                                    <span
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-amber-700 dark:text-amber-300"
+                                        title={t('sessions.group.pending', { n: groupStatusCounts.pending })}
+                                    >
+                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                                        {groupStatusCounts.pending}
+                                    </span>
+                                ) : !activeGroupEdit && groupStatusCounts.active > 0 ? (
+                                    <span
+                                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--app-link)]/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--app-link)]"
+                                        title={t('sessions.group.active', { n: groupStatusCounts.active })}
+                                    >
+                                        <span className="h-1.5 w-1.5 rounded-full bg-[var(--app-link)]" aria-hidden="true" />
+                                        {groupStatusCounts.active}
+                                    </span>
+                                ) : null}
                                 {!activeGroupEdit && shared ? (
                                     <span
                                         className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--app-border)] text-[var(--app-hint)]"
@@ -2352,7 +2449,7 @@ export function SessionList(props: {
                             {/* Sessions */}
                             <div className="collapsible-panel" data-open={!isCollapsed || undefined}>
                                 <div className="collapsible-inner">
-                                <div className="flex flex-col gap-0.5 ml-3 pl-1 py-1">
+                                <div className="ml-3 flex flex-col gap-0.5 border-l border-[var(--app-divider)] py-1 pl-1.5">
                                     {visibleGroupSessions.map((s) => (
                                         <SessionItem
                                             key={s.id}

@@ -9,6 +9,7 @@ import {
     getPreviousSessionVisibleCount,
     getPullToRefreshState,
     getSessionDedupKey,
+    getSessionGroupStatusCounts,
     getWorktreeSessionLabel,
     getVisibleSessionPreview,
     isSidebarEmptySessionStub,
@@ -272,6 +273,21 @@ describe('shouldShowSessionInSidebar', () => {
         expect(shouldShowSessionInSidebar(stub)).toBe(false)
         expect(shouldShowSessionInSidebar(stub, 'stub')).toBe(true)
         expect(shouldShowSessionInSidebar({ ...stub, active: true })).toBe(true)
+    })
+})
+
+describe('getSessionGroupStatusCounts', () => {
+    it('summarizes active sessions and pending requests for group badges', () => {
+        const result = getSessionGroupStatusCounts({
+            sessions: [
+                makeSession({ id: 'active-idle', active: true }),
+                makeSession({ id: 'active-pending', active: true, pendingRequestsCount: 2 }),
+                makeSession({ id: 'inactive-pending', pendingRequestsCount: 1 }),
+                makeSession({ id: 'inactive-idle' })
+            ]
+        })
+
+        expect(result).toEqual({ active: 2, pending: 3 })
     })
 })
 

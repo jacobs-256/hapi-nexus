@@ -335,7 +335,7 @@ describe('SessionList directory action', () => {
             />
         )
 
-        expect(screen.getByText('wwwroot/OA1000')).toBeInTheDocument()
+        expect(screen.getByText(/wwwroot\/OA1000/)).toBeInTheDocument()
         expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
 
         openGroupActions()
@@ -347,7 +347,7 @@ describe('SessionList directory action', () => {
         fireEvent.change(input, { target: { value: 'OA1000' } })
         fireEvent.keyDown(input, { key: 'Enter' })
 
-        expect(screen.getByText('OA1000')).toBeInTheDocument()
+        expect(screen.getByText(/OA1000/)).toBeInTheDocument()
         expect(screen.queryByText('wwwroot/OA1000')).toBeNull()
         expect(JSON.parse(localStorage.getItem(SESSION_GROUP_ALIAS_STORAGE_KEY) ?? '{}')).toEqual({
             [`__unknown__::${session.metadata?.path}`]: 'OA1000',
@@ -368,7 +368,7 @@ describe('SessionList directory action', () => {
             />
         )
 
-        expect(screen.getByText('OA1000')).toBeInTheDocument()
+        expect(screen.getByText(/OA1000/)).toBeInTheDocument()
         expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
     })
 

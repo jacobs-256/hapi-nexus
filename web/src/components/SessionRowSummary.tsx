@@ -166,7 +166,7 @@ export function SessionRowSummary(props: {
                         {sessionName}
                     </div>
                     {s.active && s.thinking ? (
-                        <LoaderIcon className="h-3.5 w-3.5 shrink-0 animate-spin-slow text-[var(--app-hint)]" />
+                        <LoaderIcon className={`h-4 w-4 shrink-0 animate-spin-slow ${selected ? 'text-white drop-shadow-sm' : 'text-[var(--app-link)]'}`} />
                     ) : attention && nestedTooltips && attentionId ? (
                         <SessionAttentionIndicator
                             attention={attention}

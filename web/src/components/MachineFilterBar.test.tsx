@@ -33,10 +33,10 @@ function renderBar(props: Partial<Parameters<typeof MachineFilterBar>[0]> = {}) 
 }
 
 describe('MachineFilterBar', () => {
-    it('renders an "All" chip plus one chip per machine with counts', () => {
+    it('renders an "All Machines" chip plus one chip per machine with counts', () => {
         renderBar()
 
-        expect(screen.getByRole('button', { name: /All \(5\)/ })).toBeTruthy()
+        expect(screen.getByRole('button', { name: /All Machines \(5\)/ })).toBeTruthy()
         expect(screen.getByRole('button', { name: /Mint \(3\)/ })).toBeTruthy()
         expect(screen.getByRole('button', { name: /Teemo \(2\)/ })).toBeTruthy()
     })
@@ -45,17 +45,17 @@ describe('MachineFilterBar', () => {
         renderBar({ value: 'machine-1' })
 
         expect(screen.getByRole('button', { name: /Mint \(3\)/ }).getAttribute('aria-pressed')).toBe('true')
-        expect(screen.getByRole('button', { name: /All \(5\)/ }).getAttribute('aria-pressed')).toBe('false')
+        expect(screen.getByRole('button', { name: /All Machines \(5\)/ }).getAttribute('aria-pressed')).toBe('false')
     })
 
-    it('reports machine selection and reset to All', () => {
+    it('reports machine selection and reset to All Machines', () => {
         const onChange = vi.fn()
         renderBar({ value: 'machine-1', onChange })
 
         fireEvent.click(screen.getByRole('button', { name: /Teemo \(2\)/ }))
         expect(onChange).toHaveBeenCalledWith('machine-2')
 
-        fireEvent.click(screen.getByRole('button', { name: /All \(5\)/ }))
+        fireEvent.click(screen.getByRole('button', { name: /All Machines \(5\)/ }))
         expect(onChange).toHaveBeenCalledWith(null)
     })
 
