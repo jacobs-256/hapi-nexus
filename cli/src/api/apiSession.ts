@@ -748,7 +748,7 @@ export class ApiSessionClient extends EventEmitter {
 
                 const parsed = CliMessagesResponseSchema.safeParse(response.data)
                 if (!parsed.success) {
-                    throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
+                    throw apiValidationError('Invalid /cli/sessions/:id/messages response', response, parsed.error.issues)
                 }
 
                 const messages = parsed.data.messages
@@ -805,7 +805,7 @@ export class ApiSessionClient extends EventEmitter {
         )
         const parsed = CliMessagesResponseSchema.safeParse(response.data)
         if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
+            throw apiValidationError('Invalid /cli/sessions/:id/messages response', response, parsed.error.issues)
         }
         return parsed.data.messages.length > 0
     }

@@ -60,4 +60,63 @@ describe('ApiClient.getSession activeAt coerce', () => {
         expect(session.activeAt).toBe(0)
         expect(typeof session.activeAt).toBe('number')
     })
+
+    it('tolerates older MySQL-shaped session payloads and drops invalid metadata', async () => {
+        axiosGetMock.mockResolvedValue({
+            data: {
+                session: {
+                    id: '22222222-2222-4222-8222-222222222222',
+                    namespace: 'default',
+                    projectId: null,
+                    createdByUserId: '42',
+                    seq: '7',
+                    createdAt: String(now),
+                    updatedAt: String(now + 1),
+                    active: '0',
+                    activeAt: String(now + 2),
+                    metadata: {
+                        path: '/tmp/project'
+                    },
+                    metadataVersion: '3',
+                    agentState: undefined,
+                    agentStateVersion: '4',
+                    thinking: 0,
+                    thinkingAt: '0',
+                    todos: 'not-a-todo-list',
+                    model: null,
+                    modelReasoningEffort: null,
+                    effort: null,
+                    serviceTier: null,
+                    permissionMode: 'not-a-mode',
+                    collaborationMode: 'not-a-mode'
+                }
+            }
+        })
+
+        const client = await ApiClient.create()
+        const session = await client.getSession('22222222-2222-4222-8222-222222222222')
+
+        expect(session.createdByUserId).toBe(42)
+        expect(session.seq).toBe(7)
+        expect(session.active).toBe(false)
+        expect(session.activeAt).toBe(now + 2)
+        expect(session.metadata).toBeNull()
+        expect(session.agentState).toBeNull()
+        expect(session.todos).toBeUndefined()
+        expect(session.permissionMode).toBeUndefined()
+        expect(session.collaborationMode).toBeUndefined()
+    })
+
+    it('includes the invalid field path when core session fields are missing', async () => {
+        axiosGetMock.mockResolvedValue({
+            data: {
+                session: {
+                    namespace: 'default'
+                }
+            }
+        })
+
+        const client = await ApiClient.create()
+        await expect(client.getSession('missing-id')).rejects.toThrow('session.id')
+    })
 })

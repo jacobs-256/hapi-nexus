@@ -17,8 +17,9 @@ export type ErrorInfo = {
  * Create an Error for a successful HTTP response whose body fails schema validation.
  * Attaches the protocol version header so callers can detect version mismatch.
  */
-export function apiValidationError(message: string, response: AxiosResponse): Error {
-    const err = new Error(message)
+export function apiValidationError(message: string, response: AxiosResponse, issues?: unknown): Error {
+    const issueSummary = summarizeValidationIssues(issues)
+    const err = new Error(issueSummary ? `${message}: ${issueSummary}` : message)
     const raw = response.headers?.['x-hapi-protocol-version']
     if (raw != null) {
         const pv = Number(raw)
@@ -27,6 +28,31 @@ export function apiValidationError(message: string, response: AxiosResponse): Er
         }
     }
     return err
+}
+
+function summarizeValidationIssues(issues: unknown): string | null {
+    if (!Array.isArray(issues) || issues.length === 0) {
+        return null
+    }
+
+    const parts = issues.slice(0, 5).map((issue) => {
+        if (!issue || typeof issue !== 'object') {
+            return null
+        }
+        const record = issue as Record<string, unknown>
+        const path = Array.isArray(record.path)
+            ? record.path.map((part) => String(part)).join('.')
+            : ''
+        const message = typeof record.message === 'string' ? record.message : 'invalid value'
+        return path ? `${path}: ${message}` : message
+    }).filter((part): part is string => Boolean(part))
+
+    if (parts.length === 0) {
+        return null
+    }
+
+    const remaining = issues.length - parts.length
+    return remaining > 0 ? `${parts.join('; ')}; +${remaining} more` : parts.join('; ')
 }
 
 /**

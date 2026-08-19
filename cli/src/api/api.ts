@@ -1,11 +1,10 @@
 import axios from 'axios'
 import type { AgentState, CreateMachineResponse, CreateSessionResponse, RunnerState, Machine, MachineMetadata, Metadata, Session } from '@/api/types'
 import type { LocalResumeTarget, ResumableSession } from '@hapi/protocol'
+import { CodexCollaborationModeSchema, PermissionModeSchema, TodosSchema } from '@hapi/protocol/schemas'
 import {
     AgentStateSchema,
     CreateMachineResponseSchema,
-    CreateSessionResponseSchema,
-    GetSessionResponseSchema,
     LocalHandoffResponseSchema,
     LocalResumeTargetResponseSchema,
     RunnerStateSchema,
@@ -13,12 +12,128 @@ import {
     MetadataSchema,
     ResumableSessionsResponseSchema
 } from '@/api/types'
+import { z } from 'zod'
 import { configuration } from '@/configuration'
 import { getAuthToken } from '@/api/auth'
 import { apiValidationError } from '@/utils/errorUtils'
 import { ApiMachineClient } from './apiMachine'
 import { ApiSessionClient, type ApiSessionClientOptions } from './apiSession'
 import { buildHubRequestHeaders } from './hubExtraHeaders'
+
+const numberFromTransportSchema = z.preprocess((value) => {
+    if (typeof value === 'bigint') return Number(value)
+    return value
+}, z.coerce.number())
+
+const nullableNumberFromTransportSchema = z.preprocess((value) => {
+    if (value === null || value === undefined || value === '') return null
+    if (typeof value === 'bigint') return Number(value)
+    return value
+}, z.coerce.number().nullable())
+
+const boolFromTransportSchema = z.preprocess((value) => {
+    if (value === 1 || value === '1' || value === 'true') return true
+    if (value === 0 || value === '0' || value === 'false') return false
+    return value
+}, z.boolean())
+
+const nullableStringSchema = z.string().nullable().optional().default(null)
+
+const ApiSessionWireSchema = z.object({
+    id: z.string(),
+    namespace: z.string(),
+    projectId: z.string().nullable().optional().default(null),
+    createdByUserId: nullableNumberFromTransportSchema.optional().default(null),
+    seq: numberFromTransportSchema.catch(0),
+    createdAt: numberFromTransportSchema.catch(0),
+    updatedAt: numberFromTransportSchema.catch(0),
+    active: boolFromTransportSchema.catch(false),
+    activeAt: nullableNumberFromTransportSchema.transform((value) => value ?? 0).catch(0),
+    metadata: z.unknown().nullable().optional().default(null),
+    metadataVersion: numberFromTransportSchema.catch(0),
+    agentState: z.unknown().nullable().optional().default(null),
+    agentStateVersion: numberFromTransportSchema.catch(0),
+    thinking: boolFromTransportSchema.catch(false),
+    thinkingAt: numberFromTransportSchema.catch(0),
+    backgroundTaskCount: numberFromTransportSchema.optional(),
+    todos: z.unknown().optional(),
+    model: nullableStringSchema,
+    modelReasoningEffort: nullableStringSchema,
+    effort: nullableStringSchema,
+    serviceTier: nullableStringSchema,
+    permissionMode: z.unknown().optional(),
+    collaborationMode: z.unknown().optional()
+})
+
+const ApiSessionResponseWireSchema = z.object({
+    session: ApiSessionWireSchema
+})
+
+type ApiSessionWire = z.infer<typeof ApiSessionWireSchema>
+
+function parseApiSessionResponse(data: unknown, response: Parameters<typeof apiValidationError>[1], message: string): Session {
+    const parsed = ApiSessionResponseWireSchema.safeParse(data)
+    if (!parsed.success) {
+        throw apiValidationError(message, response, parsed.error.issues)
+    }
+    return normalizeApiSession(parsed.data.session)
+}
+
+function normalizeApiSession(raw: ApiSessionWire): Session {
+    const metadata = (() => {
+        if (raw.metadata == null) return null
+        const parsedMetadata = MetadataSchema.safeParse(raw.metadata)
+        return parsedMetadata.success ? parsedMetadata.data : null
+    })()
+
+    const agentState = (() => {
+        if (raw.agentState == null) return null
+        const parsedAgentState = AgentStateSchema.safeParse(raw.agentState)
+        return parsedAgentState.success ? parsedAgentState.data : null
+    })()
+
+    const todos = (() => {
+        if (raw.todos == null) return undefined
+        const parsedTodos = TodosSchema.safeParse(raw.todos)
+        return parsedTodos.success ? parsedTodos.data : undefined
+    })()
+
+    const permissionMode = (() => {
+        const parsedPermissionMode = PermissionModeSchema.safeParse(raw.permissionMode)
+        return parsedPermissionMode.success ? parsedPermissionMode.data : undefined
+    })()
+
+    const collaborationMode = (() => {
+        const parsedCollaborationMode = CodexCollaborationModeSchema.safeParse(raw.collaborationMode)
+        return parsedCollaborationMode.success ? parsedCollaborationMode.data : undefined
+    })()
+
+    return {
+        id: raw.id,
+        namespace: raw.namespace,
+        projectId: raw.projectId,
+        createdByUserId: raw.createdByUserId,
+        seq: raw.seq,
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+        active: raw.active,
+        activeAt: raw.activeAt,
+        metadata,
+        metadataVersion: raw.metadataVersion,
+        agentState,
+        agentStateVersion: raw.agentStateVersion,
+        thinking: raw.thinking,
+        thinkingAt: raw.thinkingAt,
+        backgroundTaskCount: raw.backgroundTaskCount,
+        todos,
+        model: raw.model,
+        modelReasoningEffort: raw.modelReasoningEffort,
+        effort: raw.effort,
+        serviceTier: raw.serviceTier,
+        permissionMode,
+        collaborationMode
+    }
+}
 
 export class ApiClient {
     static async create(): Promise<ApiClient> {
@@ -78,49 +193,7 @@ export class ApiClient {
             }
         )
 
-        const parsed = CreateSessionResponseSchema.safeParse(response.data)
-        if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/sessions response', response)
-        }
-
-        const raw = parsed.data.session
-
-        const metadata = (() => {
-            if (raw.metadata == null) return null
-            const parsedMetadata = MetadataSchema.safeParse(raw.metadata)
-            return parsedMetadata.success ? parsedMetadata.data : null
-        })()
-
-        const agentState = (() => {
-            if (raw.agentState == null) return null
-            const parsedAgentState = AgentStateSchema.safeParse(raw.agentState)
-            return parsedAgentState.success ? parsedAgentState.data : null
-        })()
-
-        return {
-            id: raw.id,
-            namespace: raw.namespace,
-            projectId: raw.projectId,
-            createdByUserId: raw.createdByUserId,
-            seq: raw.seq,
-            createdAt: raw.createdAt,
-            updatedAt: raw.updatedAt,
-            active: raw.active,
-            activeAt: raw.activeAt,
-            metadata,
-            metadataVersion: raw.metadataVersion,
-            agentState,
-            agentStateVersion: raw.agentStateVersion,
-            thinking: raw.thinking,
-            thinkingAt: raw.thinkingAt,
-            todos: raw.todos,
-            model: raw.model,
-            modelReasoningEffort: raw.modelReasoningEffort,
-            effort: raw.effort,
-            serviceTier: raw.serviceTier,
-            permissionMode: raw.permissionMode,
-            collaborationMode: raw.collaborationMode
-        }
+        return parseApiSessionResponse(response.data, response, 'Invalid /cli/sessions response')
     }
 
     async getSession(sessionId: string): Promise<Session> {
@@ -132,47 +205,7 @@ export class ApiClient {
             }
         )
 
-        const parsed = GetSessionResponseSchema.safeParse(response.data)
-        if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/sessions/:id response', response)
-        }
-
-        const raw = parsed.data.session
-        const metadata = (() => {
-            if (raw.metadata == null) return null
-            const parsedMetadata = MetadataSchema.safeParse(raw.metadata)
-            return parsedMetadata.success ? parsedMetadata.data : null
-        })()
-        const agentState = (() => {
-            if (raw.agentState == null) return null
-            const parsedAgentState = AgentStateSchema.safeParse(raw.agentState)
-            return parsedAgentState.success ? parsedAgentState.data : null
-        })()
-
-        return {
-            id: raw.id,
-            namespace: raw.namespace,
-            projectId: raw.projectId,
-            createdByUserId: raw.createdByUserId,
-            seq: raw.seq,
-            createdAt: raw.createdAt,
-            updatedAt: raw.updatedAt,
-            active: raw.active,
-            activeAt: raw.activeAt,
-            metadata,
-            metadataVersion: raw.metadataVersion,
-            agentState,
-            agentStateVersion: raw.agentStateVersion,
-            thinking: raw.thinking,
-            thinkingAt: raw.thinkingAt,
-            todos: raw.todos,
-            model: raw.model,
-            modelReasoningEffort: raw.modelReasoningEffort,
-            effort: raw.effort,
-            serviceTier: raw.serviceTier,
-            permissionMode: raw.permissionMode,
-            collaborationMode: raw.collaborationMode
-        }
+        return parseApiSessionResponse(response.data, response, 'Invalid /cli/sessions/:id response')
     }
 
     async getOrCreateMachine(opts: {
@@ -198,7 +231,7 @@ export class ApiClient {
 
         const parsed = CreateMachineResponseSchema.safeParse(response.data)
         if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/machines response', response)
+            throw apiValidationError('Invalid /cli/machines response', response, parsed.error.issues)
         }
 
         const raw = parsed.data.machine
@@ -243,7 +276,7 @@ export class ApiClient {
         )
         const parsed = ResumableSessionsResponseSchema.safeParse(response.data)
         if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/sessions/resumable response', response)
+            throw apiValidationError('Invalid /cli/sessions/resumable response', response, parsed.error.issues)
         }
         return parsed.data.sessions
     }
@@ -258,7 +291,7 @@ export class ApiClient {
         )
         const parsed = LocalResumeTargetResponseSchema.safeParse(response.data)
         if (!parsed.success) {
-            throw apiValidationError('Invalid /cli/sessions/:id/resume-target response', response)
+            throw apiValidationError('Invalid /cli/sessions/:id/resume-target response', response, parsed.error.issues)
         }
         return parsed.data.target
     }
@@ -274,7 +307,7 @@ export class ApiClient {
         )
         const parsed = LocalHandoffResponseSchema.safeParse(response.data)
         if (!parsed.success || !parsed.data.ok) {
-            throw apiValidationError('Invalid /cli/sessions/:id/handoff-local response', response)
+            throw apiValidationError('Invalid /cli/sessions/:id/handoff-local response', response, parsed.success ? undefined : parsed.error.issues)
         }
     }
 
