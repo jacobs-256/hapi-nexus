@@ -1,5 +1,4 @@
 import type { Database } from 'bun:sqlite'
-import type { StorageConfig } from '@hapi/protocol/storage'
 import type { TableName } from './tables'
 import {
     insertSqliteRows,
@@ -9,10 +8,10 @@ import {
 } from './sqlite'
 import { positiveIntegerEnv } from './env'
 
-type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
-
 const MYSQL_SQLITE_BATCH_SIZE = positiveIntegerEnv('HAPI_MYSQL_SQLITE_BATCH_SIZE', 1000)
 const MYSQL_INSERT_BATCH_SIZE = positiveIntegerEnv('HAPI_MYSQL_INSERT_BATCH_SIZE', 250)
+
+export { connectMysqlClient, createMysqlClient } from '../mysql/client'
 
 function quoteMysqlIdentifier(value: string): string {
     return `\`${value.replace(/`/g, '``')}\``
@@ -24,21 +23,6 @@ function mysqlType(sqliteType: string): string {
     if (normalized.includes('REAL') || normalized.includes('FLOA') || normalized.includes('DOUB')) return 'DOUBLE'
     if (normalized.includes('BLOB')) return 'LONGBLOB'
     return 'LONGTEXT'
-}
-
-export function createMysqlClient(target: MysqlTarget): Bun.SQL {
-    if (target.url) {
-        return new Bun.SQL(target.url)
-    }
-    return new Bun.SQL({
-        adapter: 'mysql',
-        ...(target.host ? { hostname: target.host } : {}),
-        ...(target.port ? { port: target.port } : {}),
-        ...(target.user ? { username: target.user } : {}),
-        ...(target.password ? { password: target.password } : {}),
-        ...(target.database ? { database: target.database } : {}),
-        ...(target.socketPath ? { path: target.socketPath } : {})
-    })
 }
 
 export async function mysqlTableExists(sql: Bun.SQL, table: string): Promise<boolean> {

@@ -87,7 +87,7 @@ Common server variables:
 | `HAPI_CONVERSATION_STORE` | `sqlite` | Conversation storage backend: `sqlite` or `elasticsearch` |
 | `ELASTICSEARCH_URL` / `ELASTICSEARCH_INDEX` / `ELASTICSEARCH_API_KEY` | unset | Elasticsearch conversation storage settings |
 | `HAPI_CORE_STORE` | `sqlite` | Core storage backend: `sqlite` or `mysql` |
-| `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` | unset | MySQL core storage settings |
+| `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_TLS` | unset | MySQL core storage settings |
 | `HAPI_LISTEN_HOST` | `127.0.0.1` | HTTP bind address |
 | `HAPI_LISTEN_PORT` | `3006` | HTTP port |
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | Browser-facing URL |

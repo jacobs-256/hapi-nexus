@@ -19,6 +19,7 @@ import {
     clearSqliteTables
 } from './sqlite'
 import {
+    connectMysqlClient,
     createMysqlClient,
     importMysqlTable,
     mysqlTableExists,
@@ -87,7 +88,7 @@ export class ExternalStorageSync {
         if (this.config.core.backend === 'mysql') {
             const sql = createMysqlClient(this.config.core.mysql)
             try {
-                await sql.connect()
+                await connectMysqlClient(sql, this.config.core.mysql, 'importing MySQL core storage snapshot')
                 const tablePresence = await Promise.all(CORE_TABLES.map(async (table) => [table, await mysqlTableExists(sql, table)] as const))
                 const presentTables = tablePresence.filter(([, present]) => present).map(([table]) => table)
                 if (presentTables.length === 0) {
@@ -146,7 +147,7 @@ export class ExternalStorageSync {
         const copied: Record<string, number> = {}
         const sql = createMysqlClient(this.config.core.mysql)
         try {
-            await sql.connect()
+            await connectMysqlClient(sql, this.config.core.mysql, 'exporting MySQL core storage snapshot')
             for (const table of CORE_TABLES) {
                 copied[table] = await replaceMysqlTable(sql, this.coreDb, table)
             }

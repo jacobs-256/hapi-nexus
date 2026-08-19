@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CoreStorageBackend, StorageConfig, StorageMigrationMode } from '@hapi/protocol/storage'
-import { SettingsChoiceGroup, SettingsPageContent, SettingsRow, SettingsSection } from '@/components/settings/SettingsPrimitives'
+import { SettingsChoiceGroup, SettingsPageContent, SettingsRow, SettingsSection, SettingsSwitch } from '@/components/settings/SettingsPrimitives'
 import { useAppContext } from '@/lib/app-context'
 import { formatFileSize } from '@/lib/file-metadata'
 import { queryKeys } from '@/lib/query-keys'
@@ -254,6 +254,7 @@ export default function SettingsStoragePage() {
                             <TextInput label={t('settings.storage.field.database')} value={draft.core.mysql.database ?? ''} onChange={(database) => setDraft((current) => current.core.backend === 'mysql' ? ({ ...current, core: { backend: 'mysql', mysql: { ...current.core.mysql, database: database || undefined } } }) : current)} />
                             <TextInput label={t('settings.storage.field.user')} value={draft.core.mysql.user ?? ''} onChange={(user) => setDraft((current) => current.core.backend === 'mysql' ? ({ ...current, core: { backend: 'mysql', mysql: { ...current.core.mysql, user: user || undefined } } }) : current)} />
                             <TextInput label={t('settings.storage.field.password')} type="password" value={draft.core.mysql.password ?? ''} onChange={(password) => setDraft((current) => current.core.backend === 'mysql' ? ({ ...current, core: { backend: 'mysql', mysql: { ...current.core.mysql, password: password || undefined } } }) : current)} />
+                            <SettingsSwitch label={t('settings.storage.field.mysqlTls')} description={t('settings.storage.field.mysqlTls.description')} checked={draft.core.mysql.tls === true} onChange={(tls) => setDraft((current) => current.core.backend === 'mysql' ? ({ ...current, core: { backend: 'mysql', mysql: { ...current.core.mysql, tls: tls ? true : undefined } } }) : current)} />
                         </>
                     )}
                 </SettingsSection>

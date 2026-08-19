@@ -10,6 +10,7 @@ export type PartialStorageConfig = {
 }
 
 const SECRET_REDACTION = '********'
+const MYSQL_URL_PROTOCOLS = new Set(['mysql:', 'mysql2:'])
 
 function expandHome(path: string): string {
     return path.replace(/^~(?=$|\/|\\)/, homedir())
@@ -37,10 +38,40 @@ function optionalPort(value: unknown): number | undefined {
     return parsed
 }
 
+function optionalBoolean(value: unknown, errorMessage: string): boolean | undefined {
+    if (value === undefined || value === null || value === '') return undefined
+    if (typeof value === 'boolean') return value
+    if (typeof value !== 'string') {
+        throw new Error(errorMessage)
+    }
+    const normalized = value.trim().toLowerCase()
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+    if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+    throw new Error(errorMessage)
+}
+
 function getRecord(value: unknown): Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
         ? value as Record<string, unknown>
         : {}
+}
+
+function validateMysqlUrl(value: string): void {
+    let url: URL
+    try {
+        url = new URL(value)
+    } catch {
+        throw new Error('MySQL URL must be a valid mysql:// or mysql2:// URL, for example mysql://user:password@127.0.0.1:3306/hapi')
+    }
+    if (!MYSQL_URL_PROTOCOLS.has(url.protocol)) {
+        throw new Error('MySQL URL must use mysql:// or mysql2://, for example mysql://user:password@127.0.0.1:3306/hapi')
+    }
+}
+
+function validateMysqlHost(value: string): void {
+    if (value.includes('://') || value.includes('/')) {
+        throw new Error('MYSQL_HOST must be a bare hostname or IP address. Use MYSQL_URL for mysql://... values.')
+    }
 }
 
 export function defaultStorageConfig(dataDir: string, legacyDbPath: string): StorageConfig {
@@ -115,6 +146,7 @@ function normalizeCoreConfig(input: unknown, defaults: StorageConfig): CoreStora
         const password = optionalString(mysql.password) ?? fallback?.password
         const socketPath = optionalString(mysql.socketPath) ?? fallback?.socketPath
         const port = optionalPort(mysql.port ?? fallback?.port)
+        const tls = optionalBoolean(mysql.tls, 'MySQL TLS setting must be true or false') ?? fallback?.tls
         return {
             backend: 'mysql',
             mysql: {
@@ -124,7 +156,8 @@ function normalizeCoreConfig(input: unknown, defaults: StorageConfig): CoreStora
                 ...(database ? { database } : {}),
                 ...(user ? { user } : {}),
                 ...(password ? { password } : {}),
-                ...(socketPath ? { socketPath } : {})
+                ...(socketPath ? { socketPath } : {}),
+                ...(tls !== undefined ? { tls } : {})
             }
         }
     }
@@ -203,6 +236,8 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
         || optionalString(env.MYSQL_USER)
         || optionalString(env.MYSQL_PASSWORD)
         || optionalString(env.MYSQL_SOCKET_PATH)
+        || optionalString(env.MYSQL_TLS)
+        || optionalString(env.MYSQL_SSL)
     )
     const hasMysqlTargetEnv = Boolean(
         optionalUrlString(env.MYSQL_URL)
@@ -225,18 +260,23 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
                 }
             }
         } else if (coreBackend === 'mysql') {
+            const mysqlTlsEnv = optionalString(env.MYSQL_TLS) !== undefined ? env.MYSQL_TLS : env.MYSQL_SSL
+            const mysqlTls = optionalBoolean(mysqlTlsEnv, 'MYSQL_TLS must be true or false')
+            const currentMysql = config.core.backend === 'mysql' ? config.core.mysql : {}
             next = {
                 ...next,
                 core: {
                     backend: 'mysql',
                     mysql: {
+                        ...currentMysql,
                         ...(optionalUrlString(env.MYSQL_URL) ? { url: optionalUrlString(env.MYSQL_URL) } : {}),
                         ...(optionalString(env.MYSQL_HOST) ? { host: optionalString(env.MYSQL_HOST) } : {}),
                         ...(optionalPort(env.MYSQL_PORT) ? { port: optionalPort(env.MYSQL_PORT) } : {}),
                         ...(optionalString(env.MYSQL_DATABASE) ? { database: optionalString(env.MYSQL_DATABASE) } : {}),
                         ...(optionalString(env.MYSQL_USER) ? { user: optionalString(env.MYSQL_USER) } : {}),
                         ...(optionalString(env.MYSQL_PASSWORD) ? { password: optionalString(env.MYSQL_PASSWORD) } : {}),
-                        ...(optionalString(env.MYSQL_SOCKET_PATH) ? { socketPath: optionalString(env.MYSQL_SOCKET_PATH) } : {})
+                        ...(optionalString(env.MYSQL_SOCKET_PATH) ? { socketPath: optionalString(env.MYSQL_SOCKET_PATH) } : {}),
+                        ...(mysqlTls !== undefined ? { tls: mysqlTls } : {})
                     }
                 }
             }
@@ -269,6 +309,12 @@ export function validateStorageConfig(config: StorageConfig): void {
     }
     if (config.core.backend === 'mysql') {
         const mysql = config.core.mysql
+        if (mysql.url) {
+            validateMysqlUrl(mysql.url)
+        }
+        if (!mysql.url && mysql.host) {
+            validateMysqlHost(mysql.host)
+        }
         if (!mysql.url && !mysql.socketPath && !mysql.host) {
             throw new Error('MySQL URL, host, or socketPath is required for core storage')
         }

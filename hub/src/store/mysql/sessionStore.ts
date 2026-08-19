@@ -3,7 +3,7 @@ import type { SessionStorePort } from '../ports/coreStores'
 import type { StoredSession, VersionedUpdateResult } from '../types'
 import { safeJsonParse } from '../json'
 import { mergeSessionMetadata, SessionIdentityConflictError } from '../sessions'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 
@@ -54,9 +54,7 @@ export class MysqlSessionStore implements SessionStorePort {
     ) {}
 
     private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> {
-        const sql = createMysqlClient(this.target)
-        try { await sql.connect(); return await fn(sql) }
-        finally { await sql.close({ timeout: 1 }).catch(() => undefined) }
+        return await withMysqlClient(this.target, 'using MySQL session store', fn)
     }
 
     private async getById(sql: Bun.SQL, id: string): Promise<StoredSession | null> {

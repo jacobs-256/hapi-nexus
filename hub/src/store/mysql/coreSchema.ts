@@ -1,5 +1,5 @@
 import type { StorageConfig } from '@hapi/protocol/storage'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 
@@ -215,14 +215,10 @@ async function ensureMysqlCoreCompatibility(sql: Bun.SQL): Promise<void> {
 }
 
 export async function ensureMysqlCoreSchema(target: MysqlTarget): Promise<void> {
-    const sql = createMysqlClient(target)
-    try {
-        await sql.connect()
+    await withMysqlClient(target, 'initializing MySQL core storage schema', async (sql) => {
         for (const statement of MYSQL_CORE_SCHEMA) {
             await sql.unsafe(statement)
         }
         await ensureMysqlCoreCompatibility(sql)
-    } finally {
-        await sql.close({ timeout: 1 }).catch(() => undefined)
-    }
+    })
 }

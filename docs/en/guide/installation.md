@@ -283,7 +283,8 @@ To roll back after a failed upgrade, stop `hapi-server`, restore the previous `h
 | `ELASTICSEARCH_API_KEY` | - | storage.conversation.elasticsearch.apiKey | Base64 Elasticsearch API key |
 | `HAPI_CORE_STORE` | `sqlite` | storage.core.type | Core data storage: `sqlite` or `mysql` |
 | `HAPI_CORE_SQLITE_PATH` | `DB_PATH` | storage.core.sqlitePath | SQLite path for users/projects/machines/settings |
-| `MYSQL_URL` | - | storage.core.mysql.url | MySQL connection URL for core storage |
+| `MYSQL_URL` | - | storage.core.mysql.url | MySQL connection URL for core storage; append `?ssl=true` when TLS is required |
+| `MYSQL_TLS` | - | storage.core.mysql.tls | Enable TLS for host/port MySQL core storage configuration |
 | `ELEVENLABS_API_KEY` | - | - | ElevenLabs API key for voice |
 | `ELEVENLABS_AGENT_ID` | Auto-created | - | Custom ElevenLabs agent ID |
 </details>

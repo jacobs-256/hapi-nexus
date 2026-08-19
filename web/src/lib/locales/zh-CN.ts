@@ -765,6 +765,8 @@ export default {
   'settings.storage.field.database': '数据库',
   'settings.storage.field.user': '用户',
   'settings.storage.field.password': '密码',
+  'settings.storage.field.mysqlTls': 'TLS',
+  'settings.storage.field.mysqlTls.description': '托管 MySQL 服务要求加密连接时启用。',
   'settings.storage.migration.title': '数据迁移',
   'settings.storage.migration.whenSaving': '保存时',
   'settings.storage.migration.none': '不迁移',

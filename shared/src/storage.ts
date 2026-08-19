@@ -21,6 +21,7 @@ export type MysqlStorageTarget = {
     user?: string
     password?: string
     socketPath?: string
+    tls?: boolean
 }
 
 export type ConversationStorageConfig =

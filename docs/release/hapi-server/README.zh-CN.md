@@ -87,7 +87,7 @@ HAPI_PUBLIC_URL=https://hapi.example.com \
 | `HAPI_CONVERSATION_STORE` | `sqlite` | 对话存储后端：`sqlite` 或 `elasticsearch` |
 | `ELASTICSEARCH_URL` / `ELASTICSEARCH_INDEX` / `ELASTICSEARCH_API_KEY` | 未设置 | Elasticsearch 对话存储设置 |
 | `HAPI_CORE_STORE` | `sqlite` | 核心数据存储后端：`sqlite` 或 `mysql` |
-| `MYSQL_URL` 或 `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` | 未设置 | MySQL 核心数据存储设置 |
+| `MYSQL_URL` 或 `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_TLS` | 未设置 | MySQL 核心数据存储设置 |
 | `HAPI_LISTEN_HOST` | `127.0.0.1` | HTTP 监听地址 |
 | `HAPI_LISTEN_PORT` | `3006` | HTTP 端口 |
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | 浏览器访问地址 |

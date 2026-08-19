@@ -761,6 +761,8 @@ export default {
   'settings.storage.field.database': 'Database',
   'settings.storage.field.user': 'User',
   'settings.storage.field.password': 'Password',
+  'settings.storage.field.mysqlTls': 'TLS',
+  'settings.storage.field.mysqlTls.description': 'Enable for managed MySQL services that require encrypted connections.',
   'settings.storage.migration.title': 'Migration',
   'settings.storage.migration.whenSaving': 'When saving',
   'settings.storage.migration.none': 'No migration',

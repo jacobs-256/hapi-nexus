@@ -39,6 +39,7 @@ describe('loadServerSettings', () => {
         process.env.MYSQL_HOST = '127.0.0.1'
         process.env.MYSQL_DATABASE = 'hapi_test'
         process.env.MYSQL_USER = 'hapi'
+        process.env.MYSQL_TLS = 'true'
 
         const result = await loadServerSettings(dir, legacyDbPath)
 
@@ -52,7 +53,8 @@ describe('loadServerSettings', () => {
             mysql: {
                 host: '127.0.0.1',
                 database: 'hapi_test',
-                user: 'hapi'
+                user: 'hapi',
+                tls: true
             }
         })
     })

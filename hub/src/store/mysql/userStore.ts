@@ -10,7 +10,7 @@ import {
     type UpdateLocalUsernameResult,
     type UpdateUserInput
 } from '../users'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 
@@ -66,18 +66,8 @@ export class MysqlUserStore implements UserStorePort {
         private readonly onChange?: () => void
     ) {}
 
-    private client(): Bun.SQL {
-        return createMysqlClient(this.target)
-    }
-
     private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> {
-        const sql = this.client()
-        try {
-            await sql.connect()
-            return await fn(sql)
-        } finally {
-            await sql.close({ timeout: 1 }).catch(() => undefined)
-        }
+        return await withMysqlClient(this.target, 'using MySQL user store', fn)
     }
 
     async getUser(platform: string, platformUserId: string): Promise<StoredUser | null> {

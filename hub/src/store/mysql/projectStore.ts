@@ -1,7 +1,7 @@
 import type { StorageConfig } from '@hapi/protocol/storage'
 import type { ProjectStorePort } from '../ports/coreStores'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 import type { StoredProject, StoredProjectInvite, StoredProjectMember, StoredProjectWorkspace, StoredTeam, StoredTeamMember } from '../types'
 import { hasProjectRole, roleRank, type ProjectRole } from '../projects'
 
@@ -37,7 +37,7 @@ function toProjectInvite(row: ProjectInviteRow): StoredProjectInvite { return { 
 
 export class MysqlProjectStore implements ProjectStorePort {
     constructor(private readonly target: MysqlTarget, private readonly onChange?: () => void) {}
-    private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> { const sql = createMysqlClient(this.target); try { await sql.connect(); return await fn(sql) } finally { await sql.close({ timeout: 1 }).catch(() => undefined) } }
+    private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> { return await withMysqlClient(this.target, 'using MySQL project store', fn) }
     private async getTeam(sql: Bun.SQL, id: string): Promise<StoredTeam | null> { const rows = await sql.unsafe<TeamRow[]>('SELECT * FROM teams WHERE id = ? LIMIT 1', [id]); return rows[0] ? toTeam(rows[0]) : null }
     private async getProject(sql: Bun.SQL, id: string): Promise<StoredProject | null> { const rows = await sql.unsafe<ProjectRow[]>('SELECT * FROM projects WHERE id = ? LIMIT 1', [id]); return rows[0] ? toProject(rows[0]) : null }
 

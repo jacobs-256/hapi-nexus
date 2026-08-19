@@ -283,7 +283,8 @@ Hub 默认监听 `http://localhost:3006`。
 | `ELASTICSEARCH_API_KEY` | - | storage.conversation.elasticsearch.apiKey | Base64 后的 Elasticsearch API key |
 | `HAPI_CORE_STORE` | `sqlite` | storage.core.type | 核心数据存储：`sqlite` 或 `mysql` |
 | `HAPI_CORE_SQLITE_PATH` | `DB_PATH` | storage.core.sqlitePath | 用户/项目/机器/设置的 SQLite 路径 |
-| `MYSQL_URL` | - | storage.core.mysql.url | 核心数据 MySQL 连接 URL |
+| `MYSQL_URL` | - | storage.core.mysql.url | 核心数据 MySQL 连接 URL；需要 TLS 时可追加 `?ssl=true` |
+| `MYSQL_TLS` | - | storage.core.mysql.tls | 为 host/port 形式的 MySQL 核心存储配置启用 TLS |
 | `ELEVENLABS_API_KEY` | - | - | 语音功能的 ElevenLabs API key |
 | `ELEVENLABS_AGENT_ID` | 自动创建 | - | 自定义 ElevenLabs agent ID |
 </details>

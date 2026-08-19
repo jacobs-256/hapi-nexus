@@ -4,7 +4,7 @@ import type { StoredMachine, VersionedUpdateResult } from '../types'
 import type { DeleteMachineResult } from '../machines'
 import { mergeMachineMetadata } from '../machines'
 import { safeJsonParse } from '../json'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 type Row = { id: string; namespace: string; owner_user_id: number | string | null; team_id: string | null; created_at: number | string; updated_at: number | string; metadata: string | null; metadata_version: number | string; runner_state: string | null; runner_state_version: number | string; active: number | string; active_at: number | string | null; seq: number | string }
@@ -14,7 +14,7 @@ function toStored(row: Row): StoredMachine { return { id: row.id, namespace: row
 
 export class MysqlMachineStore implements MachineStorePort {
     constructor(private readonly target: MysqlTarget, private readonly onSessionsDeleted?: (sessionIds: string[]) => void | Promise<void>, private readonly onChange?: () => void) {}
-    private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> { const sql = createMysqlClient(this.target); try { await sql.connect(); return await fn(sql) } finally { await sql.close({ timeout: 1 }).catch(() => undefined) } }
+    private async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> { return await withMysqlClient(this.target, 'using MySQL machine store', fn) }
     private async getById(sql: Bun.SQL, id: string): Promise<StoredMachine | null> { const rows = await sql.unsafe<Row[]>('SELECT * FROM machines WHERE id = ? LIMIT 1', [id]); return rows[0] ? toStored(rows[0]) : null }
 
     async getOrCreateMachine(id: string, metadata: unknown, runnerState: unknown, namespace: string, options?: { ownerUserId?: number | null; teamId?: string | null }): Promise<StoredMachine> {

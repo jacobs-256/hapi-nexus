@@ -50,7 +50,7 @@ These are used only when the hub creates the first active local admin. If an act
 - `ELASTICSEARCH_URL`, `ELASTICSEARCH_INDEX`, `ELASTICSEARCH_USERNAME`, `ELASTICSEARCH_PASSWORD`, `ELASTICSEARCH_API_KEY` - Elasticsearch-backed conversation storage settings.
 - `HAPI_CORE_STORE` - Other hub data storage backend: `sqlite` or `mysql`.
 - `HAPI_CORE_SQLITE_PATH` - SQLite path for users/projects/machines/session metadata when using `sqlite`.
-- `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_SOCKET_PATH` - MySQL-backed core storage settings.
+- `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_SOCKET_PATH`/`MYSQL_TLS` - MySQL-backed core storage settings. Set `MYSQL_TLS=true` or add `?ssl=true` to `MYSQL_URL` for managed databases that require encrypted connections.
 
 Storage can also be changed in **Settings -> Storage**. The selected backend is the direct runtime database for its domain: Elasticsearch is authoritative for conversation history when selected, and MySQL is authoritative for core data when selected. SQLite remains the default backend and may be used as an explicit migration source/snapshot target. SQLite-to-SQLite path changes can copy data automatically, and long migrations run in the background with status exposed to the web app.
 - `TELEGRAM_NOTIFICATION` - Enable/disable Telegram notifications (default: true).

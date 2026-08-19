@@ -9,7 +9,7 @@ import type {
     ScratchlistStorePort
 } from '../ports/coreStores'
 import type { StoredFcmDevice, StoredPushSubscription, StoredScratchlistEntry } from '../types'
-import { createMysqlClient } from '../external/storageSync'
+import { withMysqlClient } from './client'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 
@@ -31,18 +31,8 @@ function parseJson<T>(value: string | null | undefined, fallback: T): T {
 class MysqlStoreBase {
     constructor(protected readonly target: MysqlTarget, protected readonly onChange?: () => void) {}
 
-    protected client(): Bun.SQL {
-        return createMysqlClient(this.target)
-    }
-
     protected async withSql<T>(fn: (sql: Bun.SQL) => Promise<T>): Promise<T> {
-        const sql = this.client()
-        try {
-            await sql.connect()
-            return await fn(sql)
-        } finally {
-            await sql.close({ timeout: 1 }).catch(() => undefined)
-        }
+        return await withMysqlClient(this.target, 'using MySQL core store', fn)
     }
 }
 
