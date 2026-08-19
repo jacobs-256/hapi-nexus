@@ -93,6 +93,31 @@ function parseErrorCode(bodyText: string): string | undefined {
     }
 }
 
+function decodeBasicHtmlEntities(value: string): string {
+    return value
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+        .replace(/&#([0-9]+);/g, (_match, decimal: string) => String.fromCharCode(Number.parseInt(decimal, 10)))
+}
+
+function formatHttpError(status: number, statusText: string, body: string): string {
+    const statusLabel = statusText.trim() ? `HTTP ${status} ${statusText.trim()}` : `HTTP ${status}`
+    const trimmed = body.trim()
+    if (!trimmed) return statusLabel
+    if (/^<!doctype\s+html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed) || /<body[\s>]/i.test(trimmed)) {
+        const heading = /<h1[^>]*>([^<]+)<\/h1>/i.exec(trimmed)?.[1]
+            ?? /<title[^>]*>([^<]+)<\/title>/i.exec(trimmed)?.[1]
+            ?? 'HTML error response'
+        return `${statusLabel}: ${decodeBasicHtmlEntities(heading).trim()}`
+    }
+    return `${statusLabel}: ${trimmed}`
+}
+
 export class ApiError extends Error {
     status: number
     code?: string
@@ -169,7 +194,7 @@ export class ApiClient {
             const body = await res.text().catch(() => '')
             const code = parseErrorCode(body)
             throw new ApiError(
-                `HTTP ${res.status} ${res.statusText}: ${body}`,
+                formatHttpError(res.status, res.statusText, body),
                 res.status,
                 code,
                 body || undefined
@@ -189,8 +214,7 @@ export class ApiClient {
         if (!res.ok) {
             const body = await res.text().catch(() => '')
             const code = parseErrorCode(body)
-            const detail = body ? `: ${body}` : ''
-            throw new ApiError(`Auth failed: HTTP ${res.status} ${res.statusText}${detail}`, res.status, code, body || undefined)
+            throw new ApiError(`Auth failed: ${formatHttpError(res.status, res.statusText, body)}`, res.status, code, body || undefined)
         }
 
         return await res.json() as AuthResponse

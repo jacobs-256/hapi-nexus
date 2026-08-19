@@ -80,6 +80,24 @@ describe('ApiClient error mapping', () => {
         }
     })
 
+    it('condenses HTML gateway errors in ApiError messages', async () => {
+        fetchMock.mockResolvedValueOnce(
+            new Response(
+                '<!DOCTYPE HTML><HTML><HEAD><TITLE>ERROR: The request could not be satisfied</TITLE></HEAD><BODY><H1>504 Gateway Timeout ERROR</H1><P>large proxy page</P></BODY></HTML>',
+                { status: 504, statusText: '' }
+            )
+        )
+
+        const api = new ApiClient('test-token')
+        try {
+            await api.reopenSession('session-gateway-timeout')
+            expect.unreachable('expected reopenSession to throw')
+        } catch (error) {
+            expect(error).toBeInstanceOf(ApiError)
+            expect((error as ApiError).message).toBe('HTTP 504: 504 Gateway Timeout ERROR')
+        }
+    })
+
     it('loads the Cursor chat store status for the selected session', async () => {
         fetchMock.mockResolvedValueOnce(
             new Response(JSON.stringify({ onDisk: false, store: null }), { status: 200 })
