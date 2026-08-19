@@ -1,6 +1,6 @@
 {
     "name": "hapi-nexus",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "description": "Enterprise-oriented private-deployment fork of HAPI for multi-user AI coding agent control, project sharing, and local-first remote workflows.",
     "private": true,
     "license": "AGPL-3.0-only",
