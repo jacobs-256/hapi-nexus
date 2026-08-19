@@ -65,7 +65,7 @@ CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-roo
 
 ## 同步 Codex 目录历史
 
-runner 在线后，在 Web UI 创建 Codex 会话，选择设备和工作目录，然后点击 **同步目录**。HAPI Nexus 会让 runner 读取该目录对应的本地 Codex transcript，把所有匹配的历史导入为 HAPI 会话，并打开最新导入的会话。
+runner 在线后，在 Web UI 创建 Codex 会话，选择设备和工作目录，然后点击 **同步目录**。HAPI Nexus 会让 runner 读取该目录对应的本地 Codex transcript，把匹配的历史加入后台导入队列，并在任务完成后打开最新导入的会话。
 
 导入后的 Codex 会话会在 HAPI metadata 中保留原始 `codexSessionId`。后续通过 Web 发送消息或在本地执行 `hapi resume <session-id>` 时，可以继续原 Codex thread，而不是从空会话开始。
 

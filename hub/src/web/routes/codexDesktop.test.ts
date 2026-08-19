@@ -1159,7 +1159,7 @@ describe('Codex Desktop import routes', () => {
         }
     })
 
-    it('syncs every Codex session for the requested folder through the runner', async () => {
+    it('queues every Codex session for the requested folder through the runner', async () => {
         const store = new Store(':memory:')
         const remoteSessions = [
             createRemoteCodexSession('folder-latest', '/work/project', 3000),
@@ -1216,16 +1216,21 @@ describe('Codex Desktop import routes', () => {
                 matchedCount?: number
                 sessionIds?: string[]
                 latestCodexSessionId?: string
-                latestHapiSessionId?: string
+                importJob?: { id: string; totalItems: number }
             }
             expect(body.success).toBe(true)
             expect(body.matchedCount).toBe(2)
             expect(body.sessionIds).toEqual(['folder-latest', 'folder-older'])
             expect(body.latestCodexSessionId).toBe('folder-latest')
-            expect(body.latestHapiSessionId).toBeTruthy()
+            expect(body.importJob?.totalItems).toBe(2)
+            expect(listCalls[0]).toEqual({ machineId: 'machine-1', cwd: '/work/project', sessionIds: undefined })
+
+            const job = await waitForImportJob(app, body.importJob!.id)
+            expect(job.status).toBe('succeeded')
             expect(listCalls).toEqual([
                 { machineId: 'machine-1', cwd: '/work/project', sessionIds: undefined },
-                { machineId: 'machine-1', cwd: '/work/project', sessionIds: ['folder-latest', 'folder-older'] }
+                { machineId: 'machine-1', cwd: '/work/project', sessionIds: ['folder-latest'] },
+                { machineId: 'machine-1', cwd: '/work/project', sessionIds: ['folder-older'] }
             ])
 
             const imported = store.sessions.getSessionsByNamespace('default')

@@ -198,6 +198,7 @@ export type CodexDesktopScriptResponse = {
     hapiSessionIds?: string[]
     latestCodexSessionId?: string
     latestHapiSessionId?: string
+    importJob?: CodexImportJob
 }
 
 export type CodexLocalSessionSummary = {

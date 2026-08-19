@@ -145,7 +145,7 @@ See `src/web/routes/` for all endpoints.
 
 - `GET /api/codex/sessions` - List local Codex transcript summaries through an online runner.
 - `POST /api/codex/sync-session` - Import selected Codex transcript IDs into HAPI sessions.
-- `POST /api/codex/sync-folder` - Import every Codex transcript whose `cwd` matches the requested folder, then return the newest imported HAPI session ID.
+- `POST /api/codex/sync-folder` - Queue every Codex transcript whose `cwd` matches the requested folder for background import, then return the import job.
 - `POST /api/codex/archive-session` - Archive a local Codex transcript through the runner.
 
 ### Projects (`src/web/routes/projects.ts`)

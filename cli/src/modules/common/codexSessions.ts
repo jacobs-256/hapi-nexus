@@ -8,6 +8,7 @@ import { isCodexSubagentSource } from '@/codex/utils/codexSessionMetadata'
 const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 200
 const CODEX_SESSION_HEAD_SCAN_BYTES = 64 * 1024
 const CODEX_SESSION_HEAD_SCAN_LINES = 200
+const CODEX_SESSION_TAIL_SCAN_BYTES = 256 * 1024
 const CODEX_SESSION_MESSAGE_PAGE_DEFAULT_LIMIT = 200
 const CODEX_SESSION_MESSAGE_PAGE_MAX_LIMIT = 1000
 const CODEX_SESSION_MESSAGE_CACHE_TTL_MS = 10 * 60_000
@@ -141,11 +142,37 @@ function readFileHead(filePath: string, maxBytes = CODEX_SESSION_HEAD_SCAN_BYTES
     }
 }
 
+function readFileTail(filePath: string, maxBytes = CODEX_SESSION_TAIL_SCAN_BYTES): string {
+    let fd: number | null = null
+    try {
+        const fileStats = statSync(filePath)
+        const bytesToRead = Math.min(maxBytes, fileStats.size)
+        const start = Math.max(0, fileStats.size - bytesToRead)
+        fd = openSync(filePath, 'r')
+        const buffer = Buffer.allocUnsafe(bytesToRead)
+        const bytesRead = readSync(fd, buffer, 0, bytesToRead, start)
+        const text = buffer.toString('utf-8', 0, bytesRead)
+        if (start === 0) return text
+        const firstLineEnd = text.indexOf('\n')
+        return firstLineEnd >= 0 ? text.slice(firstLineEnd + 1) : text
+    } catch {
+        return ''
+    } finally {
+        if (fd !== null) {
+            try { closeSync(fd) } catch {}
+        }
+    }
+}
+
+function splitJsonlLines(content: string): string[] {
+    return content.split(/\r?\n/).filter(Boolean)
+}
+
 function readCodexSessionIdFromHead(filePath: string): string | null {
     const head = readFileHead(filePath)
     if (!head) return inferSessionIdFromFileName(filePath)
 
-    const lines = head.split(/\r?\n/).filter(Boolean).slice(0, CODEX_SESSION_HEAD_SCAN_LINES)
+    const lines = splitJsonlLines(head).slice(0, CODEX_SESSION_HEAD_SCAN_LINES)
     for (const line of lines) {
         try {
             const record = asRecord(JSON.parse(line))
@@ -472,10 +499,18 @@ function parseCodexLocalSession(
     includeMessages: boolean,
     sessionIndexTitles = new Map<string, CodexSessionIndexTitle>()
 ): LocalCodexSessionWithMessages | LocalCodexSessionSummary | null {
-    let content: string
-    try { content = readFileSync(filePath, 'utf-8') } catch { return null }
-    const lines = content.split(/\r?\n/).filter(Boolean)
-    const headLines = lines.slice(0, 200)
+    let lines: string[]
+    let headLines: string[]
+    if (includeMessages) {
+        let content: string
+        try { content = readFileSync(filePath, 'utf-8') } catch { return null }
+        lines = splitJsonlLines(content)
+        headLines = lines.slice(0, CODEX_SESSION_HEAD_SCAN_LINES)
+    } else {
+        if (!existsSync(filePath)) return null
+        headLines = splitJsonlLines(readFileHead(filePath)).slice(0, CODEX_SESSION_HEAD_SCAN_LINES)
+        lines = splitJsonlLines(readFileTail(filePath))
+    }
     let sessionId: string | null = null
     let cwd: string | null = null
     let originator: string | null = null
@@ -548,10 +583,13 @@ function listLocalCodexSessions(includeMessages: false, limit?: number): LocalCo
 function listLocalCodexSessions(includeMessages: true, limit?: number): LocalCodexSessionWithMessages[]
 function listLocalCodexSessions(includeMessages: boolean, limit = DEFAULT_CODEX_SESSION_SCAN_LIMIT): Array<LocalCodexSessionSummary | LocalCodexSessionWithMessages> {
     const files = collectCodexSessionFiles()
+        .map((file) => ({ file, modifiedAt: getFileModifiedAt(file) }))
+        .sort((a, b) => b.modifiedAt - a.modifiedAt)
     const sessionIndexTitles = readCodexSessionIndexTitles()
     const deduped = new Map<string, LocalCodexSessionSummary | LocalCodexSessionWithMessages>()
-    for (const file of files) {
-        const session = parseCodexLocalSession(file, includeMessages, sessionIndexTitles)
+    for (const candidate of files) {
+        if (deduped.size >= limit) break
+        const session = parseCodexLocalSession(candidate.file, includeMessages, sessionIndexTitles)
         if (!session) continue
         const previous = deduped.get(session.id)
         if (!previous || previous.modifiedAt < session.modifiedAt) deduped.set(session.id, session)

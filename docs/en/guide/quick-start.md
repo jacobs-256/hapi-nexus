@@ -65,7 +65,7 @@ Pass multiple `--workspace-root` flags when you need multiple allowed root direc
 
 ## Sync Codex folder history
 
-After the runner is online, create a Codex session from the Web UI, choose the machine and workspace folder, then click **Sync folder**. HAPI Nexus asks the runner to read local Codex transcripts for that exact folder, imports every matching history item into HAPI sessions, and opens the newest imported session.
+After the runner is online, create a Codex session from the Web UI, choose the machine and workspace folder, then click **Sync folder**. HAPI Nexus asks the runner to read local Codex transcripts for that exact folder, queues matching history items for background import, and opens the newest imported session when the job completes.
 
 Imported Codex sessions keep their original `codexSessionId` in HAPI metadata. That means future Web messages and local `hapi resume <session-id>` can continue from the original Codex thread instead of starting from an empty conversation.
 

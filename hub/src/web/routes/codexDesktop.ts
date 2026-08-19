@@ -35,6 +35,7 @@ type ScriptLaunchResponse = {
     hapiSessionIds?: string[]
     latestCodexSessionId?: string
     latestHapiSessionId?: string
+    importJob?: CodexImportJob
 } | {
     success: false
     error: string
@@ -49,6 +50,7 @@ type ScriptLaunchResponse = {
     hapiSessionIds?: string[]
     latestCodexSessionId?: string
     latestHapiSessionId?: string
+    importJob?: CodexImportJob
 }
 
 type CodexDesktopStatus = {
@@ -3411,35 +3413,16 @@ export function createCodexDesktopRoutes(options: {
             return c.json(createSyncFolderEmptyResponse(parsed, codexStatus))
         }
 
-        const sessionsWithMessages = await fetchCodexTranscriptsViaMachine({
-            engine: options.getSyncEngine(),
-            namespace: c.get('namespace'),
-            cwd: parsed.cwd,
-            machineId: summaries.machineId ?? parsed.machineId,
-            sessionIds
-        })
-        if (sessionsWithMessages.error) {
-            const { workspace } = getDirectImportRouteContext()
-            return c.json({
-                success: false,
-                error: sessionsWithMessages.error,
-                cwd: workspace,
-                codexDesktopRunning: codexStatus.running,
-                codexClientAvailable: codexStatus.clientAvailable,
-                sessionIds,
-                matchedCount: sessionIds.length
-            })
-        }
-
-        const result = await importSelectedCodexSessions({
+        // Import can read and copy thousands of transcript messages. Keep the
+        // HTTP request short (CloudFront 504s long origin requests) and let the
+        // existing import queue fetch full transcripts one-at-a-time in the background.
+        const job = await importQueue.createJob({
             codexSessionIds: sessionIds,
-            store: options.store,
             namespace: c.get('namespace'),
             userId: c.get('userId'),
-            getSyncEngine: options.getSyncEngine,
-            localSessions: sessionsWithMessages.sessions,
-            machineId: sessionsWithMessages.machineId ?? summaries.machineId ?? null,
             projectId: parsed.projectId,
+            cwd: parsed.cwd,
+            machineId: summaries.machineId ?? parsed.machineId,
             model: parsed.model,
             modelReasoningEffort: parsed.modelReasoningEffort,
             serviceTier: parsed.serviceTier,
@@ -3447,14 +3430,19 @@ export function createCodexDesktopRoutes(options: {
             yolo: parsed.yolo
         })
         const latestCodexSessionId = sessionIds[0]
-        const latestHapiSessionId = result.success ? result.hapiSessionIds?.[0] : undefined
         return c.json({
-            ...result,
+            success: true,
+            message: `Queued ${sessionIds.length} Codex session(s) for background import`,
+            pid: 0,
+            command: DIRECT_IMPORT_COMMAND,
+            cwd: parsed.cwd,
+            output: `Queued Codex import job: ${job.id}`,
             codexDesktopRunning: codexStatus.running,
             codexClientAvailable: codexStatus.clientAvailable,
+            sessionIds,
             matchedCount: sessionIds.length,
             latestCodexSessionId,
-            ...(latestHapiSessionId ? { latestHapiSessionId } : {})
+            importJob: job
         })
     })
 

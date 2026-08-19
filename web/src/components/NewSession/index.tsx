@@ -69,7 +69,8 @@ import { formatRunnerSpawnError } from '../../utils/formatRunnerSpawnError'
 import { markCodexSessionsImported } from '@/lib/codexImportedSessions'
 import { useToast } from '@/lib/toast-context'
 
-
+const CODEX_IMPORT_JOB_POLL_INTERVAL_MS = 1000
+const CODEX_IMPORT_JOB_MAX_POLLS = 30 * 60
 
 
 export function NewSession(props: {
@@ -130,6 +131,7 @@ export function NewSession(props: {
     const [isMergingDuplicateSessions, setIsMergingDuplicateSessions] = useState(false)
     const [codexImportJobs, setCodexImportJobs] = useState<CodexImportJob[]>([])
     const completedCodexImportJobIdsRef = useRef(new Set<string>())
+    const pendingFolderImportJobsRef = useRef(new Map<string, { machineId: string; directory: string }>())
     const isFormDisabled = Boolean(isCreating || isPending || props.isLoading || isImportingCodexSession || isBulkImportingCodexSessions || isSyncingCodexFolder)
     const worktreeInputRef = useRef<HTMLInputElement>(null)
     const preserveRestoredDraftRef = useRef(false)
@@ -783,6 +785,25 @@ export function NewSession(props: {
         [codexImportJobs]
     )
 
+    const rememberCodexImportJob = useCallback((job: CodexImportJob) => {
+        setCodexImportJobs((current) => [job, ...current.filter((item) => item.id !== job.id)])
+    }, [])
+
+    const waitForCodexImportJob = useCallback(async (jobId: string): Promise<CodexImportJob> => {
+        for (let attempt = 0; attempt < CODEX_IMPORT_JOB_MAX_POLLS; attempt += 1) {
+            const result = await props.api.getCodexImportJob(jobId)
+            if (!result.success) {
+                throw new Error(result.error)
+            }
+            rememberCodexImportJob(result.job)
+            if (result.job.status !== 'queued' && result.job.status !== 'running') {
+                return result.job
+            }
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, CODEX_IMPORT_JOB_POLL_INTERVAL_MS))
+        }
+        throw new Error(t('codexSync.error.timeout'))
+    }, [props.api, rememberCodexImportJob, t])
+
     useEffect(() => {
         if (agent !== 'codex') return
         if (!isCodexImportDialogOpen && !hasActiveCodexImportJobs) return
@@ -800,6 +821,10 @@ export function NewSession(props: {
                 continue
             }
             completedCodexImportJobIdsRef.current.add(job.id)
+            const pendingFolderImport = pendingFolderImportJobsRef.current.get(job.id) ?? null
+            if (pendingFolderImport) {
+                pendingFolderImportJobsRef.current.delete(job.id)
+            }
             const importedCodexSessionIds = job.items
                 .filter((item) => item.status === 'succeeded' || (item.status === 'skipped' && Boolean(item.hapiSessionId)))
                 .map((item) => item.codexSessionId)
@@ -809,9 +834,45 @@ export function NewSession(props: {
                     clearBatchImportedCodexSelection(current, importedCodexSessionIds)
                 )
             }
+            if (pendingFolderImport && job.status === 'succeeded') {
+                const latestImportedItem = job.items.find((item) => (
+                    Boolean(item.hapiSessionId)
+                    && (item.status === 'succeeded' || item.status === 'skipped')
+                ))
+                if (latestImportedItem?.hapiSessionId) {
+                    addRecentPath(pendingFolderImport.machineId, pendingFolderImport.directory)
+                    setLastUsedMachineId(pendingFolderImport.machineId)
+                    addToast({
+                        title: t('codexSync.folder.success.title'),
+                        body: t('codexSync.folder.success.body', { n: importedCodexSessionIds.length }),
+                        sessionId: latestImportedItem.hapiSessionId,
+                        url: `/sessions/${latestImportedItem.hapiSessionId}`
+                    })
+                    props.onSuccess(latestImportedItem.hapiSessionId)
+                }
+            } else if (pendingFolderImport && job.status === 'failed') {
+                const body = job.error
+                    ? t('codexSync.failed.bodyWithReason', { reason: job.error })
+                    : t('codexSync.failed.body')
+                setCodexImportError(body)
+                addToast({
+                    title: t('codexSync.folder.failed.title'),
+                    body,
+                    sessionId: '',
+                    url: ''
+                })
+            }
             void refetchSessions()
         }
-    }, [codexImportJobs, refetchSessions])
+    }, [
+        addRecentPath,
+        addToast,
+        codexImportJobs,
+        props.onSuccess,
+        refetchSessions,
+        setLastUsedMachineId,
+        t
+    ])
 
     const normalizeCodexScriptError = useCallback((message: string | null | undefined, fallback: string): string => {
         const raw = (message ?? '').trim()
@@ -890,7 +951,7 @@ export function NewSession(props: {
                 throw new Error(normalizeCodexScriptError(result.error, t('codexSync.importQueue.failed.body')))
             }
 
-            setCodexImportJobs((current) => [result.job, ...current.filter((job) => job.id !== result.job.id)])
+            rememberCodexImportJob(result.job)
             addToast({
                 title: t('codexSync.importQueue.queued.title'),
                 body: t('codexSync.importQueue.queued.body', { n: result.job.totalItems }),
@@ -921,6 +982,7 @@ export function NewSession(props: {
         normalizeCodexScriptError,
         projectId,
         props.api,
+        rememberCodexImportJob,
         t,
         trimmedDirectory
     ])
@@ -947,6 +1009,22 @@ export function NewSession(props: {
             })
             if (!result.success) {
                 throw new Error(normalizeCodexScriptError(result.error, t('codexSync.failed.body')))
+            }
+
+            const importJob = result.importJob
+            if (importJob) {
+                pendingFolderImportJobsRef.current.set(importJob.id, {
+                    machineId,
+                    directory: trimmedDirectory
+                })
+                rememberCodexImportJob(importJob)
+                addToast({
+                    title: t('codexSync.importQueue.queued.title'),
+                    body: t('codexSync.importQueue.queued.body', { n: importJob.totalItems }),
+                    sessionId: '',
+                    url: ''
+                })
+                return
             }
 
             const importedCodexSessionIds = result.sessionIds ?? []
@@ -996,6 +1074,7 @@ export function NewSession(props: {
         normalizeCodexScriptError,
         projectId,
         props,
+        rememberCodexImportJob,
         refetchSessions,
         setLastUsedMachineId,
         t,
@@ -1253,7 +1332,7 @@ export function NewSession(props: {
 
             if (agent === 'codex' && selectedCodexImportSession) {
                 setIsImportingCodexSession(true)
-                const result = await props.api.syncCodexSession({
+                const result = await props.api.createCodexImportJob({
                     sessionIds: [selectedCodexImportSession.id],
                     projectId,
                     cwd: selectedCodexImportSession.cwd ?? trimmedDirectory,
@@ -1264,29 +1343,46 @@ export function NewSession(props: {
                     collaborationMode: resolvedCollaborationMode ?? 'default',
                     yolo: yoloMode
                 })
-                if (result.success) {
-                    const importedSessionId = result.hapiSessionIds?.[0]
-                    if (!importedSessionId) {
-                        throw new Error('Imported session id missing')
-                    }
-                    // 中文注释：Codex transcript 导入只会创建 Hapi 记录，不会自动启动 agent。
-                    // 这里立刻 resume，避免进入会话页时先看到离线，等首条消息才触发启动。
-                    const resumedSessionId = await props.api.resumeSession(
-                        importedSessionId,
-                        yoloMode ? { permissionMode: 'yolo' } : undefined
-                    )
-                    haptic.notification('success')
-                    markCodexSessionsImported([selectedCodexImportSession.id])
-                    savePreferredLaunchSettings(machineId, agent, preferredLaunchSettings)
-                    clearNewSessionFormDraft()
-                    setLastUsedMachineId(machineId)
-                    addRecentPath(machineId, trimmedDirectory)
-                    props.onSuccess(resumedSessionId)
+                if (!result.success) {
+                    setIsImportingCodexSession(false)
+                    haptic.notification('error')
+                    setError(result.error || t('codexSync.importQueue.failed.body'))
                     return
                 }
-                setIsImportingCodexSession(false)
-                haptic.notification('error')
-                setError(result.error || result.message || t('codexSync.failed.body'))
+
+                rememberCodexImportJob(result.job)
+                addToast({
+                    title: t('codexSync.importQueue.queued.title'),
+                    body: t('codexSync.importQueue.queued.body', { n: result.job.totalItems }),
+                    sessionId: '',
+                    url: ''
+                })
+                const finishedJob = await waitForCodexImportJob(result.job.id)
+                if (finishedJob.status !== 'succeeded') {
+                    const failedItem = finishedJob.items.find((item) => item.status === 'failed')
+                    throw new Error(failedItem?.error || finishedJob.error || t('codexSync.failed.body'))
+                }
+
+                const importedSessionId = finishedJob.items.find((item) => (
+                    item.codexSessionId === selectedCodexImportSession.id
+                    && Boolean(item.hapiSessionId)
+                ))?.hapiSessionId
+                if (!importedSessionId) {
+                    throw new Error('Imported session id missing')
+                }
+                // 中文注释：Codex transcript 导入只会创建 Hapi 记录，不会自动启动 agent。
+                // 这里立刻 resume，避免进入会话页时先看到离线，等首条消息才触发启动。
+                const resumedSessionId = await props.api.resumeSession(
+                    importedSessionId,
+                    yoloMode ? { permissionMode: 'yolo' } : undefined
+                )
+                haptic.notification('success')
+                markCodexSessionsImported([selectedCodexImportSession.id])
+                savePreferredLaunchSettings(machineId, agent, preferredLaunchSettings)
+                clearNewSessionFormDraft()
+                setLastUsedMachineId(machineId)
+                addRecentPath(machineId, trimmedDirectory)
+                props.onSuccess(resumedSessionId)
                 return
             }
 
