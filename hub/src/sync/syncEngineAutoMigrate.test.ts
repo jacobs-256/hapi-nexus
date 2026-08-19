@@ -307,7 +307,7 @@ describe('SyncEngine.maybeAutoMigrateLegacyCursorSession', () => {
             expect(getStoredMetadata(session.id)?.cursorMigrationState).toBe('ambiguous')
         })
 
-        it('flipCursorSessionProtocolToAcp clears cursorMigrationState in the same metadata write that flips protocol', () => {
+        it('flipCursorSessionProtocolToAcp clears cursorMigrationState in the same metadata write that flips protocol', async () => {
             const session = insertLegacy('session-flip-clears-flag')
             const store = (engine as unknown as { store: Store }).store
             const cache = (engine as unknown as { sessionCache: import('./sessionCache').SessionCache }).sessionCache
@@ -326,7 +326,7 @@ describe('SyncEngine.maybeAutoMigrateLegacyCursorSession', () => {
 
             expect(getStoredMetadata(session.id)?.cursorMigrationState).toBe('in_progress')
 
-            const result = engine.flipCursorSessionProtocolToAcp(session.id, 'default', null)
+            const result = await engine.flipCursorSessionProtocolToAcp(session.id, 'default', null)
             expect(result.result).toBe('success')
 
             const after = getStoredMetadata(session.id)

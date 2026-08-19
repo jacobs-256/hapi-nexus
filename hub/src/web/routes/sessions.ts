@@ -64,7 +64,7 @@ function estimateBase64Bytes(base64: string): number {
 export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.get('/sessions', (c) => {
+    app.get('/sessions', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
@@ -74,8 +74,11 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
 
         const namespace = c.get('namespace')
         const userId = c.get('userId')
+        const asyncEngine = engine as SyncEngine & { getSessionsForUserAsync?: SyncEngine['getSessionsForUserAsync'] }
         const sessionRecords = (typeof userId === 'number'
-            ? engine.getSessionsForUser(namespace, userId)
+            ? asyncEngine.getSessionsForUserAsync
+                ? await asyncEngine.getSessionsForUserAsync(namespace, userId)
+                : engine.getSessionsForUser(namespace, userId)
             : engine.getSessionsByNamespace(namespace))
             .sort((a, b) => {
                 // Active sessions first
@@ -105,18 +108,18 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ sessions })
     })
 
-    app.get('/sessions/:id/export', (c) => {
+    app.get('/sessions/:id/export', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
 
-        const result = engine.getSessionExport(sessionResult.sessionId, sessionResult.session)
+        const result = await engine.getSessionExport(sessionResult.sessionId, sessionResult.session)
         if (result.type === 'too-large') {
             return c.json({
                 error: 'Session export too large',
@@ -128,13 +131,13 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json(result.payload)
     })
 
-    app.get('/sessions/:id', (c) => {
+    app.get('/sessions/:id', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -148,7 +151,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -175,7 +178,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -218,7 +221,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: false, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: false, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -254,7 +257,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -292,7 +295,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -320,7 +323,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -341,7 +344,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -365,7 +368,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -413,7 +416,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -428,7 +431,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -469,7 +472,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -503,7 +506,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -545,7 +548,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -581,7 +584,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -615,7 +618,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -651,7 +654,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -681,7 +684,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -717,12 +720,12 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
      * client uses that as a cache-invalidation token to refetch GET.
      */
 
-    app.get('/sessions/:id/scratchlist/limits', (c) => {
+    app.get('/sessions/:id/scratchlist/limits', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -734,7 +737,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -765,7 +768,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -774,7 +777,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Missing attachmentId' }, 400)
         }
 
-        const entries = engine.listScratchlistEntries(sessionResult.sessionId)
+        const entries = await engine.listScratchlistEntries(sessionResult.sessionId)
         const match = entries
             .flatMap((entry) => entry.attachments)
             .find((att) => att.id === attachmentId)
@@ -795,16 +798,16 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         })
     })
 
-    app.get('/sessions/:id/scratchlist', (c) => {
+    app.get('/sessions/:id/scratchlist', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
-        const entries = engine.listScratchlistEntries(sessionResult.sessionId)
+        const entries = await engine.listScratchlistEntries(sessionResult.sessionId)
         return c.json({ entries })
     })
 
@@ -813,7 +816,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -832,7 +835,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // no-op - which is exactly the path the localStorage migration
         // retry uses after a partial failure.
         if (parsed.data.entryId) {
-            const existing = engine.getScratchlistEntry(
+            const existing = await engine.getScratchlistEntry(
                 sessionResult.sessionId,
                 parsed.data.entryId
             )
@@ -846,7 +849,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         // bound. Bypassing the optimistic add path on the web client
         // (e.g. direct REST call) hits this guard. Bumped only with the
         // shared SCRATCHLIST_MAX_ENTRIES constant.
-        const currentCount = engine.countScratchlistEntries(sessionResult.sessionId)
+        const currentCount = await engine.countScratchlistEntries(sessionResult.sessionId)
         if (currentCount >= SCRATCHLIST_MAX_ENTRIES) {
             return c.json({
                 error: `Scratchlist is at its ${SCRATCHLIST_MAX_ENTRIES}-entry cap`,
@@ -877,7 +880,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: attachmentValidation.error, code: attachmentValidation.code }, 400)
         }
 
-        const result = engine.createScratchlistEntry(
+        const result = await engine.createScratchlistEntry(
             sessionResult.sessionId,
             parsed.data.text.trim(),
             {
@@ -900,7 +903,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -916,7 +919,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.issues }, 400)
         }
 
-        const existing = engine.getScratchlistEntry(sessionResult.sessionId, entryId)
+        const existing = await engine.getScratchlistEntry(sessionResult.sessionId, entryId)
         if (!existing) {
             return c.json({ error: 'Scratchlist entry not found' }, 404)
         }
@@ -960,7 +963,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: attachmentValidation.error, code: attachmentValidation.code }, 400)
         }
 
-        const updated = engine.updateScratchlistEntry(
+        const updated = await engine.updateScratchlistEntry(
             sessionResult.sessionId,
             entryId,
             {
@@ -973,8 +976,8 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
         if (removedAttachments.length > 0) {
             const remainingIds = new Set(
-                engine
-                    .listScratchlistEntries(sessionResult.sessionId)
+                (await engine
+                    .listScratchlistEntries(sessionResult.sessionId))
                     .flatMap((entry) => entry.attachments.map((att) => att.id))
             )
             const orphaned = removedAttachments.filter((att) => !remainingIds.has(att.id))
@@ -992,7 +995,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1001,7 +1004,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Missing attachmentId' }, 400)
         }
 
-        const entries = engine.listScratchlistEntries(sessionResult.sessionId)
+        const entries = await engine.listScratchlistEntries(sessionResult.sessionId)
         const stillReferenced = entries.some((entry) =>
             entry.attachments.some((att) => att.id === attachmentId)
         )
@@ -1023,12 +1026,12 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         return c.json({ ok: true })
     })
 
-    app.delete('/sessions/:id/scratchlist/:entryId', (c) => {
+    app.delete('/sessions/:id/scratchlist/:entryId', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) {
             return engine
         }
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1036,7 +1039,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!entryId) {
             return c.json({ error: 'Missing entryId' }, 400)
         }
-        const removed = engine.deleteScratchlistEntry(sessionResult.sessionId, entryId)
+        const removed = await engine.deleteScratchlistEntry(sessionResult.sessionId, entryId)
         if (!removed) {
             return c.json({ error: 'Scratchlist entry not found' }, 404)
         }
@@ -1050,7 +1053,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         // Session must exist but doesn't need to be active
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1095,7 +1098,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         // Session must exist but doesn't need to be active
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1120,7 +1123,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1150,7 +1153,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1177,7 +1180,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
     app.get('/sessions/:id/grok-models', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) return sessionResult
         if (sessionResult.session.metadata?.flavor !== 'grok') {
             return c.json({ success: false, error: 'Grok models are only available for Grok sessions' }, 400)
@@ -1195,7 +1198,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
     app.get('/sessions/:id/grok-reasoning-effort-options', async (c) => {
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) return sessionResult
         if (sessionResult.session.metadata?.flavor !== 'grok') {
             return c.json({ success: false, error: 'Grok effort options are only available for Grok sessions' }, 400)
@@ -1216,7 +1219,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -1248,7 +1251,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true })
         if (sessionResult instanceof Response) return sessionResult
 
         const flavor = sessionResult.session.metadata?.flavor ?? 'claude'

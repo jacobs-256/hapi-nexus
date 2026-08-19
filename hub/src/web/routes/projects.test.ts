@@ -41,7 +41,7 @@ function createMachine(store: Store, overrides?: Partial<Machine>): Machine {
 function createApp(store: Store, userId: number, machines: Machine[]) {
     const machinesById = new Map(machines.map((machine) => [machine.id, machine]))
     const engine = {
-        resolveMachineAccessForUser: (machineId: string, namespace: string, actorUserId: number) => {
+        resolveMachineAccessForUser: async (machineId: string, namespace: string, actorUserId: number) => {
             const machine = machinesById.get(machineId)
             if (!machine) return { ok: false as const, reason: 'not-found' as const }
             if (machine.namespace !== namespace || machine.ownerUserId !== actorUserId) {

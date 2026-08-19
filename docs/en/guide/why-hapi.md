@@ -60,7 +60,7 @@ Each deployment runs its own hub. That hub can host local username/password user
 
 - **Self-hosted** (own server / Cloudflare Tunnel / Tailscale) — You control the full network path, no E2EE needed
 - **Public relay** (`hapi-server hub --relay`) — E2E encrypted via tunwg (WireGuard + TLS); the relay only forwards opaque packets
-- **Single embedded database** — SQLite, no external services
+- **SQLite by default** — optional Elasticsearch conversation storage and MySQL core storage for larger private deployments
 - **One-command deployment** — Single binary, zero config
 
 #### Mode 1: Self-Hosted (own server or tunnel)
@@ -165,7 +165,7 @@ The relay server only forwards encrypted packets — it cannot read your data.
 │   Single Binary (everything bundled)                              │
 │                                                                   │
 │   ┌─────────────────────────────────────────────────────────────┐ │
-│   │  CLI + Hub + Web App + Database (SQLite, embedded)          │ │
+│   │  CLI + Hub + Web App + Storage (SQLite / ES / MySQL)       │ │
 │   └─────────────────────────────────────────────────────────────┘ │
 │                                                                   │
 │   Requires: One command to run                                    │
@@ -209,7 +209,7 @@ Goal: Self-hosted private deployment
          │         └──► No application-layer E2EE needed
          │
          ├──► Each deployment has its own hub
-         │         └──► Local users and projects share one private SQLite-backed deployment
+         │         └──► Local users and projects share one private deployment with configurable storage
          │
          ├──► Self-hosted access (own server/tunnel)
          │         └──► You control the full path — HTTPS sufficient
@@ -227,7 +227,7 @@ Goal: Self-hosted private deployment
 | **Architecture** | Centralized cloud server | Decentralized private hubs |
 | **Server's role** | Stores encrypted data | Relay only forwards (or none if self-hosted) |
 | **Data location** | Server (encrypted, zero-knowledge) | Local (plaintext, your machine) |
-| **Deployment** | Multiple services (PostgreSQL, Redis, Node.js) | Single binary (embedded SQLite) |
+| **Deployment** | Multiple services (PostgreSQL, Redis, Node.js) | Single binary by default; optional MySQL/Elasticsearch for scale |
 | **Encryption** | Application-layer E2EE (client-side) | WireGuard + TLS (relay) or HTTPS (self-hosted) |
 | **Scaling** | Horizontal (multi-user on shared server) | Per-deployment (private hub with local users/projects) |
 | **Target user** | Managed cloud service users | Self-hosters and teams who want data sovereignty |
@@ -238,6 +238,6 @@ The architectural differences stem from a centralized vs decentralized design:
 
 - **Happy**: Centralized cloud server that stores your encrypted data. The server never sees plaintext (zero-knowledge), but it does hold your data. This requires application-layer E2EE, key management, and distributed infrastructure (PostgreSQL, Redis, scaling).
 
-- **HAPI**: Decentralized private hubs. Your data stays on your machine or private server, even when multiple local users collaborate through projects. For remote access, you can self-host (own server or tunnel — no E2EE needed since you control the path) or use the public relay (WireGuard + TLS via tunwg — the relay only forwards encrypted packets it cannot read). This achieves one-command deployment with zero external dependencies.
+- **HAPI**: Decentralized private hubs. Your data stays on your machine or private server, even when multiple local users collaborate through projects. For remote access, you can self-host (own server or tunnel — no E2EE needed since you control the path) or use the public relay (WireGuard + TLS via tunwg — the relay only forwards encrypted packets it cannot read). This keeps one-command deployment with zero external dependencies by default, while allowing MySQL/Elasticsearch when a private deployment needs them.
 
 The core tradeoff: Happy solves the "untrusted server" problem with sophisticated encryption. HAPI avoids the problem entirely by keeping your data on your own machine.

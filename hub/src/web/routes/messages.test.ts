@@ -12,6 +12,7 @@ import type { WebAppEnv } from '../middleware/auth'
 import { createMessagesRoutes } from './messages'
 
 type GetMessagesPage = SyncEngine['getMessagesPage']
+type GetMessagesPageAsync = SyncEngine['getMessagesPageAsync']
 
 // TS note: engine is cast to unknown→SyncEngine so test helpers don't need to
 // satisfy the full SyncEngine shape (only the subset the route under test uses).
@@ -68,8 +69,10 @@ function createApp(opts: {
         }),
         sendMessage,
         getQueuedState,
+        getQueuedStateAsync: async (sessionId: string, localIds: string[]) => getQueuedState(sessionId, localIds),
         cancelQueuedMessage: async () => ({ status: 'cancelled' }),
         getMessagesPage,
+        getMessagesPageAsync: (async (sessionId: string, options: Parameters<GetMessagesPage>[1]) => getMessagesPage(sessionId, options)) as GetMessagesPageAsync,
     } as unknown as SyncEngine
 
     const app = new Hono<WebAppEnv>()

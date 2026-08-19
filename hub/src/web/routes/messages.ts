@@ -13,7 +13,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -34,13 +34,14 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const until = parsed.data.untilAt !== undefined && parsed.data.untilSeq !== undefined
             ? { at: parsed.data.untilAt, seq: parsed.data.untilSeq }
             : null
-        return c.json(engine.getMessagesPage(sessionId, {
+        const page = await engine.getMessagesPageAsync(sessionId, {
             limit,
             before,
             after,
             until,
             epoch: parsed.data.epoch ?? null
-        }))
+        })
+        return c.json(page)
     })
 
     app.delete('/sessions/:id/messages/:messageId', async (c) => {
@@ -49,7 +50,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -66,7 +67,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine)
+        const sessionResult = await requireSessionFromParam(c, engine)
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -82,7 +83,8 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (localIds.length === 0) {
             return c.json({ queuedLocalIds: [], invokedLocalMessages: [] })
         }
-        return c.json(engine.getQueuedState(sessionId, localIds))
+        const queuedState = await engine.getQueuedStateAsync(sessionId, localIds)
+        return c.json(queuedState)
     })
 
     app.post('/sessions/:id/messages', async (c) => {
@@ -91,7 +93,7 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }

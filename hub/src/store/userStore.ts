@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 
+import type { UserStorePort } from './ports/coreStores'
 import type { StoredUser } from './types'
 import {
     addUser,
@@ -22,7 +23,7 @@ import {
     type UpdateUserInput
 } from './users'
 
-export class UserStore {
+export class UserStore implements UserStorePort {
     private readonly db: Database
 
     constructor(db: Database, private readonly onChange?: () => void) {

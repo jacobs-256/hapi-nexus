@@ -60,7 +60,7 @@ Happy 的中心化设计需要：
 
 - **自托管**（自己的服务器 / Cloudflare Tunnel / Tailscale）- 你控制完整网络路径，不需要额外 E2EE
 - **公共 relay**（`hapi-server hub --relay`）- 通过 tunwg（WireGuard + TLS）端到端加密；relay 只转发不透明数据包
-- **单个嵌入式数据库** - SQLite，无外部服务
+- **默认 SQLite** - 大型私有部署可选 Elasticsearch 对话存储和 MySQL 核心数据存储
 - **一条命令部署** - 单个二进制，零配置
 
 #### 模式 1：自托管（自己的服务器或隧道）
@@ -165,7 +165,7 @@ Relay 服务器只转发加密数据包，无法读取你的数据。
 │   Single Binary (everything bundled)                              │
 │                                                                   │
 │   ┌─────────────────────────────────────────────────────────────┐ │
-│   │  CLI + Hub + Web App + Database (SQLite, embedded)          │ │
+│   │  CLI + Hub + Web App + Storage（SQLite / ES / MySQL）      │ │
 │   └─────────────────────────────────────────────────────────────┘ │
 │                                                                   │
 │   Requires: One command to run                                    │
@@ -209,7 +209,7 @@ Goal: Self-hosted private deployment
          │         └──► No application-layer E2EE needed
          │
          ├──► Each deployment has its own hub
-         │         └──► Local users and projects share one private SQLite-backed deployment
+         │         └──► 本地用户和项目共享一个可配置存储的私有部署
          │
          ├──► Self-hosted access (own server/tunnel)
          │         └──► You control the full path — HTTPS sufficient
@@ -227,7 +227,7 @@ Goal: Self-hosted private deployment
 | **架构** | 中心化云服务器 | 去中心化私有 hub |
 | **服务器角色** | 保存加密数据 | 只转发 relay（自托管时可没有） |
 | **数据位置** | 服务器（加密，零知识） | 本地（明文，你的机器） |
-| **部署** | 多服务（PostgreSQL、Redis、Node.js） | 单二进制（嵌入式 SQLite） |
+| **部署** | 多服务（PostgreSQL、Redis、Node.js） | 默认单二进制；需要扩展时可选 MySQL/Elasticsearch |
 | **加密** | 应用层 E2EE（客户端侧） | Relay 使用 WireGuard + TLS；自托管使用 HTTPS |
 | **扩展** | 横向扩展（共享服务器多用户） | 按部署扩展（私有 hub + 本地用户/项目） |
 | **目标用户** | 托管云服务用户 | 想要数据主权的自托管用户和团队 |
@@ -238,6 +238,6 @@ Goal: Self-hosted private deployment
 
 - **Happy**：中心化云服务器保存你的加密数据。服务器看不到明文（zero-knowledge），但持有你的数据。这需要应用层 E2EE、密钥管理和分布式基础设施（PostgreSQL、Redis、扩展）。
 
-- **HAPI**：去中心化私有 hub。你的数据留在自己的机器或私有服务器上，即使多个本地用户通过项目协作也是如此。远程访问时，你可以自托管（自己的服务器或隧道；因为你控制路径，所以不需要 E2EE），也可以使用公共 relay（WireGuard + TLS via tunwg；relay 只转发不可读的加密包）。这实现了一条命令部署且零外部依赖。
+- **HAPI**：去中心化私有 hub。你的数据留在自己的机器或私有服务器上，即使多个本地用户通过项目协作也是如此。远程访问时，你可以自托管（自己的服务器或隧道；因为你控制路径，所以不需要 E2EE），也可以使用公共 relay（WireGuard + TLS via tunwg；relay 只转发不可读的加密包）。默认仍然是一条命令、零外部依赖；当私有部署需要扩展时，也可以启用 MySQL/Elasticsearch。
 
 核心权衡：Happy 用复杂加密解决“不可信服务器”问题；HAPI 通过让数据留在你自己的机器上，直接避开这个问题。

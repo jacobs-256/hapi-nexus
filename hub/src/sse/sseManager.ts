@@ -16,7 +16,7 @@ type SSEConnection = SSESubscription & {
     sendHeartbeat: () => void | Promise<void>
 }
 
-type UserEventFilter = (userId: number, namespace: string, event: SyncEvent) => boolean
+type UserEventFilter = (userId: number, namespace: string, event: SyncEvent) => boolean | Promise<boolean>
 
 export class SSEManager {
     private readonly connections: Map<string, SSEConnection> = new Map()
@@ -90,7 +90,7 @@ export class SSEManager {
             if (!this.visibilityTracker.isVisibleConnection(connection.id)) {
                 continue
             }
-            if (connection.userId !== null && this.userEventFilter && !this.userEventFilter(connection.userId, namespace, event)) {
+            if (connection.userId !== null && this.userEventFilter && !await this.userEventFilter(connection.userId, namespace, event)) {
                 continue
             }
 
@@ -120,10 +120,19 @@ export class SSEManager {
 
     broadcast(event: SyncEvent): void {
         for (const connection of this.connections.values()) {
-            if (!this.shouldSend(connection, event)) {
+            const shouldSend = this.shouldSend(connection, event)
+            if (shouldSend instanceof Promise) {
+                void shouldSend.then((allowed) => {
+                    if (!allowed) return
+                    return connection.send(event)
+                }).catch(() => {
+                    this.unsubscribe(connection.id)
+                })
                 continue
             }
-
+            if (!shouldSend) {
+                continue
+            }
             void Promise.resolve(connection.send(event)).catch(() => {
                 this.unsubscribe(connection.id)
             })
@@ -161,7 +170,7 @@ export class SSEManager {
         this.heartbeatTimer = null
     }
 
-    private shouldSend(connection: SSEConnection, event: SyncEvent): boolean {
+    private shouldSend(connection: SSEConnection, event: SyncEvent): boolean | Promise<boolean> {
         if (event.type !== 'connection-changed' && event.type !== 'app-settings-updated') {
             const eventNamespace = event.namespace
             if (!eventNamespace || eventNamespace !== connection.namespace) {
@@ -169,9 +178,18 @@ export class SSEManager {
             }
         }
 
-        if (connection.userId !== null && this.userEventFilter && !this.userEventFilter(connection.userId, connection.namespace, event)) {
-            return false
+        if (connection.userId !== null && this.userEventFilter) {
+            const allowed = this.userEventFilter(connection.userId, connection.namespace, event)
+            if (allowed instanceof Promise) {
+                return allowed.then((value) => value ? this.shouldSendSubscription(connection, event) : false)
+            }
+            if (!allowed) return false
         }
+
+        return this.shouldSendSubscription(connection, event)
+    }
+
+    private shouldSendSubscription(connection: SSEConnection, event: SyncEvent): boolean {
 
         if (event.type === 'app-settings-updated') {
             return connection.all

@@ -14,17 +14,25 @@ export function requireSyncEngine(
     return engine
 }
 
-export function requireSession(
+export async function requireSession(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     sessionId: string,
     options?: { requireActive?: boolean; role?: ProjectRole }
-): { sessionId: string; session: Session } | Response {
+): Promise<{ sessionId: string; session: Session } | Response> {
     const namespace = c.get('namespace')
     const userId = c.get('userId')
+    const asyncEngine = engine as SyncEngine & {
+        resolveSessionAccessAsync?: SyncEngine['resolveSessionAccessAsync']
+        resolveSessionAccessForUserAsync?: SyncEngine['resolveSessionAccessForUserAsync']
+    }
     const access = typeof userId === 'number'
-        ? engine.resolveSessionAccessForUser(sessionId, namespace, userId, options?.role ?? 'viewer')
-        : engine.resolveSessionAccess(sessionId, namespace)
+        ? asyncEngine.resolveSessionAccessForUserAsync
+            ? await asyncEngine.resolveSessionAccessForUserAsync(sessionId, namespace, userId, options?.role ?? 'viewer')
+            : engine.resolveSessionAccessForUser(sessionId, namespace, userId, options?.role ?? 'viewer')
+        : asyncEngine.resolveSessionAccessAsync
+            ? await asyncEngine.resolveSessionAccessAsync(sessionId, namespace)
+            : engine.resolveSessionAccess(sessionId, namespace)
     if (!access.ok) {
         const status = access.reason === 'access-denied' ? 403 : 404
         const error = access.reason === 'access-denied' ? 'Session access denied' : 'Session not found'
@@ -40,14 +48,14 @@ export function requireSession(
     return { sessionId: access.sessionId, session: access.session }
 }
 
-export function requireSessionFromParam(
+export async function requireSessionFromParam(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     options?: { paramName?: string; requireActive?: boolean; role?: ProjectRole }
-): { sessionId: string; session: Session } | Response {
+): Promise<{ sessionId: string; session: Session } | Response> {
     const paramName = options?.paramName ?? 'id'
     const sessionId = c.req.param(paramName)
-    const result = requireSession(c, engine, sessionId, {
+    const result = await requireSession(c, engine, sessionId, {
         requireActive: options?.requireActive,
         role: options?.role
     })
@@ -57,16 +65,16 @@ export function requireSessionFromParam(
     return result
 }
 
-export function requireMachine(
+export async function requireMachine(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     machineId: string,
     options?: { role?: ProjectRole; ownerOnly?: boolean }
-): Machine | Response {
+): Promise<Machine | Response> {
     const namespace = c.get('namespace')
     const userId = c.get('userId')
     if (typeof userId === 'number') {
-        const access = engine.resolveMachineAccessForUser(machineId, namespace, userId, options?.role ?? 'viewer')
+        const access = await engine.resolveMachineAccessForUser(machineId, namespace, userId, options?.role ?? 'viewer')
         if (!access.ok) {
             const status = access.reason === 'access-denied' ? 403 : 404
             const error = access.reason === 'access-denied' ? 'Machine access denied' : 'Machine not found'

@@ -52,7 +52,7 @@ export function createAuthMiddleware(jwtSecret: Uint8Array, store?: Store): Midd
                 }
                 authPlatform = parsed.data.plt ?? (isLegacyOwnerToken ? 'owner' : 'local')
                 if (!isOwnerToken) {
-                    const user = store.users.getUserById(parsed.data.uid, parsed.data.ns)
+                    const user = await store.users.getUserById(parsed.data.uid, parsed.data.ns)
                     if (!user || user.disabledAt !== null) {
                         return c.json({ error: 'Account disabled' }, 401)
                     }

@@ -93,13 +93,13 @@ async function runCodexResumeScenario(
         'default',
         'gpt-5'
     )
-    engine.getOrCreateMachine(
+    await engine.getOrCreateMachine(
         'machine-1',
         { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
         null,
         'default'
     )
-    engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+    await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
     for (const message of messages) {
         store.messages.addMessage(session.id, message)
@@ -350,13 +350,13 @@ describe('session model', () => {
         )
 
         try {
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-cursor',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-cursor', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-cursor', time: Date.now() })
 
             let capturedModel: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -571,7 +571,7 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.handleSessionAlive({ sid: session.id, time: Date.now() })
+            await engine.handleSessionAlive({ sid: session.id, time: Date.now() })
             ;(engine as any).rpcGateway.requestSessionConfig = async () => ({ applied: {} })
 
             await expect(
@@ -612,7 +612,7 @@ describe('session model', () => {
         }
     })
 
-    it('records CLI user text activity but stores and broadcasts ready without recording activity', () => {
+    it('records CLI user text activity but stores and broadcasts ready without recording activity', async () => {
         const store = new Store(':memory:')
         const events: SyncEvent[] = []
         const cache = new SessionCache(store, createPublisher(events))
@@ -622,18 +622,18 @@ describe('session model', () => {
             null,
             'default'
         )
-        const handlers = new Map<string, (payload: unknown) => void>()
+        const handlers = new Map<string, (payload: unknown) => unknown>()
         const activity: Array<{ sessionId: string; updatedAt: number }> = []
         const roomEvents: unknown[] = []
 
         registerSessionHandlers({
-            on: (event: string, handler: (payload: unknown) => void) => {
+            on: (event: string, handler: (payload: unknown) => unknown) => {
                 handlers.set(event, handler)
             },
             to: () => ({ emit: (_event: string, update: unknown) => roomEvents.push(update) })
         } as never, {
             store,
-            resolveSessionAccess: (sessionId) => {
+            resolveSessionAccess: async (sessionId) => {
                 const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                 return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
             },
@@ -643,11 +643,11 @@ describe('session model', () => {
             }
         })
 
-        handlers.get('message')?.({
+        await handlers.get('message')?.({
             sid: session.id,
             message: JSON.stringify({ role: 'user', content: { type: 'text', text: 'hello' } })
         })
-        handlers.get('message')?.({
+        await handlers.get('message')?.({
             sid: session.id,
             message: JSON.stringify({
                 role: 'agent',
@@ -666,7 +666,7 @@ describe('session model', () => {
         expect(activity[0].updatedAt).toBe(messages[0]?.createdAt)
     })
 
-    it('records activity only for the first messages-consumed transition while retaining duplicate acknowledgements', () => {
+    it('records activity only for the first messages-consumed transition while retaining duplicate acknowledgements', async () => {
         const originalDateNow = Date.now
         let now = 1_000
         Date.now = () => now
@@ -685,18 +685,18 @@ describe('session model', () => {
                 { role: 'user', content: { type: 'text', text: 'hello' } },
                 'local-activity'
             )
-            const handlers = new Map<string, (payload: unknown) => void>()
+            const handlers = new Map<string, (payload: unknown) => unknown>()
             const activity: Array<{ sessionId: string; updatedAt: number }> = []
             const webEvents: SyncEvent[] = []
 
             registerSessionHandlers({
-                on: (event: string, handler: (payload: unknown) => void) => {
+                on: (event: string, handler: (payload: unknown) => unknown) => {
                     handlers.set(event, handler)
                 },
                 to: () => ({ emit() {} })
             } as never, {
                 store,
-                resolveSessionAccess: (sessionId) => {
+                resolveSessionAccess: async (sessionId) => {
                     const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                     return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
                 },
@@ -705,15 +705,15 @@ describe('session model', () => {
                     activity.push({ sessionId, updatedAt })
                     cache.recordSessionActivity(sessionId, updatedAt)
                 },
-                onWebappEvent: (event) => webEvents.push(event)
+                onWebappEvent: (event) => { webEvents.push(event) }
             })
 
             now = 2_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-activity'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-activity'] })
             now = 3_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-activity'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-activity'] })
             now = 4_000
-            handlers.get('message')?.({
+            await handlers.get('message')?.({
                 sid: session.id,
                 message: JSON.stringify({
                     role: 'agent',
@@ -735,7 +735,7 @@ describe('session model', () => {
         }
     })
 
-    it('replays the persisted invocation timestamp after the first activity callback fails', () => {
+    it('replays the persisted invocation timestamp after the first activity callback fails', async () => {
         const originalDateNow = Date.now
         const originalConsoleError = console.error
         let now = 1_000
@@ -754,19 +754,19 @@ describe('session model', () => {
                 { role: 'user', content: { type: 'text', text: 'hello' } },
                 'local-replay'
             )
-            const handlers = new Map<string, (payload: unknown) => void>()
+            const handlers = new Map<string, (payload: unknown) => unknown>()
             const activity: Array<{ sessionId: string; updatedAt: number }> = []
             const webEvents: SyncEvent[] = []
             let failActivity = true
 
             registerSessionHandlers({
-                on: (event: string, handler: (payload: unknown) => void) => {
+                on: (event: string, handler: (payload: unknown) => unknown) => {
                     handlers.set(event, handler)
                 },
                 to: () => ({ emit() {} })
             } as never, {
                 store,
-                resolveSessionAccess: (sessionId) => {
+                resolveSessionAccess: async (sessionId) => {
                     const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                     return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
                 },
@@ -775,14 +775,14 @@ describe('session model', () => {
                     if (failActivity) throw new Error('activity callback failed')
                     activity.push({ sessionId, updatedAt })
                 },
-                onWebappEvent: (event) => webEvents.push(event)
+                onWebappEvent: (event) => { webEvents.push(event) }
             })
 
             now = 2_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-replay'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-replay'] })
             failActivity = false
             now = 3_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-replay'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-replay'] })
 
             expect(store.messages.getLocalMessageStates(session.id, ['local-replay']))
                 .toEqual([{ localId: 'local-replay', invokedAt: 2_000 }])
@@ -796,7 +796,7 @@ describe('session model', () => {
         }
     })
 
-    it('uses the newest persisted invocation timestamp for a partial messages-consumed batch', () => {
+    it('uses the newest persisted invocation timestamp for a partial messages-consumed batch', async () => {
         const originalDateNow = Date.now
         let now = 1_000
         Date.now = () => now
@@ -811,28 +811,28 @@ describe('session model', () => {
             store.messages.addMessage(session.id, { role: 'user', content: { type: 'text', text: 'old' } }, 'local-old')
             store.messages.addMessage(session.id, { role: 'user', content: { type: 'text', text: 'fresh' } }, 'local-fresh')
             store.messages.markMessagesInvoked(session.id, ['local-old'], 1_500)
-            const handlers = new Map<string, (payload: unknown) => void>()
+            const handlers = new Map<string, (payload: unknown) => unknown>()
             const activity: Array<{ sessionId: string; updatedAt: number }> = []
             const webEvents: SyncEvent[] = []
 
             registerSessionHandlers({
-                on: (event: string, handler: (payload: unknown) => void) => {
+                on: (event: string, handler: (payload: unknown) => unknown) => {
                     handlers.set(event, handler)
                 },
                 to: () => ({ emit() {} })
             } as never, {
                 store,
-                resolveSessionAccess: (sessionId) => {
+                resolveSessionAccess: async (sessionId) => {
                     const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                     return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
                 },
                 emitAccessError: () => {},
                 onSessionActivity: (sessionId, updatedAt) => activity.push({ sessionId, updatedAt }),
-                onWebappEvent: (event) => webEvents.push(event)
+                onWebappEvent: (event) => { webEvents.push(event) }
             })
 
             now = 2_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-old', 'local-fresh'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-old', 'local-fresh'] })
 
             expect(store.messages.getLocalMessageStates(session.id, ['local-old', 'local-fresh']))
                 .toEqual([
@@ -847,7 +847,7 @@ describe('session model', () => {
         }
     })
 
-    it('keeps the batch ACK timestamp for heterogeneous sibling-preinvoked and unknown IDs', () => {
+    it('keeps the batch ACK timestamp for heterogeneous sibling-preinvoked and unknown IDs', async () => {
         const originalDateNow = Date.now
         let now = 1_000
         Date.now = () => now
@@ -873,18 +873,18 @@ describe('session model', () => {
             )
             store.messages.markMessagesInvoked(session.id, ['local-sibling-preinvoked'], 1_500)
             store.messages.markMessagesInvoked(session.id, ['local-sibling-preinvoked-newer'], 1_800)
-            const handlers = new Map<string, (payload: unknown) => void>()
+            const handlers = new Map<string, (payload: unknown) => unknown>()
             const activity: Array<{ sessionId: string; updatedAt: number }> = []
             const webEvents: SyncEvent[] = []
 
             registerSessionHandlers({
-                on: (event: string, handler: (payload: unknown) => void) => {
+                on: (event: string, handler: (payload: unknown) => unknown) => {
                     handlers.set(event, handler)
                 },
                 to: () => ({ emit() {} })
             } as never, {
                 store,
-                resolveSessionAccess: (sessionId) => {
+                resolveSessionAccess: async (sessionId) => {
                     const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                     return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
                 },
@@ -893,11 +893,11 @@ describe('session model', () => {
                     activity.push({ sessionId, updatedAt })
                     cache.recordSessionActivity(sessionId, updatedAt)
                 },
-                onWebappEvent: (event) => webEvents.push(event)
+                onWebappEvent: (event) => { webEvents.push(event) }
             })
 
             now = 2_000
-            handlers.get('messages-consumed')?.({
+            await handlers.get('messages-consumed')?.({
                 sid: session.id,
                 localIds: ['local-sibling-preinvoked', 'local-sibling-preinvoked-newer', 'local-unknown']
             })
@@ -919,7 +919,7 @@ describe('session model', () => {
         }
     })
 
-    it('keeps the ACK timestamp for messages-consumed SSE when local IDs are unknown', () => {
+    it('keeps the ACK timestamp for messages-consumed SSE when local IDs are unknown', async () => {
         const originalDateNow = Date.now
         let now = 1_000
         Date.now = () => now
@@ -931,26 +931,26 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            const handlers = new Map<string, (payload: unknown) => void>()
+            const handlers = new Map<string, (payload: unknown) => unknown>()
             const webEvents: SyncEvent[] = []
 
             registerSessionHandlers({
-                on: (event: string, handler: (payload: unknown) => void) => {
+                on: (event: string, handler: (payload: unknown) => unknown) => {
                     handlers.set(event, handler)
                 },
                 to: () => ({ emit() {} })
             } as never, {
                 store,
-                resolveSessionAccess: (sessionId) => {
+                resolveSessionAccess: async (sessionId) => {
                     const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                     return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
                 },
                 emitAccessError: () => {},
-                onWebappEvent: (event) => webEvents.push(event)
+                onWebappEvent: (event) => { webEvents.push(event) }
             })
 
             now = 2_000
-            handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-unknown'] })
+            await handlers.get('messages-consumed')?.({ sid: session.id, localIds: ['local-unknown'] })
 
             expect(webEvents.filter((event) => event.type === 'messages-consumed').map((event) => event.invokedAt))
                 .toEqual([2_000])
@@ -959,7 +959,7 @@ describe('session model', () => {
         }
     })
 
-    it('does not report session activity for CLI tool messages', () => {
+    it('does not report session activity for CLI tool messages', async () => {
         const store = new Store(':memory:')
         const events: SyncEvent[] = []
         const cache = new SessionCache(store, createPublisher(events))
@@ -969,17 +969,17 @@ describe('session model', () => {
             null,
             'default'
         )
-        const handlers = new Map<string, (payload: unknown) => void>()
+        const handlers = new Map<string, (payload: unknown) => unknown>()
         const activity: Array<{ sessionId: string; updatedAt: number }> = []
 
         registerSessionHandlers({
-            on: (event: string, handler: (payload: unknown) => void) => {
+            on: (event: string, handler: (payload: unknown) => unknown) => {
                 handlers.set(event, handler)
             },
             to: () => ({ emit() {} })
         } as never, {
             store,
-            resolveSessionAccess: (sessionId) => {
+            resolveSessionAccess: async (sessionId) => {
                 const stored = store.sessions.getSessionByNamespace(sessionId, 'default')
                 return stored ? { ok: true, value: stored } : { ok: false, reason: 'not-found' }
             },
@@ -989,7 +989,7 @@ describe('session model', () => {
             }
         })
 
-        handlers.get('message')?.({
+        await handlers.get('message')?.({
             sid: session.id,
             message: JSON.stringify({
                 role: 'agent',
@@ -1004,7 +1004,7 @@ describe('session model', () => {
                 }
             })
         })
-        handlers.get('message')?.({
+        await handlers.get('message')?.({
             sid: session.id,
             message: JSON.stringify({
                 role: 'agent',
@@ -1045,13 +1045,13 @@ describe('session model', () => {
                 'default',
                 'gpt-5.4'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedModel: string | undefined
             let capturedModelReasoningEffort: string | undefined
@@ -1111,13 +1111,13 @@ describe('session model', () => {
                 undefined,
                 'xhigh'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedModelReasoningEffort: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1165,13 +1165,13 @@ describe('session model', () => {
                 'default',
                 'gpt-5.4'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             ;(engine as any).rpcGateway.spawnSession = async () => ({ type: 'success', sessionId: session.id })
             ;(engine as any).waitForSessionActive = async () => true
@@ -1180,7 +1180,7 @@ describe('session model', () => {
 
             expect(result).toEqual({ type: 'success', sessionId: session.id })
             expect(engine.getSession(session.id)?.active).toBe(true)
-            // 中文注释：active=true 是运行时状态，不能跨 Hub 重启持久化；否则旧会话会在重启后假在线。
+            // active=true is runtime state and must not persist across hub restarts, otherwise old sessions appear falsely online.
             expect(store.sessions.getSession(session.id)?.active).toBe(false)
             expect(events.some((event) => {
                 const record = event as { type?: string; sessionId?: string; data?: { active?: boolean } }
@@ -1216,13 +1216,13 @@ describe('session model', () => {
                 'default',
                 'sonnet'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedResumeSessionId: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1282,13 +1282,13 @@ describe('session model', () => {
                     }
                 }
             })
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedResumeSessionId: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1362,13 +1362,13 @@ describe('session model', () => {
                     }
                 }
             })
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedResumeSessionId: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1652,13 +1652,13 @@ describe('session model', () => {
                 'default',
                 'gpt-5'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedPermissionMode: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1711,20 +1711,20 @@ describe('session model', () => {
                 'default',
                 'sonnet'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
-            engine.handleSessionAlive({
+            await engine.handleSessionAlive({
                 sid: session.id,
                 permissionMode: 'bypassPermissions',
                 time: Date.now()
             })
-            engine.handleSessionEnd({ sid: session.id, time: Date.now() })
+            await engine.handleSessionEnd({ sid: session.id, time: Date.now() })
 
             let capturedPermissionMode: string | undefined
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -1777,19 +1777,19 @@ describe('session model', () => {
                 'default',
                 'gpt-5.4'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionAlive({
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionAlive({
                 sid: oldSession.id,
                 permissionMode: 'yolo',
                 time: Date.now()
             })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             const spawnedSession = engine.getOrCreateSession(
                 'session-resume-config-race-spawned',
@@ -1826,7 +1826,7 @@ describe('session model', () => {
                 _effort?: string,
                 permissionMode?: string
             ) => {
-                engine.handleSessionAlive({
+                await engine.handleSessionAlive({
                     sid: spawnedSessionId,
                     time: Date.now(),
                     permissionMode: permissionMode as never
@@ -1874,14 +1874,14 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             let capturedExistingSessionId: string | undefined
             let waitForSessionReadyCalls = 0
@@ -1909,7 +1909,7 @@ describe('session model', () => {
                 existingSessionId?: string
             ) => {
                 capturedExistingSessionId = existingSessionId
-                engine.handleSessionAlive({ sid: oldSession.id, time: Date.now() })
+                await engine.handleSessionAlive({ sid: oldSession.id, time: Date.now() })
                 return { type: 'success', sessionId: oldSession.id }
             }
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => ({ onDisk: true, store: 'acp' })
@@ -1954,14 +1954,14 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             let mergeCalls = 0
             const sessionCache = (engine as any).sessionCache
@@ -1987,7 +1987,7 @@ describe('session model', () => {
                 existingSessionId?: string
             ) => {
                 expect(existingSessionId).toBe(oldSession.id)
-                engine.handleSessionAlive({ sid: oldSession.id, time: Date.now() })
+                await engine.handleSessionAlive({ sid: oldSession.id, time: Date.now() })
                 return { type: 'success', sessionId: oldSession.id }
             }
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => ({ onDisk: true, store: 'acp' })
@@ -2026,14 +2026,14 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             const spawnedSession = engine.getOrCreateSession(
                 'cursor-reopen-spawned',
@@ -2059,7 +2059,7 @@ describe('session model', () => {
             }
 
             ;(engine as any).rpcGateway.spawnSession = async () => {
-                engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
+                await engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
                 return { type: 'success', sessionId: spawnedSessionId }
             }
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => ({ onDisk: true, store: 'acp' })
@@ -2125,8 +2125,8 @@ describe('session model', () => {
                 return mergeSessions(oldSessionId, newSessionId, namespace)
             }
 
-            engine.handleSessionAlive({ sid: spawnedSession.id, time: Date.now() })
-            engine.handleSessionEnd({ sid: spawnedSession.id, time: Date.now(), reason: 'error' })
+            await engine.handleSessionAlive({ sid: spawnedSession.id, time: Date.now() })
+            await engine.handleSessionEnd({ sid: spawnedSession.id, time: Date.now(), reason: 'error' })
 
             expect(mergeCalls).toBe(0)
             expect(store.sessions.getSession(oldSession.id)).not.toBeNull()
@@ -2158,14 +2158,14 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             const spawnedSession = engine.getOrCreateSession(
                 'cursor-reopen-spawned-ready',
@@ -2191,8 +2191,8 @@ describe('session model', () => {
             }
 
             ;(engine as any).rpcGateway.spawnSession = async () => {
-                engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
-                engine.handleSessionReady({ sid: spawnedSessionId, time: Date.now() })
+                await engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
+                await engine.handleSessionReady({ sid: spawnedSessionId, time: Date.now() })
                 return { type: 'success', sessionId: spawnedSessionId }
             }
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => ({ onDisk: true, store: 'acp' })
@@ -2231,14 +2231,14 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
-            engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleSessionEnd({ sid: oldSession.id, time: Date.now() })
 
             const spawnedSession = engine.getOrCreateSession(
                 'cursor-legacy-reopen-spawned',
@@ -2261,7 +2261,7 @@ describe('session model', () => {
                 return 'timeout'
             }
             ;(engine as any).rpcGateway.spawnSession = async () => {
-                engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
+                await engine.handleSessionAlive({ sid: spawnedSessionId, time: Date.now() })
                 return { type: 'success', sessionId: spawnedSessionId }
             }
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => ({ onDisk: true, store: 'legacy' })
@@ -2276,7 +2276,7 @@ describe('session model', () => {
         }
     })
 
-    it('resolves a local resume target for a Codex session', () => {
+    it('resolves a local resume target for a Codex session', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2302,7 +2302,7 @@ describe('session model', () => {
                 'xhigh'
             )
 
-            const result = engine.resolveLocalResumeTarget(session.id, 'default')
+            const result = await engine.resolveLocalResumeTarget(session.id, 'default')
 
             expect(result).toEqual({
                 type: 'success',
@@ -2328,7 +2328,7 @@ describe('session model', () => {
         }
     })
 
-    it('resolves a local resume target for a Grok session', () => {
+    it('resolves a local resume target for a Grok session', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2353,7 +2353,7 @@ describe('session model', () => {
                 'low'
             )
 
-            const result = engine.resolveLocalResumeTarget(session.id, 'default')
+            const result = await engine.resolveLocalResumeTarget(session.id, 'default')
 
             expect(result.type).toBe('success')
             if (result.type === 'success') {
@@ -2369,7 +2369,7 @@ describe('session model', () => {
         }
     })
 
-    it('recovers a Claude local resume target from stored messages', () => {
+    it('recovers a Claude local resume target from stored messages', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2400,7 +2400,7 @@ describe('session model', () => {
                 }
             })
 
-            const result = engine.resolveLocalResumeTarget(session.id, 'default')
+            const result = await engine.resolveLocalResumeTarget(session.id, 'default')
 
             expect(result.type).toBe('success')
             if (result.type === 'success') {
@@ -2412,7 +2412,7 @@ describe('session model', () => {
         }
     })
 
-    it('returns resume_unavailable when the local resume target lacks an agent session id', () => {
+    it('returns resume_unavailable when the local resume target lacks an agent session id', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2434,7 +2434,7 @@ describe('session model', () => {
                 'default'
             )
 
-            expect(engine.resolveLocalResumeTarget(session.id, 'default')).toEqual({
+            expect(await engine.resolveLocalResumeTarget(session.id, 'default')).toEqual({
                 type: 'error',
                 message: 'Resume session ID unavailable. Start a new session in this directory, or retry after the agent has initialized.',
                 code: 'resume_unavailable'
@@ -2444,7 +2444,7 @@ describe('session model', () => {
         }
     })
 
-    it('returns resume_unavailable when a cursor session lacks cursorSessionId', () => {
+    it('returns resume_unavailable when a cursor session lacks cursorSessionId', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2466,7 +2466,7 @@ describe('session model', () => {
                 'default'
             )
 
-            expect(engine.resolveLocalResumeTarget(session.id, 'default')).toEqual({
+            expect(await engine.resolveLocalResumeTarget(session.id, 'default')).toEqual({
                 type: 'error',
                 message: 'Resume session ID unavailable. Start a new session in this directory, or retry after the agent has initialized.',
                 code: 'resume_unavailable'
@@ -2500,13 +2500,13 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'cursor-machine',
                 { host: 'cursor-host', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'cursor-machine', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'cursor-machine', time: Date.now() })
 
             let spawnCalled = false
             let probeArgs: unknown[] | null = null
@@ -2563,13 +2563,13 @@ describe('session model', () => {
                 'default'
             )
             for (const machineId of ['other-machine', 'recorded-machine']) {
-                engine.getOrCreateMachine(
+                await engine.getOrCreateMachine(
                     machineId,
                     { host: 'shared-host-label', platform: 'linux', happyCliVersion: '0.1.0' },
                     null,
                     'default'
                 )
-                engine.handleMachineAlive({ machineId, time: Date.now() })
+                await engine.handleMachineAlive({ machineId, time: Date.now() })
             }
 
             let captured: unknown[] | null = null
@@ -2618,19 +2618,19 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'recorded-machine-offline',
                 { host: 'shared-host-label', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'wrong-same-host-machine',
                 { host: 'shared-host-label', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'wrong-same-host-machine', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'wrong-same-host-machine', time: Date.now() })
 
             let probeCalled = false
             ;(engine as any).rpcGateway.getCursorChatStoreStatus = async () => {
@@ -2672,19 +2672,19 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'recorded-machine-offline',
                 { host: 'shared-host-label', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'wrong-same-host-machine',
                 { host: 'shared-host-label', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'wrong-same-host-machine', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'wrong-same-host-machine', time: Date.now() })
 
             let probeCalled = false
             let spawnCalled = false
@@ -2731,13 +2731,13 @@ describe('session model', () => {
                 null,
                 'default'
             )
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 'machine-1',
                 { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                 null,
                 'default'
             )
-            engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+            await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
             let capturedResumeSessionId: string | undefined = 'unset'
             ;(engine as any).rpcGateway.spawnSession = async (
@@ -2765,7 +2765,7 @@ describe('session model', () => {
         }
     })
 
-    it('includes first user message in local resumable sessions', () => {
+    it('includes first user message in local resumable sessions', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2797,7 +2797,7 @@ describe('session model', () => {
                 content: { type: 'text', text: '  Build the picker\nwith search  ' }
             })
 
-            const sessions = engine.listLocalResumableSessions('default', { machineId: 'machine-1' })
+            const sessions = await engine.listLocalResumableSessions('default', { machineId: 'machine-1' })
 
             expect(sessions.find((item) => item.sessionId === session.id)).toMatchObject({
                 name: 'Generated title',
@@ -2808,7 +2808,7 @@ describe('session model', () => {
         }
     })
 
-    it('recovers first user message from stored Claude user output events', () => {
+    it('recovers first user message from stored Claude user output events', async () => {
         const store = new Store(':memory:')
         const engine = new SyncEngine(
             store,
@@ -2845,7 +2845,7 @@ describe('session model', () => {
                 }
             })
 
-            const sessions = engine.listLocalResumableSessions('default', { machineId: 'machine-1' })
+            const sessions = await engine.listLocalResumableSessions('default', { machineId: 'machine-1' })
 
             expect(sessions.find((item) => item.sessionId === session.id)).toMatchObject({
                 name: 'Generated title',
@@ -2878,7 +2878,7 @@ describe('session model', () => {
                 { controlledByUser: false },
                 'default'
             )
-            engine.handleSessionEnd({ sid: session.id, time: Date.now() })
+            await engine.handleSessionEnd({ sid: session.id, time: Date.now() })
 
             await expect(engine.handoffSessionToLocal(session.id, 'default')).resolves.toEqual({
                 type: 'success'
@@ -2910,7 +2910,7 @@ describe('session model', () => {
                 { controlledByUser: true },
                 'default'
             )
-            engine.handleSessionAlive({ sid: session.id, time: Date.now(), mode: 'local' })
+            await engine.handleSessionAlive({ sid: session.id, time: Date.now(), mode: 'local' })
 
             await expect(engine.handoffSessionToLocal(session.id, 'default')).resolves.toEqual({
                 type: 'error',
@@ -3141,7 +3141,7 @@ describe('session model', () => {
                 )
 
                 // Mark s1 as active
-                engine.handleSessionAlive({ sid: s1.id, time: Date.now() })
+                await engine.handleSessionAlive({ sid: s1.id, time: Date.now() })
 
                 // s1 is active, so dedup keeps its live record around
                 const events: SyncEvent[] = []
@@ -3150,7 +3150,7 @@ describe('session model', () => {
                 expect(cache.getSession(s1.id)).toBeDefined()
 
                 // Now s1 ends — handleSessionEnd should trigger dedup retry
-                engine.handleSessionEnd({ sid: s1.id, time: Date.now() })
+                await engine.handleSessionEnd({ sid: s1.id, time: Date.now() })
 
                 // Give the fire-and-forget dedup a tick to complete
                 await new Promise((r) => setTimeout(r, 50))
@@ -3498,13 +3498,13 @@ describe('session model', () => {
                     null,
                     'default'
                 )
-                engine.getOrCreateMachine(
+                await engine.getOrCreateMachine(
                     'machine-1',
                     { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
                     null,
                     'default'
                 )
-                engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
+                await engine.handleMachineAlive({ machineId: 'machine-1', time: Date.now() })
 
                 ;(engine as any).rpcGateway.spawnSession = async () => ({ type: 'success', sessionId: session.id })
                 ;(engine as any).waitForSessionActive = async () => true

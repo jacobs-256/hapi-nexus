@@ -190,10 +190,21 @@ export async function codexLocalLauncher(session: CodexSession): Promise<'switch
             scannerTranscriptPath = transcriptPath;
             return;
         }
-        const replayExistingHistory = session.shouldReplayTranscriptHistory();
+        let replayExistingHistory = session.shouldReplayTranscriptHistory();
+        if (!replayExistingHistory) {
+            try {
+                const hasPersistedMessages = await session.hasAnyPersistedMessages();
+                if (!hasPersistedMessages) {
+                    replayExistingHistory = true;
+                    logger.debug(`[codex-local]: Hub has no persisted messages for ${session.client.sessionId}; replaying transcript history from ${transcriptPath}`);
+                }
+            } catch (error) {
+                logger.debug('[codex-local]: Could not verify persisted message state before transcript replay', error);
+            }
+        }
         const createdScanner = await createCodexSessionScanner({
             transcriptPath,
-            // 中文注释：导入模式下允许 scanner 首次回放 transcript 全量内容，补齐 Codex 客户端里已有但 Hapi 还未看到的消息。
+            // 中文注释：导入模式或 Hub 空历史时允许 scanner 首次回放 transcript 全量内容，补齐 Codex 客户端里已有但 Hapi 还未看到的消息。
             replayExistingHistory,
             onSessionId: (sessionId) => {
                 if (!isPrimarySessionId(sessionId)) {

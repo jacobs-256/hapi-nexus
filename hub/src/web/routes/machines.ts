@@ -24,7 +24,61 @@ function parseBooleanQuery(value: string | undefined): boolean {
     return value === '1' || value === 'true'
 }
 
-function resolveSpawnProject(
+async function getProjectsForUser(engine: SyncEngine, namespace: string, userId: number): Promise<StoredProject[]> {
+    return await Promise.resolve(
+        engine.getProjectsForUserAsync
+            ? engine.getProjectsForUserAsync(namespace, userId)
+            : engine.getProjectsForUser(namespace, userId)
+    )
+}
+
+async function hasProjectRole(engine: SyncEngine, projectId: string, userId: number, role: ProjectRole): Promise<boolean> {
+    return await Promise.resolve(
+        engine.hasProjectRoleAsync
+            ? engine.hasProjectRoleAsync(projectId, userId, role)
+            : engine.hasProjectRole(projectId, userId, role)
+    )
+}
+
+async function getProjectByNamespace(engine: SyncEngine, projectId: string, namespace: string): Promise<StoredProject | null> {
+    return await Promise.resolve(
+        engine.getProjectByNamespaceAsync
+            ? engine.getProjectByNamespaceAsync(projectId, namespace)
+            : engine.getProjectByNamespace(projectId, namespace)
+    )
+}
+
+async function listProjectWorkspaces(engine: SyncEngine, projectId: string) {
+    return await Promise.resolve(
+        engine.listProjectWorkspacesAsync
+            ? engine.listProjectWorkspacesAsync(projectId)
+            : engine.listProjectWorkspaces(projectId)
+    )
+}
+
+async function listProjectWorkspacesForUser(engine: SyncEngine, namespace: string, userId: number, role: ProjectRole) {
+    return await Promise.resolve(
+        engine.listProjectWorkspacesForUserAsync
+            ? engine.listProjectWorkspacesForUserAsync(namespace, userId, role)
+            : engine.listProjectWorkspacesForUser(namespace, userId, role)
+    )
+}
+
+async function addProjectWorkspace(
+    engine: SyncEngine,
+    projectId: string,
+    machineId: string,
+    rootPath: string,
+    createdByUserId: number
+) {
+    return await Promise.resolve(
+        engine.addProjectWorkspaceAsync
+            ? engine.addProjectWorkspaceAsync(projectId, machineId, rootPath, createdByUserId)
+            : engine.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
+    )
+}
+
+async function resolveSpawnProject(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     machine: Machine,
@@ -32,7 +86,7 @@ function resolveSpawnProject(
         projectId?: string
         directory: string
     }
-): { project: StoredProject | null } | Response {
+): Promise<{ project: StoredProject | null } | Response> {
     const userId = c.get('userId')
     const namespace = c.get('namespace')
     if (typeof userId !== 'number') {
@@ -40,20 +94,20 @@ function resolveSpawnProject(
     }
 
     const isMachineOwner = machine.ownerUserId === userId
-    const projects = engine
-        .getProjectsForUser(namespace, userId)
-        .filter((project) => engine.hasProjectRole(project.id, userId, 'editor'))
+    const projects = (await Promise.all((await getProjectsForUser(engine, namespace, userId))
+        .map(async (project) => await hasProjectRole(engine, project.id, userId, 'editor') ? project : null)))
+        .filter((project): project is StoredProject => project !== null)
 
     if (input.projectId) {
-        const project = engine.getProjectByNamespace(input.projectId, namespace)
+        const project = await getProjectByNamespace(engine, input.projectId, namespace)
         if (!project || project.archivedAt !== null) {
             return c.json({ error: 'Project not found' }, 404)
         }
-        if (!engine.hasProjectRole(project.id, userId, 'editor')) {
+        if (!await hasProjectRole(engine, project.id, userId, 'editor')) {
             return c.json({ error: 'Project access denied' }, 403)
         }
         if (!isMachineOwner) {
-            const workspace = findWorkspaceForPath(machine, engine.listProjectWorkspaces(project.id), input.directory)
+            const workspace = findWorkspaceForPath(machine, await listProjectWorkspaces(engine, project.id), input.directory)
             if (!workspace) {
                 return c.json({ error: 'Directory is outside project workspaces' }, 403)
             }
@@ -69,7 +123,7 @@ function resolveSpawnProject(
         return { project }
     }
 
-    const workspaces = engine.listProjectWorkspacesForUser(namespace, userId, 'editor')
+    const workspaces = await listProjectWorkspacesForUser(engine, namespace, userId, 'editor')
     const matchingProjectIds = new Set(
         workspaces
             .filter((workspace) => findWorkspaceForPath(machine, [workspace], input.directory))
@@ -100,15 +154,15 @@ function getMachineInNamespace(
     return machine
 }
 
-function requireMachineForDiscovery(
+async function requireMachineForDiscovery(
     c: Context<WebAppEnv>,
     engine: SyncEngine,
     machineId: string,
     requiredRole: ProjectRole = 'viewer'
-): Machine | Response {
+): Promise<Machine | Response> {
     const sessionId = c.req.query('sessionId')?.trim()
     if (sessionId) {
-        const sessionAccess = requireSession(c, engine, sessionId, { role: requiredRole })
+        const sessionAccess = await requireSession(c, engine, sessionId, { role: requiredRole })
         if (sessionAccess instanceof Response) return sessionAccess
         if (sessionAccess.session.metadata?.machineId !== machineId) {
             return c.json({ error: 'Machine access denied' }, 403)
@@ -124,11 +178,11 @@ function requireMachineForDiscovery(
             return c.json({ error: 'Project access denied' }, 403)
         }
 
-        const project = engine.getProjectByNamespace(projectId, namespace)
+        const project = await getProjectByNamespace(engine, projectId, namespace)
         if (!project || project.archivedAt !== null) {
             return c.json({ error: 'Project not found' }, 404)
         }
-        if (!engine.hasProjectRole(project.id, userId, requiredRole)) {
+        if (!await hasProjectRole(engine, project.id, userId, requiredRole)) {
             return c.json({ error: 'Project access denied' }, 403)
         }
 
@@ -137,19 +191,19 @@ function requireMachineForDiscovery(
         if (machine.ownerUserId === userId) {
             return machine
         }
-        if (!engine.listProjectWorkspaces(project.id).some((workspace) => workspace.machineId === machineId)) {
+        if (!(await listProjectWorkspaces(engine, project.id)).some((workspace) => workspace.machineId === machineId)) {
             return c.json({ error: 'Machine access denied' }, 403)
         }
         return machine
     }
 
-    return requireMachine(c, engine, machineId, { role: requiredRole })
+    return await requireMachine(c, engine, machineId, { role: requiredRole })
 }
 
 export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.get('/machines', (c) => {
+    app.get('/machines', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not connected' }, 503)
@@ -160,8 +214,8 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         const includeOffline = parseBooleanQuery(c.req.query('includeOffline'))
         const machines = typeof userId === 'number'
             ? (includeOffline
-                ? engine.getMachinesForUser(namespace, userId)
-                : engine.getOnlineMachinesForUser(namespace, userId))
+                ? await engine.getMachinesForUser(namespace, userId)
+                : await engine.getOnlineMachinesForUser(namespace, userId))
             : (includeOffline
                 ? engine.getMachinesByNamespace(namespace)
                 : engine.getOnlineMachinesByNamespace(namespace))
@@ -175,7 +229,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId, { ownerOnly: true })
+        const machine = await requireMachine(c, engine, machineId, { ownerOnly: true })
         if (machine instanceof Response) {
             return machine
         }
@@ -213,7 +267,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId, { ownerOnly: true })
+        const machine = await requireMachine(c, engine, machineId, { ownerOnly: true })
         if (machine instanceof Response) {
             return machine
         }
@@ -248,7 +302,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -262,7 +316,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return c.json({ error: 'Directory is outside accessible workspace roots' }, 403)
         }
 
-        const spawnProject = resolveSpawnProject(c, engine, machine, {
+        const spawnProject = await resolveSpawnProject(c, engine, machine, {
             projectId: parsed.data.projectId,
             directory: parsed.data.directory
         })
@@ -298,11 +352,12 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             }
             const existingWorkspace = findWorkspaceForPath(
                 machine,
-                engine.listProjectWorkspaces(spawnProject.project.id),
+                await listProjectWorkspaces(engine, spawnProject.project.id),
                 parsed.data.directory
             )
             if (!existingWorkspace && machine.ownerUserId === c.get('userId') && machineAllowsWorkspace(machine, parsed.data.directory)) {
-                engine.addProjectWorkspace(
+                await addProjectWorkspace(
+                    engine,
                     spawnProject.project.id,
                     machine.id,
                     parsed.data.directory,
@@ -320,7 +375,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -349,7 +404,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -383,7 +438,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachineForDiscovery(c, engine, machineId)
+        const machine = await requireMachineForDiscovery(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -409,7 +464,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }
@@ -440,7 +495,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) return machine
 
         const cwd = (c.req.query('cwd') ?? '').trim()
@@ -468,7 +523,7 @@ export function createMachinesRoutes(getSyncEngine: () => SyncEngine | null): Ho
         }
 
         const machineId = c.req.param('id')
-        const machine = requireMachine(c, engine, machineId)
+        const machine = await requireMachine(c, engine, machineId)
         if (machine instanceof Response) {
             return machine
         }

@@ -89,7 +89,7 @@ export class MessageService {
         private readonly store: Store,
         private readonly io: Server,
         private readonly publisher: EventPublisher,
-        private readonly onSessionActivity?: (sessionId: string, updatedAt: number) => void
+        private readonly onSessionActivity?: (sessionId: string, updatedAt: number) => unknown | Promise<unknown>
     ) {
     }
 
@@ -101,6 +101,15 @@ export class MessageService {
 
     getMessages(sessionId: string, limit: number = 200): DecryptedMessage[] {
         const stored = this.store.messages.getMessages(sessionId, limit)
+        return toVisibleDecryptedMessages(stored)
+    }
+
+    async getMessagesAsync(sessionId: string, limit: number = 200): Promise<DecryptedMessage[]> {
+        const stored = this.store.messages.getMessagesAsync
+            ? await this.store.messages.getMessagesAsync(sessionId, limit)
+            : this.store.messages.getAllMessagesAsync
+                ? (await this.store.messages.getAllMessagesAsync(sessionId)).slice(-limit)
+                : this.store.messages.getMessages(sessionId, limit)
         return toVisibleDecryptedMessages(stored)
     }
 
@@ -116,12 +125,29 @@ export class MessageService {
         }
     }
 
-    getSessionExport(
+    async getQueuedStateAsync(sessionId: string, localIds: string[]): Promise<QueuedStateResponse> {
+        const states = this.store.messages.getLocalMessageStatesAsync
+            ? await this.store.messages.getLocalMessageStatesAsync(sessionId, localIds)
+            : this.store.messages.getLocalMessageStates(sessionId, localIds)
+        return {
+            queuedLocalIds: states
+                .filter((state) => state.invokedAt === null)
+                .map((state) => state.localId),
+            invokedLocalMessages: states.flatMap((state) => state.invokedAt === null
+                ? []
+                : [{ localId: state.localId, invokedAt: state.invokedAt }])
+        }
+    }
+
+    async getSessionExport(
         sessionId: string,
         session: Session,
         limit: number = SESSION_EXPORT_MESSAGE_LIMIT
-    ): HapiSessionExportResult {
-        const messages = this.store.messages.getAllMessages(sessionId)
+    ): Promise<HapiSessionExportResult> {
+        const storedMessages = this.store.messages.getAllMessagesAsync
+            ? await this.store.messages.getAllMessagesAsync(sessionId)
+            : this.store.messages.getAllMessages(sessionId)
+        const messages = storedMessages
             .filter(isExportVisibleStoredMessage)
             .sort((a, b) => {
                 const aAt = a.invokedAt ?? a.createdAt
@@ -139,7 +165,7 @@ export class MessageService {
         }
 
         // Chronological ASC for archive readability (store list is DESC).
-        const scratchlist = this.store.scratchlist.list(sessionId)
+        const scratchlist = (await this.store.scratchlist.list(sessionId))
             .slice()
             .sort((a, b) => {
                 if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt
@@ -189,6 +215,40 @@ export class MessageService {
             )
         }
         return this.getLatestOrBeforeMessagesPage(
+            sessionId,
+            options.limit,
+            options.before ?? null,
+            epoch,
+            false
+        )
+    }
+
+    async getMessagesPageAsync(
+        sessionId: string,
+        options: {
+            limit: number
+            before?: MessagePosition | null
+            after?: MessagePosition | null
+            until?: MessagePosition | null
+            epoch?: number | null
+        }
+    ): Promise<MessagesResponse> {
+        const epoch = this.store.messages.getMessageEpochAsync
+            ? await this.store.messages.getMessageEpochAsync(sessionId)
+            : this.store.messages.getMessageEpoch(sessionId)
+        if (options.after) {
+            if (options.epoch !== undefined && options.epoch !== null && options.epoch !== epoch) {
+                return await this.getLatestOrBeforeMessagesPageAsync(sessionId, options.limit, null, epoch, true)
+            }
+            return await this.getAfterMessagesPageAsync(
+                sessionId,
+                options.limit,
+                options.after,
+                options.until ?? null,
+                epoch
+            )
+        }
+        return await this.getLatestOrBeforeMessagesPageAsync(
             sessionId,
             options.limit,
             options.before ?? null,
@@ -291,6 +351,80 @@ export class MessageService {
         }
     }
 
+    private async getLatestOrBeforeMessagesPageAsync(
+        sessionId: string,
+        limit: number,
+        requestedBefore: MessagePosition | null,
+        epoch: number,
+        reset: boolean
+    ): Promise<MessagesResponse> {
+        const getNewest = async () => this.store.messages.getNewestMessagePositionAsync
+            ? await this.store.messages.getNewestMessagePositionAsync(sessionId)
+            : this.store.messages.getNewestMessagePosition(sessionId)
+        const getByPosition = async (queryLimit: number, before?: MessagePosition) => this.store.messages.getMessagesByPositionAsync
+            ? await this.store.messages.getMessagesByPositionAsync(sessionId, queryLimit, before)
+            : this.store.messages.getMessagesByPosition(sessionId, queryLimit, before)
+        const getQueued = async () => this.store.messages.getUninvokedLocalMessagesAsync
+            ? await this.store.messages.getUninvokedLocalMessagesAsync(sessionId)
+            : this.store.messages.getUninvokedLocalMessages(sessionId)
+        const direction = requestedBefore ? 'before' as const : 'latest' as const
+        const snapshotHead = await getNewest()
+        let before = requestedBefore ?? undefined
+        let pageRows = await getByPosition(limit, requestedBefore ?? undefined)
+        let queuedRows = requestedBefore === null ? await getQueued() : []
+
+        let byId = new Map<string, typeof pageRows[number]>()
+        for (const row of pageRows) byId.set(row.id, row)
+        for (const row of queuedRows) byId.set(row.id, row)
+
+        let stored = [...byId.values()].sort((a, b) => {
+            const at = (a.invokedAt ?? a.createdAt) - (b.invokedAt ?? b.createdAt)
+            return at !== 0 ? at : a.seq - b.seq
+        })
+        let messages = toVisibleDecryptedMessages(stored)
+        let oldest = pageRows[0] ?? null
+        let oldestSeq: number | null = oldest?.seq ?? null
+        let oldestPositionAt: number | null = oldest ? oldest.invokedAt ?? oldest.createdAt : null
+        let hasMore = oldestSeq !== null && oldestPositionAt !== null
+            && (await getByPosition(1, { at: oldestPositionAt, seq: oldestSeq })).length > 0
+
+        while (messages.length === 0 && hasMore && oldestSeq !== null && oldestPositionAt !== null) {
+            before = { at: oldestPositionAt, seq: oldestSeq }
+            pageRows = await getByPosition(limit, before)
+            queuedRows = []
+            byId = new Map<string, typeof pageRows[number]>()
+            for (const row of pageRows) byId.set(row.id, row)
+            for (const row of queuedRows) byId.set(row.id, row)
+            stored = [...byId.values()].sort((a, b) => {
+                const at = (a.invokedAt ?? a.createdAt) - (b.invokedAt ?? b.createdAt)
+                return at !== 0 ? at : a.seq - b.seq
+            })
+            messages = toVisibleDecryptedMessages(stored)
+            oldest = pageRows[0] ?? null
+            oldestSeq = oldest?.seq ?? null
+            oldestPositionAt = oldest ? oldest.invokedAt ?? oldest.createdAt : null
+            hasMore = oldestSeq !== null && oldestPositionAt !== null
+                && (await getByPosition(1, { at: oldestPositionAt, seq: oldestSeq })).length > 0
+        }
+
+        return {
+            messages,
+            page: {
+                direction,
+                limit,
+                epoch,
+                reset,
+                nextBeforeSeq: oldestSeq,
+                nextBeforeAt: oldestPositionAt,
+                nextAfterSeq: null,
+                nextAfterAt: null,
+                snapshotHeadSeq: snapshotHead?.seq ?? null,
+                snapshotHeadAt: snapshotHead?.at ?? null,
+                hasMore
+            }
+        }
+    }
+
     private getAfterMessagesPage(
         sessionId: string,
         limit: number,
@@ -350,6 +484,64 @@ export class MessageService {
         }
     }
 
+    private async getAfterMessagesPageAsync(
+        sessionId: string,
+        limit: number,
+        after: MessagePosition,
+        requestedUntil: MessagePosition | null,
+        epoch: number
+    ): Promise<MessagesResponse> {
+        const currentHead = this.store.messages.getNewestMessagePositionAsync
+            ? await this.store.messages.getNewestMessagePositionAsync(sessionId)
+            : this.store.messages.getNewestMessagePosition(sessionId)
+        const snapshotHead = currentHead && requestedUntil
+            ? (comparePosition(requestedUntil, currentHead) <= 0 ? requestedUntil : currentHead)
+            : requestedUntil ?? currentHead
+
+        if (!snapshotHead || comparePosition(snapshotHead, after) <= 0) {
+            return {
+                messages: [],
+                page: {
+                    direction: 'after',
+                    limit,
+                    epoch,
+                    reset: false,
+                    nextBeforeSeq: null,
+                    nextBeforeAt: null,
+                    nextAfterSeq: after.seq,
+                    nextAfterAt: after.at,
+                    snapshotHeadSeq: snapshotHead?.seq ?? null,
+                    snapshotHeadAt: snapshotHead?.at ?? null,
+                    hasMore: false
+                }
+            }
+        }
+
+        const pageRows = this.store.messages.getMessagesAfterPositionAsync
+            ? await this.store.messages.getMessagesAfterPositionAsync(sessionId, limit, after, snapshotHead)
+            : this.store.messages.getMessagesAfterPosition(sessionId, limit, after, snapshotHead)
+        const last = pageRows[pageRows.length - 1] ?? null
+        const nextAfter = last ? messagePosition(last) : snapshotHead
+        const hasMore = last !== null && comparePosition(nextAfter, snapshotHead) < 0
+
+        return {
+            messages: toVisibleDecryptedMessages(pageRows),
+            page: {
+                direction: 'after',
+                limit,
+                epoch,
+                reset: false,
+                nextBeforeSeq: null,
+                nextBeforeAt: null,
+                nextAfterSeq: nextAfter.seq,
+                nextAfterAt: nextAfter.at,
+                snapshotHeadSeq: snapshotHead.seq,
+                snapshotHeadAt: snapshotHead.at,
+                hasMore
+            }
+        }
+    }
+
     /** CLI reconnect backfill — excludes future-scheduled rows so the runner does
      *  not consume them ahead of their scheduled_at.  See messages.ts:getDeliverableMessagesAfter. */
     getDeliverableMessagesAfter(sessionId: string, options: { afterSeq: number; limit: number; now: number }): DecryptedMessage[] {
@@ -370,13 +562,40 @@ export class MessageService {
         }))
     }
 
+    async getDeliverableMessagesAfterAsync(sessionId: string, options: { afterSeq: number; limit: number; now: number }): Promise<DecryptedMessage[]> {
+        const stored = this.store.messages.getDeliverableMessagesAfterAsync
+            ? await this.store.messages.getDeliverableMessagesAfterAsync(
+                sessionId,
+                options.afterSeq,
+                options.now,
+                options.limit
+            )
+            : this.store.messages.getDeliverableMessagesAfter(
+                sessionId,
+                options.afterSeq,
+                options.now,
+                options.limit
+            )
+        return stored.map((message) => ({
+            id: message.id,
+            seq: message.seq,
+            localId: message.localId,
+            content: message.content,
+            createdAt: message.createdAt,
+            invokedAt: message.invokedAt,
+            scheduledAt: message.scheduledAt
+        }))
+    }
+
     async cancelQueuedMessage(
         sessionId: string,
         messageId: string
     ): Promise<CancelQueuedMessageResult> {
         // Phase 1: look up the row WITHOUT deleting it.
         // This lets us ask the CLI first and only DELETE if the CLI confirms removal.
-        const lookup = this.store.messages.lookupQueuedMessage(sessionId, messageId)
+        const lookup = this.store.messages.lookupQueuedMessageAsync
+            ? await this.store.messages.lookupQueuedMessageAsync(sessionId, messageId)
+            : this.store.messages.lookupQueuedMessage(sessionId, messageId)
 
         if (lookup.status === 'absent') {
             // Row not found — already cancelled or wrong id.
@@ -396,7 +615,11 @@ export class MessageService {
 
         if (!localId) {
             // No localId — row exists but has no cancel path; treat as cancelled.
-            this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            if (this.store.messages.deleteQueuedMessageByIdAsync) {
+                await this.store.messages.deleteQueuedMessageByIdAsync(sessionId, resolvedId)
+            } else {
+                this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            }
             this.publisher.emit({ type: 'message-cancelled', sessionId, messageId })
             return { status: 'cancelled', localId: null }
         }
@@ -414,7 +637,11 @@ export class MessageService {
         // markInvoked between the lookup and the delete.
         const now = Date.now()
         if (scheduledAt !== null && scheduledAt > now) {
-            this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            if (this.store.messages.deleteQueuedMessageByIdAsync) {
+                await this.store.messages.deleteQueuedMessageByIdAsync(sessionId, resolvedId)
+            } else {
+                this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            }
             this.forgetScheduledMatureNotified([localId])
             this.publisher.emit({
                 type: 'message-cancelled',
@@ -438,10 +665,16 @@ export class MessageService {
         const roomName = `session:${sessionId}`
         const cliCount = this.io.of('/cli').adapter.rooms.get(roomName)?.size ?? 0
         if (cliCount === 0) {
-            this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            if (this.store.messages.deleteQueuedMessageByIdAsync) {
+                await this.store.messages.deleteQueuedMessageByIdAsync(sessionId, resolvedId)
+            } else {
+                this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+            }
             // Re-check: if CLI joined and invoked the message between our cliCount read
             // and the DELETE, the delete was a no-op and the row now has invoked_at set.
-            const recheck = this.store.messages.lookupQueuedMessage(sessionId, resolvedId)
+            const recheck = this.store.messages.lookupQueuedMessageAsync
+                ? await this.store.messages.lookupQueuedMessageAsync(sessionId, resolvedId)
+                : this.store.messages.lookupQueuedMessage(sessionId, resolvedId)
             if (recheck.status === 'invoked') {
                 // CLI beat us — treat identically to Race-B (ack returned not-found).
                 this.forgetScheduledMatureNotified([localId])
@@ -473,7 +706,11 @@ export class MessageService {
             // (if it produced one) joins the same thread normally.
             const invokedAt = Date.now()
             try {
-                this.store.messages.markMessagesInvoked(sessionId, [localId], invokedAt)
+                if (this.store.messages.markMessagesInvokedAsync) {
+                    await this.store.messages.markMessagesInvokedAsync(sessionId, [localId], invokedAt)
+                } else {
+                    this.store.messages.markMessagesInvoked(sessionId, [localId], invokedAt)
+                }
             } catch (err) {
                 console.error('cancelQueuedMessage: markMessagesInvoked failed', err)
                 // DB write failed — let the HTTP 500 surface to the caller.
@@ -495,7 +732,9 @@ export class MessageService {
             // Re-fetch the single row via lookupQueuedMessage to avoid the 200-row
             // pagination cap of getMessages.  After markMessagesInvoked the row will
             // have invoked_at set, so lookupQueuedMessage returns status='invoked'.
-            const recheck = this.store.messages.lookupQueuedMessage(sessionId, localId)
+            const recheck = this.store.messages.lookupQueuedMessageAsync
+                ? await this.store.messages.lookupQueuedMessageAsync(sessionId, localId)
+                : this.store.messages.lookupQueuedMessage(sessionId, localId)
             if (recheck.status === 'invoked') {
                 return recheck
             }
@@ -504,7 +743,11 @@ export class MessageService {
         }
 
         // Phase 3: CLI confirmed removal.  Now DELETE the DB row and broadcast SSE.
-        this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+        if (this.store.messages.deleteQueuedMessageByIdAsync) {
+            await this.store.messages.deleteQueuedMessageByIdAsync(sessionId, resolvedId)
+        } else {
+            this.store.messages.deleteQueuedMessageById(sessionId, resolvedId)
+        }
         this.forgetScheduledMatureNotified([localId])
         this.publisher.emit({
             type: 'message-cancelled',
@@ -602,13 +845,22 @@ export class MessageService {
             }
         }
 
-        const msg = this.store.messages.addMessage(
-            sessionId,
-            content,
-            payload.localId ?? undefined,
-            payload.scheduledAt ?? null
-        )
-        this.onSessionActivity?.(sessionId, msg.createdAt)
+        const msg = this.store.messages.addMessageAsync
+            ? await this.store.messages.addMessageAsync(
+                sessionId,
+                content,
+                payload.localId ?? undefined,
+                payload.scheduledAt ?? null
+            )
+            : this.store.messages.addMessage(
+                sessionId,
+                content,
+                payload.localId ?? undefined,
+                payload.scheduledAt ?? null
+            )
+        if (this.onSessionActivity) {
+            await this.onSessionActivity(sessionId, msg.createdAt)
+        }
 
         // Only emit to CLI if the message is not scheduled for the future.
         // Mature or non-scheduled messages go through immediately; future scheduled
@@ -684,6 +936,27 @@ export class MessageService {
         return { localIds, invokedAt }
     }
 
+    async sweepImmediateQueuedOnSessionEndAsync(
+        sessionId: string,
+        invokedAt: number
+    ): Promise<{ localIds: string[]; invokedAt: number } | null> {
+        const queued = this.store.messages.getImmediateQueuedLocalMessagesAsync
+            ? await this.store.messages.getImmediateQueuedLocalMessagesAsync(sessionId)
+            : this.store.messages.getImmediateQueuedLocalMessages(sessionId)
+        const localIds = queued
+            .map((m) => m.localId)
+            .filter((id): id is string => typeof id === 'string')
+        if (localIds.length === 0) return null
+        if (this.store.messages.markMessagesInvokedAsync) {
+            await this.store.messages.markMessagesInvokedAsync(sessionId, localIds, invokedAt)
+        } else {
+            this.store.messages.markMessagesInvoked(sessionId, localIds, invokedAt)
+        }
+        this.forgetScheduledMatureNotified(localIds)
+        this.publisher.emit({ type: 'messages-consumed', sessionId, localIds, invokedAt })
+        return { localIds, invokedAt }
+    }
+
     /** Called by the hub 5-second tick (syncEngine.expireInactive).
      *
      * Finds all scheduled messages whose scheduled_at <= now and emits them to
@@ -701,6 +974,17 @@ export class MessageService {
      * expected behaviour. */
     releaseMatureScheduledMessages(now: number): void {
         const mature = this.store.messages.getMatureScheduledMessages(now)
+        this.emitMatureScheduledMessages(mature)
+    }
+
+    async releaseMatureScheduledMessagesAsync(now: number): Promise<void> {
+        const mature = this.store.messages.getMatureScheduledMessagesAsync
+            ? await this.store.messages.getMatureScheduledMessagesAsync(now)
+            : this.store.messages.getMatureScheduledMessages(now)
+        this.emitMatureScheduledMessages(mature)
+    }
+
+    private emitMatureScheduledMessages(mature: StoredMessageForDelivery[]): void {
         const maturedSessionIds = new Set<string>()
         for (const msg of mature) {
             const localId = msg.localId

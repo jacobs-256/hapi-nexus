@@ -2,7 +2,7 @@
 
 **语言：** [English](../../en/guide/how-it-works.md) | 简体中文
 
-HAPI 由三个互相连接的组件组成，共同提供远程 AI agent 控制能力。
+HAPI 由三个互相连接的组件组成，共同提供远程 AI agent 控制能力。Hub 使用可配置存储：默认 SQLite；启用后对话历史可用 Elasticsearch，核心 Hub 数据可用 MySQL。
 
 ## 架构概览
 
@@ -14,7 +14,7 @@ HAPI 由三个互相连接的组件组成，共同提供远程 AI agent 控制�
 │   │              │         │              │         │              │       │
 │   │   HAPI CLI   │◄───────►│  HAPI Hub    │◄───────►│   Web App    │       │
 │   │              │ Socket  │              │   SSE   │  (embedded)  │       │
-│   │  + AI Agent  │   .IO   │  + SQLite    │         │              │       │
+│   │  + AI Agent  │   .IO   │  + 存储      │         │              │       │
 │   │              │         │  + REST API  │         │              │       │
 │   └──────────────┘         └──────┬───────┘         └──────────────┘       │
 │                                   │                                        │
@@ -74,7 +74,7 @@ Hub 是连接所有组件的中心服务：
 - **HTTP API** - 面向会话、消息、权限的 REST 端点
 - **Socket.IO** - 与 CLI 的实时双向通信
 - **SSE (Server-Sent Events)** - 向 Web 客户端推送实时更新
-- **SQLite Database** - 持久保存会话和消息
+- **可配置存储** - 默认 SQLite；对话历史可用 Elasticsearch；核心 Hub 数据可用 MySQL
 - **Local Accounts** - 用户名/密码浏览器登录、管理员用户管理和个人 access token
 - **Project ACLs** - 在暴露会话、机器、文件和事件前检查用户/项目/workspace 权限
 - **Telegram Bot** - 通知和 Mini App 集成
@@ -105,7 +105,7 @@ React PWA 提供移动端界面：
 3. CLI 通过 Socket.IO 连接到 hub
          │
          ▼
-4. Hub 在数据库中创建会话
+4. Hub 在配置的核心数据存储中创建会话
          │
          ▼
 5. Web 客户端收到 SSE 更新

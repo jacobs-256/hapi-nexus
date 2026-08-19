@@ -45,7 +45,7 @@ HAPI Nexus 有三个组件：
 │                                                     │
 │  ┌─────────┐    Socket.IO    ┌─────────────┐       │
 │  │  CLI    │◄───────────────►│    Hub      │       │
-│  │+ Agent  │                 │  + SQLite   │       │
+│  │+ Agent  │                 │ + 存储      │       │
 │  └─────────┘                 └──────┬──────┘       │
 │       ▲                             │ SSE          │
 │       │ spawn                       ▼              │
@@ -228,7 +228,7 @@ Hub 默认监听 `http://localhost:3006`。
 ```
 ~/.hapi/
 ├── settings.json      # 主配置
-├── hapi.db           # SQLite 数据库（hub）
+├── hapi.db           # 默认 SQLite 数据库（hub）
 ├── runner.state.json  # Runner 进程状态
 └── logs/             # 日志文件
 ```
@@ -236,7 +236,7 @@ Hub 默认监听 `http://localhost:3006`。
 
 ### 数据库升级
 
-`hapi-server` 会把当前 SQLite 结构版本保存在 `PRAGMA user_version`。当新版服务器启动并发现旧版数据库时，会先执行内置迁移链，然后才开始正常对外服务。
+`hapi-server` 会把 SQLite 数据文件的结构版本保存在 `PRAGMA user_version`。当新版服务器启动并发现旧版 SQLite 数据库时，会先执行内置迁移链，然后才开始正常对外服务。如果在 Settings -> Storage 中选择 Elasticsearch 作为对话存储，或选择 MySQL 作为核心数据存储，该外部后端就是对应领域的直接运行时数据库；显式切换存储时可复制现有数据，大量数据复制会在后台继续执行。
 
 对非空数据库执行迁移前，HAPI Nexus 会自动在下面目录生成备份：
 
@@ -275,7 +275,15 @@ Hub 默认监听 `http://localhost:3006`。
 | `HAPI_RELAY_FORCE_TCP` | `false` | - | relay 强制使用 TCP 模式 |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | - | Web Push 联系信息 |
 | `HAPI_HOME` | `~/.hapi` | - | 配置目录路径 |
-| `DB_PATH` | `~/.hapi/hapi.db` | - | 数据库文件路径 |
+| `DB_PATH` | `~/.hapi/hapi.db` | - | 旧版/默认 SQLite 数据库文件路径 |
+| `HAPI_CONVERSATION_STORE` | `sqlite` | storage.conversation.type | 对话存储：`sqlite` 或 `elasticsearch` |
+| `HAPI_CONVERSATION_SQLITE_PATH` | `DB_PATH` | storage.conversation.sqlitePath | 对话记录 SQLite 路径 |
+| `ELASTICSEARCH_URL` | - | storage.conversation.elasticsearch.url | 对话存储 Elasticsearch 地址 |
+| `ELASTICSEARCH_INDEX` | `hapi-conversations` | storage.conversation.elasticsearch.index | Elasticsearch index 或 data stream |
+| `ELASTICSEARCH_API_KEY` | - | storage.conversation.elasticsearch.apiKey | Base64 后的 Elasticsearch API key |
+| `HAPI_CORE_STORE` | `sqlite` | storage.core.type | 核心数据存储：`sqlite` 或 `mysql` |
+| `HAPI_CORE_SQLITE_PATH` | `DB_PATH` | storage.core.sqlitePath | 用户/项目/机器/设置的 SQLite 路径 |
+| `MYSQL_URL` | - | storage.core.mysql.url | 核心数据 MySQL 连接 URL |
 | `ELEVENLABS_API_KEY` | - | - | 语音功能的 ElevenLabs API key |
 | `ELEVENLABS_AGENT_ID` | 自动创建 | - | 自定义 ElevenLabs agent ID |
 </details>

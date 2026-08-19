@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 
+import type { ProjectStorePort } from './ports/coreStores'
 import type {
     StoredProject,
     StoredProjectInvite,
@@ -31,7 +32,7 @@ import {
     type ProjectRole
 } from './projects'
 
-export class ProjectStore {
+export class ProjectStore implements ProjectStorePort {
     constructor(private readonly db: Database, private readonly onChange?: () => void) {
     }
 

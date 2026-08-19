@@ -45,7 +45,7 @@ HAPI Nexus has three components:
 │                                                     │
 │  ┌─────────┐    Socket.IO    ┌─────────────┐       │
 │  │  CLI    │◄───────────────►│    Hub      │       │
-│  │+ Agent  │                 │  + SQLite   │       │
+│  │+ Agent  │                 │ + Storage   │       │
 │  └─────────┘                 └──────┬──────┘       │
 │       ▲                             │ SSE          │
 │       │ spawn                       ▼              │
@@ -228,7 +228,7 @@ Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Ac
 ```
 ~/.hapi/
 ├── settings.json      # Main configuration
-├── hapi.db           # SQLite database (hub)
+├── hapi.db           # Default SQLite database (hub)
 ├── runner.state.json  # Runner process state
 └── logs/             # Log files
 ```
@@ -236,7 +236,7 @@ Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Ac
 
 ### Database upgrades
 
-`hapi-server` stores the current SQLite schema version in `PRAGMA user_version`. When a newer server starts with an older database, it runs the built-in migration chain before accepting traffic.
+`hapi-server` stores the SQLite schema version in `PRAGMA user_version` for SQLite-backed data files. When a newer server starts with an older SQLite database, it runs the built-in migration chain before accepting traffic. If Settings -> Storage selects Elasticsearch for conversations or MySQL for core data, that external backend is the direct runtime database for its domain; explicit storage switching can copy existing data and long copies continue in the background.
 
 Before any non-empty database migration, HAPI Nexus writes a backup under:
 
@@ -275,7 +275,15 @@ To roll back after a failed upgrade, stop `hapi-server`, restore the previous `h
 | `HAPI_RELAY_FORCE_TCP` | `false` | - | Force TCP mode for relay |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | - | Web Push contact info |
 | `HAPI_HOME` | `~/.hapi` | - | Config directory path |
-| `DB_PATH` | `~/.hapi/hapi.db` | - | Database file path |
+| `DB_PATH` | `~/.hapi/hapi.db` | - | Legacy/default SQLite database file path |
+| `HAPI_CONVERSATION_STORE` | `sqlite` | storage.conversation.type | Conversation storage: `sqlite` or `elasticsearch` |
+| `HAPI_CONVERSATION_SQLITE_PATH` | `DB_PATH` | storage.conversation.sqlitePath | SQLite path for conversation records |
+| `ELASTICSEARCH_URL` | - | storage.conversation.elasticsearch.url | Elasticsearch endpoint for conversation storage |
+| `ELASTICSEARCH_INDEX` | `hapi-conversations` | storage.conversation.elasticsearch.index | Elasticsearch index or data stream |
+| `ELASTICSEARCH_API_KEY` | - | storage.conversation.elasticsearch.apiKey | Base64 Elasticsearch API key |
+| `HAPI_CORE_STORE` | `sqlite` | storage.core.type | Core data storage: `sqlite` or `mysql` |
+| `HAPI_CORE_SQLITE_PATH` | `DB_PATH` | storage.core.sqlitePath | SQLite path for users/projects/machines/settings |
+| `MYSQL_URL` | - | storage.core.mysql.url | MySQL connection URL for core storage |
 | `ELEVENLABS_API_KEY` | - | - | ElevenLabs API key for voice |
 | `ELEVENLABS_AGENT_ID` | Auto-created | - | Custom ElevenLabs agent ID |
 </details>

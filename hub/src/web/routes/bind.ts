@@ -41,15 +41,15 @@ export function createBindRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
         }
 
         const telegramUserId = String(result.user.id)
-        const existingUser = store.users.getUser('telegram', telegramUserId)
+        const existingUser = await store.users.getUser('telegram', telegramUserId)
         if (existingUser && existingUser.namespace !== namespace) {
             return c.json({ error: 'already_bound' }, 409)
         }
-        const storedUser = store.users.addUser('telegram', telegramUserId, namespace)
+        const storedUser = await store.users.addUser('telegram', telegramUserId, namespace)
 
         const ownerUserId = await getOrCreateOwnerId()
-        const defaultProject = store.projects.ensureDefaults(namespace, ownerUserId)
-        store.projects.addProjectMember(defaultProject.id, storedUser.id, 'owner')
+        const defaultProject = await store.projects.ensureDefaults(namespace, ownerUserId)
+        await store.projects.addProjectMember(defaultProject.id, storedUser.id, 'owner')
 
         const token = await new SignJWT({ uid: storedUser.id, ns: namespace })
             .setProtectedHeader({ alg: 'HS256' })

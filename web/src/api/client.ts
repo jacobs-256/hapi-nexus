@@ -59,6 +59,7 @@ import type {
     ReopenSessionResponse,
     SqliteStorageUsageResponse,
     StorageSettingsResponse,
+    StorageMigrationStatus,
     UpdateGlobalComposerToolbarSettingsRequest,
     UpdateStorageSettingsRequest,
     UpdateStorageSettingsResponse,
@@ -883,6 +884,10 @@ export class ApiClient {
 
     async getStorageSettings(): Promise<StorageSettingsResponse> {
         return await this.request<StorageSettingsResponse>('/api/storage')
+    }
+
+    async getStorageMigrationStatus(): Promise<StorageMigrationStatus> {
+        return await this.request<StorageMigrationStatus>('/api/storage/migration-status')
     }
 
     async updateStorageSettings(request: UpdateStorageSettingsRequest): Promise<UpdateStorageSettingsResponse> {

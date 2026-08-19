@@ -88,7 +88,7 @@ export class FcmNotificationChannel implements NotificationChannel {
         const name = getSessionName(session)
         const path = this.buildSessionPath(session.id)
 
-        const composed = this.composeReadyBody(session, agentName, name)
+        const composed = await this.composeReadyBody(session, agentName, name)
 
         const payload = this.buildPayload({
             title: composed.title,
@@ -124,11 +124,11 @@ export class FcmNotificationChannel implements NotificationChannel {
      *     the previous "<agent> is waiting in <session>" content so we
      *     never regress to a worse notification than today.
      */
-    private composeReadyBody(
+    private async composeReadyBody(
         session: Session,
         agentName: string,
         sessionName: string
-    ): { title: string; body: string; notifySummary?: Record<string, unknown> } {
+    ): Promise<{ title: string; body: string; notifySummary?: Record<string, unknown> }> {
         const fallback = {
             title: 'Ready for input',
             body: `${agentName} is waiting in ${sessionName}`
@@ -136,7 +136,7 @@ export class FcmNotificationChannel implements NotificationChannel {
 
         if (!this.store) return fallback
 
-        const lastText = this.findLastAssistantPlainText(session.id)
+        const lastText = await this.findLastAssistantPlainText(session.id)
         if (!lastText) return fallback
 
         const summary = extractNotifySummary(lastText)
@@ -200,7 +200,7 @@ export class FcmNotificationChannel implements NotificationChannel {
      * tool results, and reasoning blocks are skipped (they have no
      * text body, they would just show as `null` and force the fallback).
      */
-    private findLastAssistantPlainText(sessionId: string): string | null {
+    private async findLastAssistantPlainText(sessionId: string): Promise<string | null> {
         if (!this.store) return null
 
         let messages
@@ -208,7 +208,9 @@ export class FcmNotificationChannel implements NotificationChannel {
             // 20 is generous: most ready events fire 1-3 messages after
             // the latest assistant text, and we cap to 20 to avoid
             // pathological scans on long sessions.
-            messages = this.store.messages.getMessages(sessionId, 20)
+            messages = this.store.messages.getMessagesByPositionAsync
+                ? await this.store.messages.getMessagesByPositionAsync(sessionId, 20)
+                : this.store.messages.getMessages(sessionId, 20)
         } catch {
             return null
         }

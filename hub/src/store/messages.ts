@@ -116,13 +116,13 @@ export function copyMessageToSession(
             'SELECT 1 FROM messages WHERE session_id = ? AND local_id = ? LIMIT 1'
         ).get(sessionId, localId) as { 1: number } | undefined
         if (collision) {
-            // 中文注释：重复会话合并时如果 localId 撞车，给复制进目标会话的消息生成一个新 localId，避免误判成同一条已存在消息。
+            // If localId collides during duplicate-session merge, generate a new target localId to avoid treating it as the same message.
             localId = `${localId}:merged:${randomUUID().slice(0, 8)}`
         }
     }
 
     if (message.scheduledAt != null && !localId && message.invokedAt === null) {
-        // 中文注释：未来计划消息仍需要 ack 路径；异常情况下若源数据缺少 localId，这里补一个稳定可写的新值以保留调度语义。
+        // Future scheduled messages still need the ack path; synthesize a stable localId when source data is missing one.
         localId = `merged-scheduled:${randomUUID()}`
     }
 

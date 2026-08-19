@@ -53,7 +53,15 @@ Web 设置区域面向私有部署的管理控制台设计。它把个人偏好�
 
 ## 存储
 
-打开 **Settings -> Storage** 查看本地存储使用情况。会话、消息、用户、项目和机器数据存储在 hub 的 SQLite 数据库中，位置位于 `~/.hapi/` 或配置的 `HAPI_HOME` 下。
+打开 **Settings -> Storage** 查看和配置存储。
+
+- 对话记录存储：SQLite 或 Elasticsearch。
+- 其他数据存储：SQLite 或 MySQL，例如用户、权限、项目、机器等。
+- 选择 Elasticsearch/MySQL 后，它们就是直接运行数据库；hub 不会再先写 SQLite 再异步镜像。
+- 勾选迁移数据时，hub 会把当前已存在的数据复制到新的目标存储。
+- 大量数据迁移会在后台继续执行；前端只在初始阶段阻塞，后续可继续使用。
+
+Elasticsearch 如果使用 data stream，需要先创建 index template 和 data stream。详见 [Elasticsearch 存储模板](../storage/elasticsearch.md)。
 
 ## 个人偏好
 

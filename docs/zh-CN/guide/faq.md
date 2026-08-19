@@ -119,9 +119,9 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 
 是。HAPI Nexus 是 local-first：
 
-- 所有数据都留在你的机器上
-- 不会上传到外部服务器
-- 数据库存储在本地 `~/.hapi/`
+- 默认所有数据都留在你的机器上，存放在 `~/.hapi/` 下的本地 SQLite 数据库
+- 不会上传到 HAPI 运营的外部服务器
+- 如果你配置 MySQL 或 Elasticsearch，数据会存放到你提供的私有后端中
 
 ### 认证安全吗？
 
@@ -235,7 +235,7 @@ hapi doctor
 | 设计 | Cloud-first | Local-first |
 | 用户 | 托管多用户云服务 | 私有多用户 hub |
 | 部署 | 多个服务 | 单个二进制 |
-| 数据 | 在服务器上加密保存 | 不离开你的机器 |
+| 数据 | 在服务器上加密保存 | 默认在本机；也可使用你配置的私有 MySQL/Elasticsearch 后端 |
 
 详细对比见[为什么选择 HAPI](./why-hapi.md)。
 

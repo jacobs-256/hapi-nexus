@@ -83,7 +83,11 @@ HAPI_PUBLIC_URL=https://hapi.example.com \
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `HAPI_HOME` | `~/.hapi` | 服务器配置/数据目录 |
-| `DB_PATH` | `$HAPI_HOME/hapi.db` | SQLite 数据库文件路径 |
+| `DB_PATH` | `$HAPI_HOME/hapi.db` | 旧版/默认 SQLite 数据库文件路径 |
+| `HAPI_CONVERSATION_STORE` | `sqlite` | 对话存储后端：`sqlite` 或 `elasticsearch` |
+| `ELASTICSEARCH_URL` / `ELASTICSEARCH_INDEX` / `ELASTICSEARCH_API_KEY` | 未设置 | Elasticsearch 对话存储设置 |
+| `HAPI_CORE_STORE` | `sqlite` | 核心数据存储后端：`sqlite` 或 `mysql` |
+| `MYSQL_URL` 或 `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` | 未设置 | MySQL 核心数据存储设置 |
 | `HAPI_LISTEN_HOST` | `127.0.0.1` | HTTP 监听地址 |
 | `HAPI_LISTEN_PORT` | `3006` | HTTP 端口 |
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | 浏览器访问地址 |
@@ -154,7 +158,7 @@ GET /health
 
 ## 数据库升级
 
-`hapi-server` 使用 `PRAGMA user_version` 保存 SQLite 结构版本。新版服务器启动并发现旧版数据库时，会先执行内置迁移链，然后才开始对外服务。
+`hapi-server` 会为 SQLite 数据文件使用 `PRAGMA user_version` 保存结构版本。新版服务器启动并发现旧版 SQLite 数据库时，会先执行内置迁移链，然后才开始对外服务。如果在 Settings -> Storage 中选择 Elasticsearch 作为对话存储，或选择 MySQL 作为核心数据存储，该外部后端就是对应领域的直接运行时数据库；显式切换存储时可复制现有数据，大量复制会在后台继续执行。
 
 非空数据库迁移前，HAPI Nexus 会在以下目录写入备份：
 
@@ -162,7 +166,7 @@ GET /health
 <hapi.db 所在目录>/backups/
 ```
 
-迁移历史会记录在 `schema_migrations` 表中，包括来源版本、目标版本、耗时和备份路径。
+SQLite 迁移历史会记录在 `schema_migrations` 表中，包括来源版本、目标版本、耗时和备份路径。存储切换迁移状态可在 Web Settings -> Storage 查看。
 
 推荐升级流程：
 
@@ -227,7 +231,7 @@ sudo systemctl restart hapi-server
 - 安全组或防火墙尽量限制到可信网络。
 - 妥善保存 `CLI_API_TOKEN` 和用户 access token。
 - 立即修改默认管理员密码。
-- 备份 `DB_PATH` 以及 `HAPI_HOME` 下的附件数据。
+- 备份 `DB_PATH`、`HAPI_HOME` 以及已配置的 MySQL/Elasticsearch 后端。
 - 负载均衡器使用 `/health` 做健康检查。
 - 升级后在 Web Settings -> Storage 检查数据库版本。
 

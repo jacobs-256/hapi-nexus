@@ -74,7 +74,7 @@ async function isEnterpriseAdmin(
     const ownerId = await getOwnerUserId()
     if (authPlatform === 'owner' || (authPlatform === undefined && userId === ownerId)) return true
 
-    const user = store.users.getUserById(userId, namespace)
+    const user = await store.users.getUserById(userId, namespace)
     return user?.role === 'admin' && user.disabledAt === null
 }
 
@@ -120,7 +120,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             })
         }
 
-        const user = store.users.getUserById(userId, namespace)
+        const user = await store.users.getUserById(userId, namespace)
         if (!user) {
             return c.json({ error: 'User not found' }, 404)
         }
@@ -135,7 +135,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Hub owner token is CLI_API_TOKEN. Regenerate it from hub settings.' }, 400)
         }
 
-        const user = store.users.regenerateUserAccessToken(userId, namespace)
+        const user = await store.users.regenerateUserAccessToken(userId, namespace)
         if (!user) {
             return c.json({ error: 'User not found' }, 404)
         }
@@ -159,7 +159,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        const user = store.users.getUserById(userId, namespace)
+        const user = await store.users.getUserById(userId, namespace)
         if (!user || user.platform !== 'local' || user.disabledAt !== null) {
             return c.json({ error: 'Local user not found' }, 404)
         }
@@ -169,7 +169,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Current password is incorrect' }, 401)
         }
 
-        const updated = store.users.updateUserPassword(userId, namespace, await hashPassword(parsed.data.newPassword))
+        const updated = await store.users.updateUserPassword(userId, namespace, await hashPassword(parsed.data.newPassword))
         if (!updated) {
             return c.json({ error: 'Local user not found' }, 404)
         }
@@ -190,7 +190,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        const result = store.users.updateLocalUsername(userId, namespace, parsed.data.username)
+        const result = await store.users.updateLocalUsername(userId, namespace, parsed.data.username)
         if (result.status === 'not_found') {
             return c.json({ error: 'Local user not found' }, 404)
         }
@@ -216,7 +216,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
                 ...toOwnerEnterpriseUser(ownerId, namespace, false),
                 ...(actorIsOwner ? { accessToken: getOwnerAccessToken(namespace) } : {})
             },
-            ...store.users.listUsersByNamespace(namespace).map((user) => (
+            ...(await store.users.listUsersByNamespace(namespace)).map((user) => (
                 toEnterpriseUser(user, canViewStoredUserAccessToken(user, userId, authPlatform))
             ))
         ]
@@ -236,13 +236,13 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        if (store.users.getLocalUserByUsername(namespace, parsed.data.username)) {
+        if (await store.users.getLocalUserByUsername(namespace, parsed.data.username)) {
             return c.json({ error: 'Username already exists' }, 409)
         }
 
         try {
             const passwordHash = await hashPassword(parsed.data.password)
-            const user = store.users.createLocalUser({
+            const user = await store.users.createLocalUser({
                 namespace,
                 username: parsed.data.username,
                 passwordHash,
@@ -269,7 +269,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
         }
 
         const ownerId = await getOwnerUserId()
-        const target = store.users.getUserById(targetUserId, namespace)
+        const target = await store.users.getUserById(targetUserId, namespace)
         if (!target && targetUserId === ownerId) {
             return c.json({ error: 'Hub owner is managed by CLI_API_TOKEN settings' }, 400)
         }
@@ -284,7 +284,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Admins cannot disable or demote their own account' }, 400)
         }
 
-        const user = store.users.updateUser(targetUserId, namespace, {
+        const user = await store.users.updateUser(targetUserId, namespace, {
             displayName: parsed.data.displayName,
             role: parsed.data.role,
             disabledAt: parsed.data.disabled === undefined
@@ -312,7 +312,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
         }
 
         const ownerId = await getOwnerUserId()
-        const target = store.users.getUserById(targetUserId, namespace)
+        const target = await store.users.getUserById(targetUserId, namespace)
         if (!target && targetUserId === ownerId) {
             return c.json({ error: 'Hub owner is managed by CLI_API_TOKEN settings' }, 400)
         }
@@ -326,7 +326,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Only local users can be deleted' }, 400)
         }
 
-        const deleted = store.users.removeLocalUserById(targetUserId, namespace, actorUserId)
+        const deleted = await store.users.removeLocalUserById(targetUserId, namespace, actorUserId)
         if (!deleted) {
             return c.json({ error: 'Local user not found' }, 404)
         }
@@ -352,7 +352,7 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        const user = store.users.updateUserPassword(targetUserId, namespace, await hashPassword(parsed.data.password))
+        const user = await store.users.updateUserPassword(targetUserId, namespace, await hashPassword(parsed.data.password))
         if (!user) {
             return c.json({ error: 'Local user not found' }, 404)
         }

@@ -52,9 +52,9 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
                 role = 'admin'
                 userAccessToken = rawAccessToken
                 namespace = parsedToken.namespace
-                store.projects.ensureDefaults(namespace, userId)
+                await store.projects.ensureDefaults(namespace, userId)
             } else {
-                const storedUser = store.users.getUserByAccessToken(rawAccessToken)
+                const storedUser = await store.users.getUserByAccessToken(rawAccessToken)
                 if (!storedUser || storedUser.disabledAt !== null) {
                     return c.json({ error: 'Invalid access token' }, 401)
                 }
@@ -71,7 +71,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
             }
         } else if ('username' in parsed.data) {
             namespace = parsed.data.namespace?.trim() || DEFAULT_NAMESPACE
-            const storedUser = store.users.getLocalUserByUsername(namespace, parsed.data.username)
+            const storedUser = await store.users.getLocalUserByUsername(namespace, parsed.data.username)
             if (!storedUser || storedUser.disabledAt !== null) {
                 return c.json({ error: 'Invalid username or password' }, 401)
             }
@@ -98,7 +98,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
             }
 
             const telegramUserId = String(result.user.id)
-            const storedUser = store.users.getUser('telegram', telegramUserId)
+            const storedUser = await store.users.getUser('telegram', telegramUserId)
             if (!storedUser) {
                 return c.json({ error: 'not_bound' }, 401)
             }

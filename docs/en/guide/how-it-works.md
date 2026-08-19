@@ -2,7 +2,7 @@
 
 **Language:** English | [简体中文](../../zh-CN/guide/how-it-works.md)
 
-HAPI consists of three interconnected components that work together to provide remote AI agent control.
+HAPI consists of three interconnected components that work together to provide remote AI agent control. The hub uses configurable storage: SQLite by default, Elasticsearch for conversation history, and MySQL for core hub data when enabled.
 
 ## Architecture Overview
 
@@ -14,8 +14,8 @@ HAPI consists of three interconnected components that work together to provide r
 │   │              │         │              │         │              │       │
 │   │   HAPI CLI   │◄───────►│  HAPI Hub    │◄───────►│   Web App    │       │
 │   │              │ Socket  │              │   SSE   │  (embedded)  │       │
-│   │  + AI Agent  │   .IO   │  + SQLite    │         │              │       │
-│   │              │         │  + REST API  │         │              │       │
+│   │  + AI Agent  │   .IO   │ + Storage    │         │              │       │
+│   │              │         │ + REST API   │         │              │       │
 │   └──────────────┘         └──────┬───────┘         └──────────────┘       │
 │                                   │                                        │
 │                                   │ localhost:3006                         │
@@ -73,7 +73,7 @@ The hub is the central service that connects everything:
 - **HTTP API** - RESTful endpoints for sessions, messages, permissions
 - **Socket.IO** - Real-time bidirectional communication with CLI
 - **SSE (Server-Sent Events)** - Live updates pushed to web clients
-- **SQLite Database** - Persistent storage for sessions and messages
+- **Configurable Storage** - SQLite by default, Elasticsearch for conversation history, and MySQL for core hub data
 - **Local Accounts** - Username/password browser login, admin user management, and per-user access tokens
 - **Project ACLs** - User/project/workspace access checks before sessions, machines, files, and events are exposed
 - **Telegram Bot** - Notifications and Mini App integration
@@ -104,7 +104,7 @@ A React-based PWA that provides the mobile interface:
 3. CLI connects to hub via Socket.IO
          │
          ▼
-4. Hub creates session in database
+4. Hub creates session in the configured core store
          │
          ▼
 5. Web clients receive SSE update

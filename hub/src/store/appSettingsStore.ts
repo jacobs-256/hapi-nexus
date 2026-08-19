@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite'
+import type { AppSettingsStorePort } from './ports/coreStores'
 
-export class AppSettingsStore {
+export class AppSettingsStore implements AppSettingsStorePort {
     constructor(
         private readonly db: Database,
         private readonly onChange?: () => void

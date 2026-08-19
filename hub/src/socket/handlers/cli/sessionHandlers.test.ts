@@ -46,7 +46,7 @@ describe('cli session handlers', () => {
 
         registerSessionHandlers(socket as unknown as CliSocketWithData, {
             store,
-            resolveSessionAccess: () => ({ ok: true, value: session as StoredSession }),
+            resolveSessionAccess: async () => ({ ok: true, value: session as StoredSession }),
             emitAccessError: () => {
                 throw new Error('unexpected access error')
             },
@@ -65,7 +65,7 @@ describe('cli session handlers', () => {
         expect(webEvents).toHaveLength(0)
     })
 
-    it('update-metadata broadcasts the merged value, not the pre-merge payload', () => {
+    it('update-metadata broadcasts the merged value, not the pre-merge payload', async () => {
         const store = new Store(':memory:')
         const session = store.sessions.getOrCreateSession(
             'broadcast-merged',
@@ -81,7 +81,7 @@ describe('cli session handlers', () => {
 
         registerSessionHandlers(socket as unknown as CliSocketWithData, {
             store,
-            resolveSessionAccess: () => ({ ok: true, value: session as StoredSession }),
+            resolveSessionAccess: async () => ({ ok: true, value: session as StoredSession }),
             emitAccessError: () => {
                 throw new Error('unexpected access error')
             }
@@ -103,6 +103,7 @@ describe('cli session handlers', () => {
                 ackResponse = response
             }
         )
+        await new Promise((resolve) => setTimeout(resolve, 0))
 
         // Ack: success and the version bumps; the persisted value carries the
         // merged metadata so other CLIs can update their cache to the truth.

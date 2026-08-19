@@ -84,6 +84,36 @@ function UsageRows(props: { title: string; usage?: { path: string; totalBytes: n
     )
 }
 
+function formatTime(value: number | null | undefined): string {
+    return value ? new Date(value).toLocaleString() : '—'
+}
+
+function ExternalSyncRows(props: {
+    title: string
+    status?: {
+        running: boolean
+        lastStartedAt: number | null
+        lastSucceededAt: number | null
+        lastFailedAt: number | null
+        lastError: string | null
+        lastCopiedRows: number | null
+    }
+}) {
+    const { t } = useTranslation()
+    if (!props.status) return null
+    return (
+        <>
+            <SettingsRow
+                label={props.title}
+                trailing={<span className={props.status.lastError ? 'text-red-600' : 'text-[var(--app-hint)]'}>{props.status.running ? t('settings.storage.externalSync.running') : (props.status.lastError ? t('settings.storage.externalSync.failed') : t('settings.storage.externalSync.idle'))}</span>}
+            />
+            <SettingsRow label={t('settings.storage.externalSync.lastSuccess')} trailing={<span className="text-[var(--app-hint)]">{formatTime(props.status.lastSucceededAt)}</span>} />
+            <SettingsRow label={t('settings.storage.externalSync.lastRows')} trailing={<span className="text-[var(--app-hint)]">{props.status.lastCopiedRows ?? '—'}</span>} />
+            {props.status.lastError ? <SettingsRow label={t('settings.storage.externalSync.lastError')} description={props.status.lastError} trailing={<span className="text-[var(--app-hint)]">{formatTime(props.status.lastFailedAt)}</span>} /> : null}
+        </>
+    )
+}
+
 export default function SettingsStoragePage() {
     const { api } = useAppContext()
     const { t } = useTranslation()
@@ -99,6 +129,7 @@ export default function SettingsStoragePage() {
         retry: false,
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
+        refetchInterval: (query) => query.state.data?.migration?.status === 'running' ? 3000 : false,
     })
     const [draft, setDraft] = useState<StorageConfig>(() => emptyConfig())
     const [migrationMode, setMigrationMode] = useState<StorageMigrationMode>('none')
@@ -111,12 +142,15 @@ export default function SettingsStoragePage() {
     }, [query.data?.config])
 
     const updateMutation = useMutation({
-        mutationFn: async () => {
+        mutationFn: async (options?: { restart?: boolean }) => {
             if (!api) throw new Error(t('settings.storage.apiUnavailable'))
-            return await api.updateStorageSettings({ config: draft, migrate: migrationMode })
+            return await api.updateStorageSettings({ config: draft, migrate: migrationMode, restart: options?.restart })
         },
         onSuccess: (response) => {
-            setSavedMessage(response.migrationMessage ? formatStorageMessage(response.migrationMessage, t) : (response.restartRequired ? t('settings.storage.savedRestart') : t('settings.storage.saved')))
+            setSavedMessage(response.restarting ? t('settings.storage.restarting') : (response.migrationStarted ? t('settings.storage.migration.started') : (response.migrationMessage ? formatStorageMessage(response.migrationMessage, t) : (response.restartRequired ? t('settings.storage.savedRestart') : t('settings.storage.saved')))))
+            if (response.migrationStarted && response.migration) {
+                window.dispatchEvent(new CustomEvent('hapi-storage-migration-started', { detail: response.migration }))
+            }
             void queryClient.invalidateQueries({ queryKey: queryKeys.storageSettings })
         }
     })
@@ -155,6 +189,7 @@ export default function SettingsStoragePage() {
                 ) : null}
             </SettingsSection>
 
+
             {query.data?.sqlite ? (
                 <SettingsSection title={t('settings.storage.sqliteUsage.title')}>
                     <UsageRows title={t('settings.storage.sqliteUsage.coreTotal')} usage={query.data.sqlite.core} />
@@ -162,11 +197,18 @@ export default function SettingsStoragePage() {
                 </SettingsSection>
             ) : null}
 
+            {query.data?.externalSync && Object.keys(query.data.externalSync).length > 0 ? (
+                <SettingsSection title={t('settings.storage.externalSync.title')} description={t('settings.storage.externalSync.description')}>
+                    <ExternalSyncRows title={t('settings.storage.externalSync.core')} status={query.data.externalSync.core} />
+                    <ExternalSyncRows title={t('settings.storage.externalSync.conversation')} status={query.data.externalSync.conversation} />
+                </SettingsSection>
+            ) : null}
+
             <form
                 className="space-y-6"
                 onSubmit={(event: FormEvent) => {
                     event.preventDefault()
-                    updateMutation.mutate()
+                    updateMutation.mutate({ restart: false })
                 }}
             >
                 <SettingsSection title={t('settings.storage.conversation.title')} description={t('settings.storage.conversation.description')}>
@@ -233,6 +275,18 @@ export default function SettingsStoragePage() {
                 <div className="flex gap-2">
                     <button type="submit" disabled={updateMutation.isPending || (!dirty && migrationMode === 'none')} className="rounded-lg bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
                         {updateMutation.isPending ? t('settings.storage.saving') : t('settings.storage.save')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (window.confirm(t('settings.storage.restartConfirm'))) {
+                                updateMutation.mutate({ restart: true })
+                            }
+                        }}
+                        disabled={updateMutation.isPending || (!dirty && migrationMode === 'none')}
+                        className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] disabled:opacity-50"
+                    >
+                        {updateMutation.isPending ? t('settings.storage.saving') : t('settings.storage.saveRestart')}
                     </button>
                     <button type="button" onClick={() => void query.refetch()} disabled={query.isFetching} className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] disabled:opacity-50">
                         {query.isFetching ? t('settings.storage.refreshing') : t('settings.storage.refresh')}

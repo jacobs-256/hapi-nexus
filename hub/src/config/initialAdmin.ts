@@ -37,8 +37,7 @@ export async function ensureInitialLocalAdmin(
     options: InitialAdminBootstrapOptions = {}
 ): Promise<InitialAdminBootstrapResult> {
     const namespace = options.namespace?.trim() || DEFAULT_NAMESPACE
-    const existingActiveAdmin = store.users
-        .listUsersByNamespace(namespace)
+    const existingActiveAdmin = (await store.users.listUsersByNamespace(namespace))
         .find(hasActiveLocalAdmin)
     if (existingActiveAdmin) {
         return { status: 'exists', user: existingActiveAdmin }
@@ -47,7 +46,7 @@ export async function ensureInitialLocalAdmin(
     const username = resolveInitialAdminUsername(
         options.username ?? process.env.HAPI_ADMIN_USERNAME
     )
-    const existingUser = store.users.getLocalUserByUsername(namespace, username)
+    const existingUser = await store.users.getLocalUserByUsername(namespace, username)
     if (existingUser) {
         return { status: 'conflict', namespace, username, existingUser }
     }
@@ -60,7 +59,7 @@ export async function ensureInitialLocalAdmin(
     }
 
     const passwordHash = await Bun.password.hash(password, { algorithm: 'argon2id' })
-    const user = store.users.createLocalUser({
+    const user = await store.users.createLocalUser({
         namespace,
         username,
         passwordHash,

@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 
+import type { MachineStorePort } from './ports/coreStores'
 import type { StoredMachine, VersionedUpdateResult } from './types'
 import {
     deleteMachineByNamespace,
@@ -13,7 +14,7 @@ import {
     updateMachineMetadata
 } from './machines'
 
-export class MachineStore {
+export class MachineStore implements MachineStorePort {
     private readonly db: Database
 
     constructor(

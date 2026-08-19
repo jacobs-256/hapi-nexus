@@ -24,7 +24,7 @@ export function createDevicesRoutes(store: Store): Hono<WebAppEnv> {
         }
 
         const namespace = c.get('namespace')
-        store.fcm.upsertDevice(namespace, parsed.data)
+        await store.fcm.upsertDevice(namespace, parsed.data)
         return c.json({ ok: true })
     })
 
@@ -36,7 +36,7 @@ export function createDevicesRoutes(store: Store): Hono<WebAppEnv> {
         }
 
         const namespace = c.get('namespace')
-        store.fcm.removeDeviceByToken(namespace, parsed.data.token)
+        await store.fcm.removeDeviceByToken(namespace, parsed.data.token)
         return c.json({ ok: true })
     })
 

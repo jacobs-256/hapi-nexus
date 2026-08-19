@@ -44,7 +44,7 @@ See `src/router.tsx` for route definitions.
 - `/settings/users` - Admin user management for local username/password accounts.
 - `/settings/projects` - Project sharing, members, invites, and workspaces.
 - `/settings/machines` - Machine display names.
-- `/settings/storage` - Storage usage.
+- `/settings/storage` - Storage configuration, migration status, and usage.
 - `/settings/about` - Application version information.
 - `/invite/$token` - Accept a project invite.
 

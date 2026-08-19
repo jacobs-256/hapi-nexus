@@ -9,7 +9,7 @@ import type { TerminalRegistry } from '../../terminalRegistry'
 import type { CliSocketWithData, SocketServer } from '../../socketTypes'
 import type { AccessErrorReason, AccessResult } from './types'
 
-type ResolveSessionAccess = (sessionId: string) => AccessResult<StoredSession>
+type ResolveSessionAccess = (sessionId: string) => Promise<AccessResult<StoredSession>>
 
 type EmitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => void
 
@@ -30,7 +30,7 @@ export type TerminalHandlersDeps = {
 export function registerTerminalHandlers(socket: CliSocketWithData, deps: TerminalHandlersDeps): void {
     const { terminalRegistry, terminalNamespace, resolveSessionAccess, emitAccessError } = deps
 
-    const forwardTerminalEvent = (event: string, payload: { sessionId: string; terminalId: string } & Record<string, unknown>) => {
+    const forwardTerminalEvent = async (event: string, payload: { sessionId: string; terminalId: string } & Record<string, unknown>) => {
         const entry = terminalRegistry.get(payload.terminalId)
         if (!entry) {
             return
@@ -41,7 +41,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
         if (payload.sessionId !== entry.sessionId) {
             return
         }
-        const sessionAccess = resolveSessionAccess(payload.sessionId)
+        const sessionAccess = await resolveSessionAccess(payload.sessionId)
         if (!sessionAccess.ok) {
             emitAccessError('session', payload.sessionId, sessionAccess.reason)
             return
@@ -53,7 +53,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
         terminalSocket.emit(event, payload)
     }
 
-    socket.on('terminal:ready', (data: unknown) => {
+    socket.on('terminal:ready', async (data: unknown) => {
         const parsed = terminalReadySchema.safeParse(data)
         if (!parsed.success) {
             return
@@ -62,7 +62,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
         forwardTerminalEvent('terminal:ready', parsed.data)
     })
 
-    socket.on('terminal:output', (data: unknown) => {
+    socket.on('terminal:output', async (data: unknown) => {
         const parsed = terminalOutputSchema.safeParse(data)
         if (!parsed.success) {
             return
@@ -71,7 +71,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
         forwardTerminalEvent('terminal:output', parsed.data)
     })
 
-    socket.on('terminal:exit', (data: unknown) => {
+    socket.on('terminal:exit', async (data: unknown) => {
         const parsed = terminalExitSchema.safeParse(data)
         if (!parsed.success) {
             return
@@ -88,7 +88,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
         terminalSocket.emit('terminal:exit', parsed.data)
     })
 
-    socket.on('terminal:error', (data: unknown) => {
+    socket.on('terminal:error', async (data: unknown) => {
         const parsed = terminalErrorSchema.safeParse(data)
         if (!parsed.success) {
             return
@@ -99,7 +99,7 @@ export function registerTerminalHandlers(socket: CliSocketWithData, deps: Termin
             return
         }
 
-        const sessionAccess = resolveSessionAccess(parsed.data.sessionId)
+        const sessionAccess = await resolveSessionAccess(parsed.data.sessionId)
         if (!sessionAccess.ok) {
             terminalRegistry.remove(parsed.data.terminalId)
             emitAccessError('session', parsed.data.sessionId, sessionAccess.reason)

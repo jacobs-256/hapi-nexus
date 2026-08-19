@@ -48,7 +48,7 @@ export async function resolveCliAuthToken(
         }
     }
 
-    const user = store.users.getUserByAccessToken(token)
+    const user = await store.users.getUserByAccessToken(token)
     if (!isValidLocalTokenUser(user)) {
         return null
     }

@@ -40,12 +40,12 @@ describe('alive incremental events', () => {
         expect(update.data).toEqual(expect.objectContaining({ active: true }))
     })
 
-    it('emits full active machine object on machine alive', () => {
+    it('emits full active machine object on machine alive', async () => {
         const store = new Store(':memory:')
         const events: SyncEvent[] = []
         const cache = new MachineCache(store, createPublisher(events))
 
-        const machine = cache.getOrCreateMachine(
+        const machine = await cache.getOrCreateMachine(
             'machine-alive-test',
             { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
             null,
@@ -53,7 +53,7 @@ describe('alive incremental events', () => {
         )
 
         events.length = 0
-        cache.handleMachineAlive({ machineId: machine.id, time: Date.now() })
+        await cache.handleMachineAlive({ machineId: machine.id, time: Date.now() })
 
         const update = events.find((event) => event.type === 'machine-updated')
         expect(update).toBeDefined()
@@ -64,12 +64,12 @@ describe('alive incremental events', () => {
         expect(update.data).toEqual(expect.objectContaining({ id: machine.id, active: true }))
     })
 
-    it('stores health from machine alive and rebroadcasts when it changes', () => {
+    it('stores health from machine alive and rebroadcasts when it changes', async () => {
         const store = new Store(':memory:')
         const events: SyncEvent[] = []
         const cache = new MachineCache(store, createPublisher(events))
 
-        const machine = cache.getOrCreateMachine(
+        const machine = await cache.getOrCreateMachine(
             'machine-health-test',
             { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
             null,
@@ -77,7 +77,7 @@ describe('alive incremental events', () => {
         )
 
         events.length = 0
-        cache.handleMachineAlive({
+        await cache.handleMachineAlive({
             machineId: machine.id,
             time: Date.now(),
             health: {
@@ -92,7 +92,7 @@ describe('alive incremental events', () => {
         expect(updated?.health).toEqual(expect.objectContaining({ load1m: 0.4, cpuCount: 8 }))
 
         events.length = 0
-        cache.handleMachineAlive({
+        await cache.handleMachineAlive({
             machineId: machine.id,
             time: Date.now() + 1,
             health: {

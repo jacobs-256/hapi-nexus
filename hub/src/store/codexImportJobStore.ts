@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite'
+import type { CodexImportJobInput, CodexImportJobStorePort } from './ports/coreStores'
 
 export type StoredCodexImportJobRecord = {
     id: string
@@ -8,14 +9,6 @@ export type StoredCodexImportJobRecord = {
     createdAt: number
     updatedAt: number
     payload: unknown
-}
-
-type CodexImportJobLike = {
-    id: string
-    namespace: string
-    userId?: number
-    status: string
-    createdAt: number
 }
 
 type CodexImportJobRow = {
@@ -50,7 +43,7 @@ function mapRow(row: CodexImportJobRow): StoredCodexImportJobRecord | null {
     }
 }
 
-export class CodexImportJobStore {
+export class CodexImportJobStore implements CodexImportJobStorePort {
     constructor(
         private readonly db: Database,
         private readonly onChange?: () => void
@@ -65,7 +58,7 @@ export class CodexImportJobStore {
         return rows.map(mapRow).filter((row): row is StoredCodexImportJobRecord => row !== null)
     }
 
-    save(job: CodexImportJobLike, payload: unknown, updatedAt: number = Date.now()): void {
+    save(job: CodexImportJobInput, payload: unknown, updatedAt: number = Date.now()): void {
         this.db.prepare(`
             INSERT INTO codex_import_jobs (id, namespace, user_id, status, created_at, updated_at, payload)
             VALUES (?, ?, ?, ?, ?, ?, ?)

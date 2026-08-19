@@ -106,7 +106,7 @@ describe('MessageService goal status filtering', () => {
         }
     }
 
-    it('hides stored redundant goal status events but keeps actionable goal messages', () => {
+    it('hides stored redundant goal status events but keeps actionable goal messages', async () => {
         const store = makeStore()
         const session = makeSession(store, 'goal-status-filter')
 
@@ -123,7 +123,7 @@ describe('MessageService goal status filtering', () => {
         ])
     })
 
-    it('exports chronological visible messages and omits queued user rows', () => {
+    it('exports chronological visible messages and omits queued user rows', async () => {
         const store = makeStore()
         const session = makeSession(store, 'session-export-visible')
 
@@ -140,7 +140,7 @@ describe('MessageService goal status filtering', () => {
         const second = store.messages.addMessage(session.id, { role: 'agent', content: 'Hi' })
 
         const service = new MessageService(store, makeIo(() => {}), makePublisher() as any)
-        const result = service.getSessionExport(session.id, toProtocolSession(session))
+        const result = await service.getSessionExport(session.id, toProtocolSession(session))
 
         expect(result.type).toBe('success')
         if (result.type !== 'success') throw new Error('Expected success export')
@@ -149,7 +149,7 @@ describe('MessageService goal status filtering', () => {
         expect(result.payload.messages.some((message) => message.id === hiddenSystem.id)).toBe(false)
     })
 
-    it('orders invoked scheduled messages by display time, not insertion seq', () => {
+    it('orders invoked scheduled messages by display time, not insertion seq', async () => {
         const store = makeStore()
         const session = makeSession(store, 'session-export-scheduled-order')
 
@@ -168,14 +168,14 @@ describe('MessageService goal status filtering', () => {
         store.messages.markMessagesInvoked(session.id, ['local-scheduled'], 3_000)
 
         const service = new MessageService(store, makeIo(() => {}), makePublisher() as any)
-        const result = service.getSessionExport(session.id, toProtocolSession(session))
+        const result = await service.getSessionExport(session.id, toProtocolSession(session))
 
         expect(result.type).toBe('success')
         if (result.type !== 'success') throw new Error('Expected success export')
         expect(result.payload.messages.map((message) => message.id)).toEqual([normal.id, scheduled.id])
     })
 
-    it('returns too-large instead of truncating an export over the cap', () => {
+    it('returns too-large instead of truncating an export over the cap', async () => {
         const store = makeStore()
         const session = makeSession(store, 'session-export-cap')
 
@@ -183,7 +183,7 @@ describe('MessageService goal status filtering', () => {
         store.messages.addMessage(session.id, { role: 'agent', content: 'Two' })
 
         const service = new MessageService(store, makeIo(() => {}), makePublisher() as any)
-        const result = service.getSessionExport(session.id, toProtocolSession(session), 1)
+        const result = await service.getSessionExport(session.id, toProtocolSession(session), 1)
 
         expect(result).toEqual({
             type: 'too-large',
@@ -192,7 +192,7 @@ describe('MessageService goal status filtering', () => {
         })
     })
 
-    it('includes scratchlist text and attachment metadata in chronological order (tiann/hapi#1235)', () => {
+    it('includes scratchlist text and attachment metadata in chronological order (tiann/hapi#1235)', async () => {
         const store = makeStore()
         const session = makeSession(store, 'session-export-scratchlist')
 
@@ -216,7 +216,7 @@ describe('MessageService goal status filtering', () => {
         expect(newer.outcome).toBe('created')
 
         const service = new MessageService(store, makeIo(() => {}), makePublisher() as any)
-        const result = service.getSessionExport(session.id, toProtocolSession(session))
+        const result = await service.getSessionExport(session.id, toProtocolSession(session))
 
         expect(result.type).toBe('success')
         if (result.type !== 'success') throw new Error('Expected success export')
@@ -245,19 +245,19 @@ describe('MessageService goal status filtering', () => {
         ])
     })
 
-    it('emits an empty scratchlist array when the session has no notes', () => {
+    it('emits an empty scratchlist array when the session has no notes', async () => {
         const store = makeStore()
         const session = makeSession(store, 'session-export-no-scratchlist')
 
         const service = new MessageService(store, makeIo(() => {}), makePublisher() as any)
-        const result = service.getSessionExport(session.id, toProtocolSession(session))
+        const result = await service.getSessionExport(session.id, toProtocolSession(session))
 
         expect(result.type).toBe('success')
         if (result.type !== 'success') throw new Error('Expected success export')
         expect(result.payload.scratchlist).toEqual([])
     })
 
-    it('pages past hidden-only goal status rows', () => {
+    it('pages past hidden-only goal status rows', async () => {
         const store = makeStore()
         const session = makeSession(store, 'goal-status-pagination')
 
@@ -273,7 +273,7 @@ describe('MessageService goal status filtering', () => {
         expect(latest.page.hasMore).toBe(false)
     })
 
-    it('pages past hidden-only goal status rows in position pagination', () => {
+    it('pages past hidden-only goal status rows in position pagination', async () => {
         const store = makeStore()
         const session = makeSession(store, 'goal-status-position-pagination')
 
@@ -295,7 +295,7 @@ describe('MessageService message pagination', () => {
         return new MessageService(store, makeIo(() => {}), makePublisher() as any)
     }
 
-    it('returns the latest page with a composite cursor', () => {
+    it('returns the latest page with a composite cursor', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-first')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -319,7 +319,7 @@ describe('MessageService message pagination', () => {
         expect(first.id).toBeDefined()
     })
 
-    it('uses the composite cursor for older pages', () => {
+    it('uses the composite cursor for older pages', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-older')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -344,7 +344,7 @@ describe('MessageService message pagination', () => {
         expect(third.id).toBeDefined()
     })
 
-    it('breaks equal timestamp ties by seq', () => {
+    it('breaks equal timestamp ties by seq', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-tie')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -364,7 +364,7 @@ describe('MessageService message pagination', () => {
         expect(older.messages.map((message) => message.id)).toEqual([first.id])
     })
 
-    it('orders scheduled queued messages by their display position without changing the cursor', () => {
+    it('orders scheduled queued messages by their display position without changing the cursor', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-scheduled')
         const scheduled = store.messages.addMessage(session.id, 'scheduled', 'local-scheduled', Date.now() + 60_000)
@@ -379,7 +379,7 @@ describe('MessageService message pagination', () => {
         expect(page.page.hasMore).toBe(true)
     })
 
-    it('pages forward to a fixed snapshot head', () => {
+    it('pages forward to a fixed snapshot head', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-after')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -424,7 +424,7 @@ describe('MessageService message pagination', () => {
         expect(secondDelta.messages.some((message) => message.id === fifth.id)).toBe(false)
     })
 
-    it('completes a fixed snapshot when no raw row remains before its head', () => {
+    it('completes a fixed snapshot when no raw row remains before its head', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-after-empty-snapshot-gap')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -450,7 +450,7 @@ describe('MessageService message pagination', () => {
         })
     })
 
-    it('returns a reset latest page when the structural epoch changed', () => {
+    it('returns a reset latest page when the structural epoch changed', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-after-reset')
         const first = store.messages.addMessage(session.id, 'first', 'local-first')
@@ -472,7 +472,7 @@ describe('MessageService message pagination', () => {
 })
 
 describe('MessageService.getQueuedState', () => {
-    it('returns requested queued and invoked local IDs from the requested session', () => {
+    it('returns requested queued and invoked local IDs from the requested session', async () => {
         const store = makeStore()
         const session = makeSession(store, 'queued-state')
         const otherSession = makeSession(store, 'queued-state-other')
@@ -1260,7 +1260,7 @@ describe('MessageService.releaseMatureScheduledMessages', () => {
 
     // #10: true cold-start restart simulation — new Store + new MessageService
     // share the same SQLite file, replicating what hub restart actually does.
-    it('#10 hub cold-start restart: mature message is re-emitted by new Store+Service (true restart sim)', () => {
+    it('#10 hub cold-start restart: mature message is re-emitted by new Store+Service (true restart sim)', async () => {
         const dir = mkdtempSync(join(tmpdir(), 'hapi-restart-test-'))
         const dbPath = join(dir, 'test.db')
         let store1: Store | undefined
@@ -1345,7 +1345,7 @@ describe('MessageService.sweepImmediateQueuedOnSessionEnd — scheduled rows are
         return { io, cliEmitted }
     }
 
-    it('mature scheduled row at session-end stays uninvoked and is emitted by the next mature scan', () => {
+    it('mature scheduled row at session-end stays uninvoked and is emitted by the next mature scan', async () => {
         // R4 race scenario A: CLI dies just after scheduled_at <= now but before
         // the next 5s mature-scan tick — the sweep must NOT touch the scheduled row.
         const store = makeStore()
@@ -1379,7 +1379,7 @@ describe('MessageService.sweepImmediateQueuedOnSessionEnd — scheduled rows are
         expect(cliEmitted).toHaveLength(1)
     })
 
-    it('mature scheduled row already emitted but not yet acked stays uninvoked across session-end and is re-emitted', () => {
+    it('mature scheduled row already emitted but not yet acked stays uninvoked across session-end and is re-emitted', async () => {
         // R4 race scenario B: mature scan emits at T+0, CLI receives but dies
         // before sending messages-consumed.  Session-end fires while invoked_at
         // is still NULL.  The sweep must preserve the row (scheduled_at IS NOT
@@ -1425,7 +1425,7 @@ describe('MessageService.sweepImmediateQueuedOnSessionEnd — scheduled rows are
         expect(emitted2).toHaveLength(1)
     })
 
-    it('immediate-queued (no scheduled_at) IS swept and stamped invoked at session-end', () => {
+    it('immediate-queued (no scheduled_at) IS swept and stamped invoked at session-end', async () => {
         // Confirms the sweep still does its primary job for true immediate rows.
         const store = makeStore()
         const session = makeSession(store, 'r4-immediate-sweep')
@@ -1455,7 +1455,7 @@ describe('MessageService.sweepImmediateQueuedOnSessionEnd — scheduled rows are
         expect(stillQueued.find((m) => m.localId === 'local-imm')).toBeUndefined()
     })
 
-    it('future scheduled (scheduled_at > now) is also preserved by the sweep', () => {
+    it('future scheduled (scheduled_at > now) is also preserved by the sweep', async () => {
         const store = makeStore()
         const session = makeSession(store, 'r4-future-sweep')
         const publisher = makePublisher()

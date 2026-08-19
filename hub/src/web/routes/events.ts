@@ -39,7 +39,7 @@ export function createEventsRoutes(
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.get('/events', (c) => {
+    app.get('/events', async (c) => {
         const manager = getSseManager()
         if (!manager) {
             return c.json({ error: 'Not connected' }, 503)
@@ -61,14 +61,14 @@ export function createEventsRoutes(
                 return c.json({ error: 'Not connected' }, 503)
             }
             if (sessionId) {
-                const sessionResult = requireSession(c, engine, sessionId)
+                const sessionResult = await requireSession(c, engine, sessionId)
                 if (sessionResult instanceof Response) {
                     return sessionResult
                 }
                 resolvedSessionId = sessionResult.sessionId
             }
             if (machineId) {
-                const machine = requireMachine(c, engine, machineId)
+                const machine = await requireMachine(c, engine, machineId)
                 if (machine instanceof Response) return machine
             }
         }

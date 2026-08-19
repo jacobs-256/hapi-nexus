@@ -15,14 +15,14 @@ import type { SSEManager } from '../../sse/sseManager'
 const COMPOSER_TOOLBAR_SETTINGS_KEY = 'composerToolbar'
 const DEFAULT_COMPOSER_TOOLBAR_SETTINGS: GlobalComposerToolbarSettings = { disabled: [] }
 
-function hasGlobalSettingsAdminAccess(c: Context<WebAppEnv>, store: Store): boolean {
+async function hasGlobalSettingsAdminAccess(c: Context<WebAppEnv>, store: Store): Promise<boolean> {
     const namespace = c.get('namespace')
     if (namespace !== 'default') return false
     if (c.get('authPlatform') === 'owner') return true
 
     const userId = c.get('userId')
     if (typeof userId !== 'number') return false
-    const user = store.users.getUserById(userId, namespace)
+    const user = await store.users.getUserById(userId, namespace)
     return user?.role === 'admin' && user.disabledAt === null
 }
 
@@ -43,9 +43,9 @@ function normalizeComposerToolbarSettings(value: unknown): GlobalComposerToolbar
     }
 }
 
-function readComposerToolbarSettings(store: Store): GlobalComposerToolbarSettings {
+async function readComposerToolbarSettings(store: Store): Promise<GlobalComposerToolbarSettings> {
     return normalizeComposerToolbarSettings(
-        store.appSettings.getJson(COMPOSER_TOOLBAR_SETTINGS_KEY, DEFAULT_COMPOSER_TOOLBAR_SETTINGS)
+        await store.appSettings.getJson(COMPOSER_TOOLBAR_SETTINGS_KEY, DEFAULT_COMPOSER_TOOLBAR_SETTINGS)
     )
 }
 
@@ -55,16 +55,16 @@ export function createAppSettingsRoutes(
 ): Hono<WebAppEnv> {
     const app = new Hono<WebAppEnv>()
 
-    app.get('/settings/composer-toolbar', (c) => {
+    app.get('/settings/composer-toolbar', async (c) => {
         c.header('Cache-Control', 'no-store')
         const response: GlobalComposerToolbarSettingsResponse = {
-            settings: readComposerToolbarSettings(store)
+            settings: await readComposerToolbarSettings(store)
         }
         return c.json(response)
     })
 
     app.put('/settings/composer-toolbar', async (c) => {
-        if (!hasGlobalSettingsAdminAccess(c, store)) {
+        if (!await hasGlobalSettingsAdminAccess(c, store)) {
             return c.json({ error: 'Global toolbar settings are only available to default-namespace administrators' }, 403)
         }
 
@@ -75,7 +75,7 @@ export function createAppSettingsRoutes(
         }
 
         const settings = normalizeComposerToolbarSettings(parsed.data)
-        store.appSettings.setJson(COMPOSER_TOOLBAR_SETTINGS_KEY, settings)
+        await store.appSettings.setJson(COMPOSER_TOOLBAR_SETTINGS_KEY, settings)
         options?.getSseManager?.()?.broadcast({
             type: 'app-settings-updated',
             data: {

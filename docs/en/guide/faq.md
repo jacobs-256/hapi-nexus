@@ -114,9 +114,9 @@ Set `ELEVENLABS_API_KEY`, open a session in the web app, and click the microphon
 ### Is my data safe?
 
 Yes. HAPI is local-first:
-- All data stays on your machine
-- Nothing is uploaded to external servers
-- The database is stored locally in `~/.hapi/`
+- By default, all data stays on your machine in the local SQLite database under `~/.hapi/`
+- Nothing is uploaded to HAPI-operated external servers
+- If you configure MySQL or Elasticsearch, data is stored in the private backend you provide
 
 ### How secure is authentication?
 
@@ -227,7 +227,7 @@ This checks hub connectivity, token validity, agent availability, and more.
 | Design | Cloud-first | Local-first |
 | Users | Managed multi-user cloud | Private multi-user hub |
 | Deployment | Multiple services | Single binary |
-| Data | Encrypted on server | Never leaves your machine |
+| Data | Encrypted on server | Local by default; or your configured private MySQL/Elasticsearch backend |
 
 See [Why HAPI Nexus](./why-hapi.md) for detailed comparison.
 

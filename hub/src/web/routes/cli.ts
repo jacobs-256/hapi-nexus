@@ -33,14 +33,22 @@ type CliRouteOptions = {
     getOwnerUserId?: () => Promise<number>
 }
 
-function resolveSessionForNamespace(
+async function resolveSessionForNamespace(
     engine: SyncEngine,
     sessionId: string,
     auth: CliAuthContext
-): { ok: true; session: Session; sessionId: string } | { ok: false; status: 403 | 404; error: string } {
+): Promise<{ ok: true; session: Session; sessionId: string } | { ok: false; status: 403 | 404; error: string }> {
+    const asyncEngine = engine as SyncEngine & {
+        resolveSessionAccessAsync?: SyncEngine['resolveSessionAccessAsync']
+        resolveSessionAccessForUserAsync?: SyncEngine['resolveSessionAccessForUserAsync']
+    }
     const access = auth.source === 'system'
-        ? engine.resolveSessionAccess(sessionId, auth.namespace)
-        : engine.resolveSessionAccessForUser(sessionId, auth.namespace, auth.userId, 'editor')
+        ? asyncEngine.resolveSessionAccessAsync
+            ? await asyncEngine.resolveSessionAccessAsync(sessionId, auth.namespace)
+            : engine.resolveSessionAccess(sessionId, auth.namespace)
+        : asyncEngine.resolveSessionAccessForUserAsync
+            ? await asyncEngine.resolveSessionAccessForUserAsync(sessionId, auth.namespace, auth.userId, 'editor')
+            : engine.resolveSessionAccessForUser(sessionId, auth.namespace, auth.userId, 'editor')
     if (access.ok) {
         return { ok: true, session: access.session, sessionId: access.sessionId }
     }
@@ -51,11 +59,11 @@ function resolveSessionForNamespace(
     }
 }
 
-function resolveMachineForNamespace(
+async function resolveMachineForNamespace(
     engine: SyncEngine,
     machineId: string,
     auth: CliAuthContext
-): { ok: true; machine: Machine } | { ok: false; status: 403 | 404; error: string } {
+): Promise<{ ok: true; machine: Machine } | { ok: false; status: 403 | 404; error: string }> {
     if (auth.source === 'system') {
         const machine = engine.getMachineByNamespace(machineId, auth.namespace)
         if (machine) {
@@ -67,7 +75,7 @@ function resolveMachineForNamespace(
         return { ok: false, status: 404, error: 'Machine not found' }
     }
 
-    const access = engine.resolveMachineAccessForUser(machineId, auth.namespace, auth.userId, 'editor')
+    const access = await engine.resolveMachineAccessForUser(machineId, auth.namespace, auth.userId, 'editor')
     if (access.ok && access.machine.ownerUserId === auth.userId) {
         return { ok: true, machine: access.machine }
     }
@@ -89,9 +97,9 @@ function getCliAuth(c: { get: <K extends keyof CliEnv['Variables']>(key: K) => C
 
 async function ensureCliProject(engine: SyncEngine, store: Store, auth: CliAuthContext): Promise<StoredProject> {
     if (auth.source === 'system') {
-        return engine.ensureNamespaceDefaults(auth.namespace, auth.userId)
+        return await engine.ensureNamespaceDefaults(auth.namespace, auth.userId)
     }
-    return store.projects.ensurePersonalProject(auth.namespace, auth.userId)
+    return await store.projects.ensurePersonalProject(auth.namespace, auth.userId)
 }
 
 function canUseExistingMachineForAuth(machine: Machine, auth: CliAuthContext): boolean {
@@ -155,7 +163,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
             if (existingMachine && !canUseExistingMachineForAuth(existingMachine, auth)) {
                 return c.json({ error: 'Machine access denied' }, 403)
             }
-            engine.getOrCreateMachine(
+            await engine.getOrCreateMachine(
                 machineInput.id,
                 machineInput.metadata,
                 machineInput.runnerState ?? null,
@@ -165,7 +173,20 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         }
 
         try {
-            const session = engine.getOrCreateSession(
+            const asyncEngine = engine as SyncEngine & { getOrCreateSessionAsync?: SyncEngine['getOrCreateSessionAsync'] }
+            const session = asyncEngine.getOrCreateSessionAsync
+                ? await asyncEngine.getOrCreateSessionAsync(
+                    parsed.data.tag,
+                    parsed.data.metadata,
+                    parsed.data.agentState ?? null,
+                    auth.namespace,
+                    parsed.data.model,
+                    parsed.data.effort,
+                    parsed.data.modelReasoningEffort,
+                    parsed.data.id,
+                    { projectId: defaultProject.id, createdByUserId: auth.userId }
+                )
+                : engine.getOrCreateSession(
                 parsed.data.tag,
                 parsed.data.metadata,
                 parsed.data.agentState ?? null,
@@ -185,7 +206,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         }
     })
 
-    app.get('/sessions/resumable', (c) => {
+    app.get('/sessions/resumable', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not ready' }, 503)
@@ -193,20 +214,27 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
 
         const auth = getCliAuth(c)
         const machineId = c.req.query('machineId') || undefined
-        const sessions = engine.listLocalResumableSessions(auth.namespace, { machineId })
-            .filter((session) => auth.source === 'system'
-                || engine.resolveSessionAccessForUser(session.sessionId, auth.namespace, auth.userId, 'editor').ok)
+        const resumableSessions = await Promise.resolve(engine.listLocalResumableSessions(auth.namespace, { machineId }))
+        const asyncEngine = engine as SyncEngine & { resolveSessionAccessForUserAsync?: SyncEngine['resolveSessionAccessForUserAsync'] }
+        const sessions = auth.source === 'system'
+            ? resumableSessions
+            : (await Promise.all(resumableSessions.map(async (session) => {
+                const access = asyncEngine.resolveSessionAccessForUserAsync
+                    ? await asyncEngine.resolveSessionAccessForUserAsync(session.sessionId, auth.namespace, auth.userId, 'editor')
+                    : engine.resolveSessionAccessForUser(session.sessionId, auth.namespace, auth.userId, 'editor')
+                return access.ok ? session : null
+            }))).filter((session): session is NonNullable<typeof session> => session !== null)
         return c.json({ sessions })
     })
 
-    app.get('/sessions/:id/resume-target', (c) => {
+    app.get('/sessions/:id/resume-target', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not ready' }, 503)
         }
 
         const auth = getCliAuth(c)
-        const result = engine.resolveLocalResumeTarget(c.req.param('id'), auth.namespace)
+        const result = await Promise.resolve(engine.resolveLocalResumeTarget(c.req.param('id'), auth.namespace))
         if (result.type === 'error') {
             const status = result.code === 'access_denied' ? 403
                 : result.code === 'session_not_found' ? 404
@@ -214,7 +242,10 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
             return c.json({ error: result.message, code: result.code }, status)
         }
         if (auth.source !== 'system') {
-            const access = engine.resolveSessionAccessForUser(result.target.sessionId, auth.namespace, auth.userId, 'editor')
+            const asyncEngine = engine as SyncEngine & { resolveSessionAccessForUserAsync?: SyncEngine['resolveSessionAccessForUserAsync'] }
+            const access = asyncEngine.resolveSessionAccessForUserAsync
+                ? await asyncEngine.resolveSessionAccessForUserAsync(result.target.sessionId, auth.namespace, auth.userId, 'editor')
+                : engine.resolveSessionAccessForUser(result.target.sessionId, auth.namespace, auth.userId, 'editor')
             if (!access.ok) {
                 const status = access.reason === 'access-denied' ? 403 : 404
                 return c.json({ error: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found' }, status)
@@ -232,7 +263,10 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
 
         const auth = getCliAuth(c)
         if (auth.source !== 'system') {
-            const access = engine.resolveSessionAccessForUser(c.req.param('id'), auth.namespace, auth.userId, 'editor')
+            const asyncEngine = engine as SyncEngine & { resolveSessionAccessForUserAsync?: SyncEngine['resolveSessionAccessForUserAsync'] }
+            const access = asyncEngine.resolveSessionAccessForUserAsync
+                ? await asyncEngine.resolveSessionAccessForUserAsync(c.req.param('id'), auth.namespace, auth.userId, 'editor')
+                : engine.resolveSessionAccessForUser(c.req.param('id'), auth.namespace, auth.userId, 'editor')
             if (!access.ok) {
                 const status = access.reason === 'access-denied' ? 403 : 404
                 return c.json({ error: access.reason === 'access-denied' ? 'Session access denied' : 'Session not found' }, status)
@@ -250,28 +284,28 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         return c.json({ ok: true })
     })
 
-    app.get('/sessions/:id', (c) => {
+    app.get('/sessions/:id', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not ready' }, 503)
         }
         const sessionId = c.req.param('id')
         const auth = getCliAuth(c)
-        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
+        const resolved = await resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
         return c.json({ session: resolved.session })
     })
 
-    app.get('/sessions/:id/messages', (c) => {
+    app.get('/sessions/:id/messages', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not ready' }, 503)
         }
         const sessionId = c.req.param('id')
         const auth = getCliAuth(c)
-        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
+        const resolved = await resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
@@ -286,11 +320,18 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         // messages.ts:getDeliverableMessagesAfter for the rationale.  The
         // mature-scan path (releaseMatureScheduledMessages) is the sole
         // emit channel for scheduled rows.
-        const messages = engine.getDeliverableMessagesAfter(resolved.sessionId, {
-            afterSeq: parsed.data.afterSeq,
-            limit,
-            now: Date.now()
-        })
+        const asyncEngine = engine as SyncEngine & { getDeliverableMessagesAfterAsync?: SyncEngine['getDeliverableMessagesAfterAsync'] }
+        const messages = asyncEngine.getDeliverableMessagesAfterAsync
+            ? await asyncEngine.getDeliverableMessagesAfterAsync(resolved.sessionId, {
+                afterSeq: parsed.data.afterSeq,
+                limit,
+                now: Date.now()
+            })
+            : engine.getDeliverableMessagesAfter(resolved.sessionId, {
+                afterSeq: parsed.data.afterSeq,
+                limit,
+                now: Date.now()
+            })
         return c.json({ messages })
     })
 
@@ -301,7 +342,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         }
         const sessionId = c.req.param('id')
         const auth = getCliAuth(c)
-        const resolved = resolveSessionForNamespace(engine, sessionId, auth)
+        const resolved = await resolveSessionForNamespace(engine, sessionId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }
@@ -349,7 +390,7 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         if (existing && !canUseExistingMachineForAuth(existing, auth)) {
             return c.json({ error: 'Machine access denied' }, 403)
         }
-        const machine = engine.getOrCreateMachine(
+        const machine = await engine.getOrCreateMachine(
             parsed.data.id,
             parsed.data.metadata,
             parsed.data.runnerState ?? null,
@@ -359,14 +400,14 @@ export function createCliRoutes(getSyncEngine: () => SyncEngine | null, options:
         return c.json({ machine })
     })
 
-    app.get('/machines/:id', (c) => {
+    app.get('/machines/:id', async (c) => {
         const engine = getSyncEngine()
         if (!engine) {
             return c.json({ error: 'Not ready' }, 503)
         }
         const machineId = c.req.param('id')
         const auth = getCliAuth(c)
-        const resolved = resolveMachineForNamespace(engine, machineId, auth)
+        const resolved = await resolveMachineForNamespace(engine, machineId, auth)
         if (!resolved.ok) {
             return c.json({ error: resolved.error }, resolved.status)
         }

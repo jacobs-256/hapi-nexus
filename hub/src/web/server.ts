@@ -21,7 +21,7 @@ import { createMachinesRoutes } from './routes/machines'
 import { createProjectsRoutes } from './routes/projects'
 import { createUsersRoutes } from './routes/users'
 import { createAppSettingsRoutes } from './routes/appSettings'
-import { createStorageRoutes } from './routes/storage'
+import { createStorageRoutes, readStorageMigrationStatus } from './routes/storage'
 import { createGitRoutes } from './routes/git'
 import { createCliRoutes } from './routes/cli'
 import { createCodexDesktopRoutes } from './routes/codexDesktop'
@@ -245,6 +245,13 @@ function createWebApp(options: {
 
     app.route('/api', createAuthRoutes(options.jwtSecret, options.store))
     app.route('/api', createBindRoutes(options.jwtSecret, options.store))
+    app.get('/api/storage/migration-status', async (c) => {
+        try {
+            return c.json(await readStorageMigrationStatus(configuration.settingsFile))
+        } catch (error) {
+            return c.json({ id: '', status: 'idle', startedAt: null, finishedAt: null, message: null, error: error instanceof Error ? error.message : String(error) })
+        }
+    })
 
     app.use('/api/*', createAuthMiddleware(options.jwtSecret, options.store))
     app.route('/api', createEventsRoutes(options.getSseManager, options.getSyncEngine, options.getVisibilityTracker))

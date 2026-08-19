@@ -53,6 +53,7 @@ type InternalState = MessageWindowState & {
     newestPositionAt: number | null
     newestPositionSeq: number | null
     requiresLatestReset: boolean
+    hydratedFromStorage: boolean
     syncGeneration: number
     olderGeneration: number
 }
@@ -237,6 +238,7 @@ function createState(sessionId: string): InternalState {
         newestPositionAt: null,
         newestPositionSeq: null,
         requiresLatestReset: false,
+        hydratedFromStorage: false,
         syncGeneration: 0,
         olderGeneration: 0
     }
@@ -278,7 +280,8 @@ function hydrateState(sessionId: string): InternalState | null {
             newestPositionAt: newest?.at ?? null,
             newestPositionSeq: newest?.seq ?? null,
             epoch,
-            requiresLatestReset: parsed.messages.length > 0 && (newest === null || epoch === null)
+            requiresLatestReset: parsed.messages.length > 0 && (newest === null || epoch === null),
+            hydratedFromStorage: parsed.messages.length > 0
         })
     } catch {
         clearPersistedState(sessionId)
@@ -386,6 +389,7 @@ function buildState(
         | 'newestPositionAt'
         | 'newestPositionSeq'
         | 'requiresLatestReset'
+        | 'hydratedFromStorage'
         | 'syncGeneration'
         | 'olderGeneration'
         | 'historyVersion'
@@ -561,6 +565,15 @@ function applyLatestResponse(
         : options.replaceServerRows
             ? responseOldest
             : responseOldest ?? previousOldest
+    const serverHasNoMessages = response.messages.length === 0
+        && response.page.snapshotHeadAt === null
+        && response.page.snapshotHeadSeq === null
+        && !response.page.hasMore
+    const localOnlyCacheWarning = previous.hydratedFromStorage
+        && previous.messages.length > 0
+        && serverHasNoMessages
+        ? '当前显示的是本浏览器缓存，服务端没有返回这些消息；请重新同步/导入本地 Codex 历史，确认后再清理浏览器缓存。'
+        : null
     return buildState(previous, {
         messages: kept,
         hasMore: response.page.hasMore || (!options.replaceServerRows && previous.hasMore) || dropped.length > 0,
@@ -574,7 +587,8 @@ function applyLatestResponse(
         olderGeneration: options.replaceServerRows
             ? previous.olderGeneration + 1
             : previous.olderGeneration,
-        warning: null
+        warning: localOnlyCacheWarning,
+        hydratedFromStorage: localOnlyCacheWarning !== null
     })
 }
 

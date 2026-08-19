@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 
+import type { SessionStorePort } from './ports/coreStores'
 import type { StoredSession, VersionedUpdateResult } from './types'
 import {
     assignSessionProject,
@@ -21,7 +22,7 @@ import {
     updateSessionMetadata
 } from './sessions'
 
-export class SessionStore {
+export class SessionStore implements SessionStorePort {
     private readonly db: Database
 
     constructor(

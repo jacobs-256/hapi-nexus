@@ -11,7 +11,7 @@ Telegram bot + HTTP API + realtime updates for the HAPI Nexus hub.
 - Serves the web app from `web/dist` or embedded assets in the single binary.
 - Local username/password accounts for private deployments.
 - Project/member/workspace sharing inside a namespace.
-- Persists state in SQLite.
+- Persists data through configurable storage: SQLite by default, Elasticsearch for conversations, and MySQL for core hub data.
 
 ## Configuration
 
@@ -52,7 +52,7 @@ These are used only when the hub creates the first active local admin. If an act
 - `HAPI_CORE_SQLITE_PATH` - SQLite path for users/projects/machines/session metadata when using `sqlite`.
 - `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`/`MYSQL_SOCKET_PATH` - MySQL-backed core storage settings.
 
-Storage can also be changed in **Settings -> Storage**. The hub keeps a local SQLite mirror for external backends and imports from/export snapshots to MySQL/Elasticsearch on startup, shutdown, explicit migration, and debounced writes. SQLite-to-SQLite path changes can copy data automatically.
+Storage can also be changed in **Settings -> Storage**. The selected backend is the direct runtime database for its domain: Elasticsearch is authoritative for conversation history when selected, and MySQL is authoritative for core data when selected. SQLite remains the default backend and may be used as an explicit migration source/snapshot target. SQLite-to-SQLite path changes can copy data automatically, and long migrations run in the background with status exposed to the web app.
 - `TELEGRAM_NOTIFICATION` - Enable/disable Telegram notifications (default: true).
 - `HAPI_RELAY_API` - Relay API domain (default: relay.hapi.run).
 - `HAPI_RELAY_AUTH` - Relay auth key (default: hapi).
@@ -256,14 +256,12 @@ See `src/sync/syncEngine.ts` for the main session/message manager:
 
 ## Storage
 
-See `src/store/index.ts` for SQLite persistence:
+See `src/store/` for backend-neutral ports and concrete adapters. Storage is split into two domains:
 
-- Sessions with metadata and agent state.
-- Messages with pagination support.
-- Machines with runner state.
-- Projects, project members, project workspaces, and invite links.
-- Todo extraction from messages.
-- Users table for Telegram bindings and local username/password accounts (includes namespace, roles, disabled state, and per-user access tokens).
+- **Conversation store**: messages, message epochs, counters, queues, pagination, and conversation metadata. Backends: SQLite or Elasticsearch.
+- **Core store**: sessions with metadata and agent state, machines, users, projects, app settings, import jobs, push devices, and invite links. Backends: SQLite or MySQL.
+
+The selected backend is authoritative for its domain. Runtime writes do not go through SQLite first when Elasticsearch or MySQL is active. Explicit storage switching can copy existing data, and large migrations continue in the background.
 
 ## Source structure
 
@@ -272,7 +270,7 @@ See `src/store/index.ts` for SQLite persistence:
 - `src/socket/handlers/cli/` - Modular CLI handlers.
 - `src/telegram/` - Telegram bot.
 - `src/sync/` - Core session/message logic.
-- `src/store/` - SQLite persistence.
+- `src/store/` - Configurable persistence ports, SQLite/MySQL/Elasticsearch adapters, and migrations.
 - `src/sse/` - Server-Sent Events.
 - `src/config/` - Configuration loading and generation.
 - `src/notifications/` - Push and Telegram notifications.

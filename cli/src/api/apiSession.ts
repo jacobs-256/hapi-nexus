@@ -169,7 +169,15 @@ type PendingOutboundEvent = {
     retention: 'lossless' | 'droppable'
 }
 
+type ClientMessagePayload = {
+    sid: string
+    message: unknown
+    localId: string
+}
+
 const MAX_PENDING_DROPPABLE_EVENTS = 256
+const CLIENT_MESSAGE_ACK_TIMEOUT_MS = 5_000
+const CLIENT_MESSAGE_RETRY_MS = 1_000
 const MATERIALIZATION_RETRY_MIN_MS = 1_000
 const MATERIALIZATION_RETRY_MAX_MS = 30_000
 
@@ -248,6 +256,7 @@ export class ApiSessionClient extends EventEmitter {
     private metadataChangedDuringAttempt = false
     private agentStateChangedDuringAttempt = false
     private readonly pendingOutboundEvents: PendingOutboundEvent[] = []
+    private readonly pendingClientMessages = new Map<string, ClientMessagePayload>()
     private didWarnPendingQueueFull = false
 
     constructor(token: string, session: Session, options: ApiSessionClientOptions = {}) {
@@ -600,6 +609,62 @@ export class ApiSessionClient extends EventEmitter {
         this.pendingOutboundEvents.push({ emit, retention })
     }
 
+    private sendClientMessageReliable(message: unknown, retention: PendingOutboundEvent['retention'] = 'lossless'): void {
+        if (retention === 'droppable') {
+            this.emitOrQueue(() => {
+                this.socket.emit('message', {
+                    sid: this.sessionId,
+                    message
+                })
+            }, retention)
+            return
+        }
+
+        const payload: ClientMessagePayload = {
+            sid: this.sessionId,
+            message,
+            localId: `cli:${randomUUID()}`
+        }
+        this.pendingClientMessages.set(payload.localId, payload)
+        this.emitOrQueue(() => this.emitPendingClientMessage(payload.localId), 'lossless')
+    }
+
+    private emitPendingClientMessage(localId: string): void {
+        const payload = this.pendingClientMessages.get(localId)
+        if (!payload || this.state === 'closed') {
+            return
+        }
+
+        const socketWithTimeout = this.socket.timeout(CLIENT_MESSAGE_ACK_TIMEOUT_MS) as unknown as {
+            emit?: (
+                event: 'message',
+                payload: ClientMessagePayload,
+                cb: (error: Error | null, ack?: { result?: string; error?: string }) => void
+            ) => void
+        }
+        if (!socketWithTimeout.emit) {
+            this.socket.emit('message', payload)
+            this.pendingClientMessages.delete(localId)
+            return
+        }
+        socketWithTimeout.emit(
+            'message',
+            payload,
+            (error: Error | null, ack?: { result?: string; error?: string }) => {
+                if (!this.pendingClientMessages.has(localId) || this.state === 'closed') {
+                    return
+                }
+                if (!error && (!ack?.result || ack.result === 'success')) {
+                    this.pendingClientMessages.delete(localId)
+                    return
+                }
+                const detail = error?.message ?? ack?.error ?? ack?.result ?? 'no acknowledgement'
+                logger.debug(`[API] Reliable message ack failed for ${this.sessionId}; retrying`, detail)
+                setTimeout(() => this.emitPendingClientMessage(localId), CLIENT_MESSAGE_RETRY_MS)
+            }
+        )
+    }
+
     onUserMessage(callback: (data: UserMessage, localId?: string) => void): void {
         this.pendingMessageCallback = callback
         while (this.pendingMessages.length > 0) {
@@ -726,6 +791,25 @@ export class ApiSessionClient extends EventEmitter {
         await this.backfillInFlight
     }
 
+    async hasAnyPersistedMessages(options: { timeoutMs?: number } = {}): Promise<boolean> {
+        const response = await axios.get(
+            `${configuration.apiUrl}/cli/sessions/${encodeURIComponent(this.sessionId)}/messages`,
+            {
+                params: { afterSeq: 0, limit: 1 },
+                headers: buildHubRequestHeaders({
+                    Authorization: `Bearer ${this.token}`,
+                    'Content-Type': 'application/json'
+                }),
+                timeout: options.timeoutMs ?? 5_000
+            }
+        )
+        const parsed = CliMessagesResponseSchema.safeParse(response.data)
+        if (!parsed.success) {
+            throw apiValidationError('Invalid /cli/sessions/:id/messages response', response)
+        }
+        return parsed.data.messages.length > 0
+    }
+
     sendClaudeSessionMessage(body: RawJSONLines): void {
         let content: MessageContent
 
@@ -753,12 +837,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.emitOrQueue(() => {
-            this.socket.emit('message', {
-                sid: this.sessionId,
-                message: content
-            })
-        })
+        this.sendClientMessageReliable(content)
 
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
             this.updateMetadata((metadata) => ({
@@ -788,12 +867,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.emitOrQueue(() => {
-            this.socket.emit('message', {
-                sid: this.sessionId,
-                message: content
-            })
-        })
+        this.sendClientMessageReliable(content)
         this.notifyUserActivity()
     }
 
@@ -812,12 +886,7 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         }
-        this.emitOrQueue(() => {
-            this.socket.emit('message', {
-                sid: this.sessionId,
-                message: content
-            })
-        })
+        this.sendClientMessageReliable(content)
     }
 
     sendSessionEvent(event: {
@@ -841,12 +910,7 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
 
-        this.emitOrQueue(() => {
-            this.socket.emit('message', {
-                sid: this.sessionId,
-                message: content
-            })
-        }, event.type === 'message' ? 'lossless' : 'droppable')
+        this.sendClientMessageReliable(content, event.type === 'message' ? 'lossless' : 'droppable')
     }
 
     keepAlive(
@@ -1080,6 +1144,20 @@ export class ApiSessionClient extends EventEmitter {
         })
     }
 
+    private async waitForPendingClientMessages(timeoutMs: number): Promise<boolean> {
+        if (this.pendingClientMessages.size === 0) {
+            return true
+        }
+        if (timeoutMs <= 0) {
+            return false
+        }
+        const deadline = Date.now() + timeoutMs
+        while (this.pendingClientMessages.size > 0 && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 25))
+        }
+        return this.pendingClientMessages.size === 0
+    }
+
     /**
      * tiann/hapi#913: wait until any pending `update-metadata` writes have
      * been acked by the hub (or the timeout elapses). `updateMetadata` is
@@ -1122,6 +1200,7 @@ export class ApiSessionClient extends EventEmitter {
 
         await this.drainLock(this.metadataLock, remainingMs())
         await this.drainLock(this.agentStateLock, remainingMs())
+        await this.waitForPendingClientMessages(remainingMs())
 
         if (remainingMs() === 0) {
             return
@@ -1151,6 +1230,7 @@ export class ApiSessionClient extends EventEmitter {
         this.materializationRetryAbortController = null
         this.awaitingMaterializedConnection = false
         this.pendingOutboundEvents.length = 0
+        this.pendingClientMessages.clear()
         this.rpcHandlerManager.onSocketDisconnect()
         this.terminalManager.closeAll()
         this.socket.disconnect()

@@ -28,7 +28,7 @@ Bun workspaces; `shared` consumed by cli, hub, web.
 │ (agent) │              │ (server)│              │  (PWA)  │
 └─────────┘              └─────────┘              └─────────┘
      │                        │                        │
-     ├─ Wraps Claude/Codex    ├─ SQLite persistence   ├─ TanStack Query
+     ├─ Wraps Claude/Codex    ├─ Configurable store    ├─ TanStack Query
      ├─ Socket.IO client      ├─ Session cache        ├─ SSE for updates
      └─ RPC handlers          ├─ RPC gateway          └─ assistant-ui
                               └─ Telegram bot
@@ -89,7 +89,7 @@ bun run build:single-exe # All-in-one binary
 - `socket/` - Socket.IO setup
 - `socket/handlers/cli/` - CLI event handlers (session, terminal, machine, RPC)
 - `sync/` - Core logic (sessionCache, messageService, rpcGateway)
-- `store/` - SQLite persistence (better-sqlite3)
+- `store/` - Configurable persistence ports, SQLite/MySQL/Elasticsearch adapters, and migrations
 - `sse/` - Server-Sent Events manager
 - `telegram/` - Bot commands, callbacks
 - `notifications/` - Push (VAPID) and Telegram notifications

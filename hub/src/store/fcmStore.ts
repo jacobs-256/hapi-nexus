@@ -1,9 +1,10 @@
 import type { Database } from 'bun:sqlite'
 
+import type { FcmStorePort } from './ports/coreStores'
 import type { StoredFcmDevice } from './types'
 import { getFcmDevicesByNamespace, removeFcmDeviceByToken, upsertFcmDevice } from './fcmDevices'
 
-export class FcmStore {
+export class FcmStore implements FcmStorePort {
     constructor(private readonly db: Database, private readonly onChange?: () => void) {}
 
     upsertDevice(

@@ -3,6 +3,7 @@ import { chmodSync, closeSync, existsSync, mkdirSync, openSync, realpathSync } f
 import { dirname } from 'node:path'
 import type { StorageConfig } from '@hapi/protocol/storage'
 import { Store } from './index'
+import { importExternalSnapshotToSqlite } from './external'
 
 function isMemory(path: string): boolean {
     return path === ':memory:' || path.startsWith('file::memory:')
@@ -153,4 +154,76 @@ export function migrateSqliteStorage(source: StorageConfig, target: StorageConfi
     }
 
     return { migrated: true, message: 'Copied SQLite tables into configured storage files.', copied }
+}
+
+
+export async function migrateExternalStorageToSqlite(source: StorageConfig, target: StorageConfig): Promise<SqliteStorageMigrationResult> {
+    if (target.core.backend !== 'sqlite' || target.conversation.backend !== 'sqlite') {
+        return {
+            migrated: false,
+            message: 'Target migration requires SQLite core and conversation storage.',
+            copied: {}
+        }
+    }
+
+    const targetCore = target.core.sqlite.path
+    const targetConversation = target.conversation.sqlite.path
+    const initializer = new Store(targetCore, target)
+    initializer.close()
+
+    const targetCoreDb = openDb(targetCore)
+    const targetConversationDb = sameSqlitePath(targetConversation, targetCore) ? targetCoreDb : openDb(targetConversation)
+    const copied: Record<string, number> = {}
+    try {
+        if (source.core.backend === 'sqlite') {
+            const sourceCoreDb = openDb(source.core.sqlite.path)
+            try {
+                if (!sameSqlitePath(source.core.sqlite.path, targetCore)) {
+                    targetCoreDb.exec('PRAGMA foreign_keys = OFF')
+                    for (const table of [...CORE_TABLES].reverse()) {
+                        targetCoreDb.prepare(`DELETE FROM ${table}`).run()
+                    }
+                    const sourceCoreVersion = (sourceCoreDb.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined)?.user_version ?? 0
+                    targetCoreDb.exec(`PRAGMA user_version = ${sourceCoreVersion}`)
+                    for (const table of CORE_TABLES) copied[table] = copyTable(sourceCoreDb, targetCoreDb, table)
+                    targetCoreDb.exec('PRAGMA foreign_keys = ON')
+                }
+            } finally {
+                sourceCoreDb.close()
+            }
+        }
+
+        if (source.conversation.backend === 'sqlite') {
+            const sourceConversationDb = openDb(source.conversation.sqlite.path)
+            try {
+                if (!sameSqlitePath(source.conversation.sqlite.path, targetConversation)) {
+                    for (const table of [...CONVERSATION_TABLES].reverse()) {
+                        targetConversationDb.prepare(`DELETE FROM ${table}`).run()
+                    }
+                    const sourceConversationVersion = (sourceConversationDb.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined)?.user_version ?? 0
+                    targetConversationDb.exec(`PRAGMA user_version = ${sourceConversationVersion}`)
+                    for (const table of CONVERSATION_TABLES) copied[table] = copyTable(sourceConversationDb, targetConversationDb, table)
+                }
+            } finally {
+                sourceConversationDb.close()
+            }
+        }
+
+        const externalCopied = await importExternalSnapshotToSqlite(source, targetCoreDb, targetConversationDb)
+        for (const [key, value] of Object.entries(externalCopied)) {
+            copied[key] = value
+        }
+    } finally {
+        if (targetConversationDb !== targetCoreDb) targetConversationDb.close()
+        targetCoreDb.close()
+        chmodPrivate(targetCore)
+        chmodPrivate(targetConversation)
+    }
+
+    const total = Object.values(copied).reduce((sum, value) => sum + value, 0)
+    return {
+        migrated: total > 0,
+        message: `Copied ${total} row(s) into SQLite storage files.`,
+        copied
+    }
 }

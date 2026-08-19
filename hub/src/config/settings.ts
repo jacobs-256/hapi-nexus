@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { StorageConfig } from '@hapi/protocol/storage'
+import type { StorageMigrationStatus } from '@hapi/protocol/apiTypes'
 
 export interface Settings {
     machineId?: string
@@ -22,6 +23,7 @@ export interface Settings {
     publicUrl?: string
     corsOrigins?: string[]
     storage?: StorageConfig
+    storageMigration?: StorageMigrationStatus
 }
 
 export function getSettingsFile(dataDir: string): string {

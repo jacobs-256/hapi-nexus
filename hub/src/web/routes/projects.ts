@@ -23,12 +23,40 @@ type ProjectsRouteOptions = {
     getOwnerUserId?: () => Promise<number>
 }
 
+async function addProjectWorkspaceWithEngine(
+    engine: SyncEngine,
+    projectId: string,
+    machineId: string,
+    rootPath: string,
+    createdByUserId: number
+) {
+    return await Promise.resolve(
+        engine.addProjectWorkspaceAsync
+            ? engine.addProjectWorkspaceAsync(projectId, machineId, rootPath, createdByUserId)
+            : engine.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
+    )
+}
+
+async function assignSessionProjectWithEngine(
+    engine: SyncEngine,
+    sessionId: string,
+    namespace: string,
+    projectId: string,
+    createdByUserId: number
+) {
+    return await Promise.resolve(
+        engine.assignSessionProjectAsync
+            ? engine.assignSessionProjectAsync(sessionId, namespace, projectId, createdByUserId)
+            : engine.assignSessionProject(sessionId, namespace, projectId, createdByUserId)
+    )
+}
+
 function roleCanManageMembers(role: ProjectRole | null): boolean {
     return role === 'owner' || role === 'admin'
 }
 
-function canReferenceUser(store: Store, namespace: string, actorUserId: number, targetUserId: number): boolean {
-    return targetUserId === actorUserId || store.users.getUserById(targetUserId, namespace) !== null
+async function canReferenceUser(store: Store, namespace: string, actorUserId: number, targetUserId: number): Promise<boolean> {
+    return targetUserId === actorUserId || (await store.users.getUserById(targetUserId, namespace)) !== null
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -92,7 +120,7 @@ async function resolveEnterpriseUser(
     if (userId === ownerId) {
         return toOwnerEnterpriseUser(ownerId, namespace)
     }
-    const user = store.users.getUserById(userId, namespace)
+    const user = await store.users.getUserById(userId, namespace)
     return user ? toEnterpriseUser(user) : null
 }
 
@@ -102,7 +130,7 @@ async function toProjectDetails(
     userId: number,
     getOwnerUserId: () => Promise<number>
 ) {
-    const role = store.projects.getProjectMemberRole(project.id, userId) ?? 'viewer'
+    const role = await store.projects.getProjectMemberRole(project.id, userId) ?? 'viewer'
     return {
         id: project.id,
         namespace: project.namespace,
@@ -112,28 +140,28 @@ async function toProjectDetails(
         createdAt: project.createdAt,
         archivedAt: project.archivedAt,
         role,
-        members: store.projects.listProjectMembers(project.id),
-        workspaces: store.projects.listProjectWorkspaces(project.id),
+        members: await store.projects.listProjectMembers(project.id),
+        workspaces: await store.projects.listProjectWorkspaces(project.id),
         createdByUser: await resolveEnterpriseUser(store, project.namespace, project.createdByUserId, getOwnerUserId)
     }
 }
 
-function requireProjectRole(
+async function requireProjectRole(
     store: Store,
     namespace: string,
     userId: number,
     projectId: string,
     requiredRole: ProjectRole
-): { project: StoredProject; role: ProjectRole } | Response {
-    const project = store.projects.getProjectByNamespace(projectId, namespace)
+): Promise<{ project: StoredProject; role: ProjectRole } | Response> {
+    const project = await store.projects.getProjectByNamespace(projectId, namespace)
     if (!project || project.archivedAt !== null) {
         return new Response(JSON.stringify({ error: 'Project not found' }), {
             status: 404,
             headers: { 'content-type': 'application/json' }
         })
     }
-    const role = store.projects.getProjectMemberRole(projectId, userId)
-    if (!store.projects.hasProjectRole(projectId, userId, requiredRole)) {
+    const role = await store.projects.getProjectMemberRole(projectId, userId)
+    if (!await store.projects.hasProjectRole(projectId, userId, requiredRole)) {
         return new Response(JSON.stringify({ error: 'Project access denied' }), {
             status: 403,
             headers: { 'content-type': 'application/json' }
@@ -153,8 +181,8 @@ export function createProjectsRoutes(
     app.get('/projects', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const projects = await Promise.all(store.projects
-            .listProjectsForUser(namespace, userId)
+        const projects = await Promise.all((await store.projects
+            .listProjectsForUser(namespace, userId))
             .map((project) => toProjectDetails(store, project, userId, getOwnerUserId)))
         return c.json({ projects })
     })
@@ -174,7 +202,7 @@ export function createProjectsRoutes(
             if (engine instanceof Response) {
                 return engine
             }
-            const machine = requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
+            const machine = await requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
             if (machine instanceof Response) return machine
             if (!machineAllowsWorkspace(machine, parsed.data.rootPath)) {
                 return c.json({ error: 'Workspace path is outside runner workspace roots' }, 400)
@@ -186,8 +214,8 @@ export function createProjectsRoutes(
         try {
             const options = { repoUrl: parsed.data.repoUrl ?? null }
             project = initialWorkspace
-                ? store.projects.createProjectWithWorkspace(namespace, parsed.data.name, userId, initialWorkspace, options)
-                : store.projects.createProject(namespace, parsed.data.name, userId, options)
+                ? await store.projects.createProjectWithWorkspace(namespace, parsed.data.name, userId, initialWorkspace, options)
+                : await store.projects.createProject(namespace, parsed.data.name, userId, options)
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to create project' }, 400)
         }
@@ -198,7 +226,7 @@ export function createProjectsRoutes(
     app.get('/projects/:id', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const result = requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
+        const result = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
         if (result instanceof Response) return result
         return c.json({ project: await toProjectDetails(store, result.project, userId, getOwnerUserId) })
     })
@@ -206,39 +234,39 @@ export function createProjectsRoutes(
     app.patch('/projects/:id', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         const body = await c.req.json().catch(() => null)
         const parsed = UpdateProjectRequestSchema.safeParse(body)
         if (!parsed.success) {
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
-        const project = store.projects.updateProjectName(access.project.id, namespace, parsed.data.name)
+        const project = await store.projects.updateProjectName(access.project.id, namespace, parsed.data.name)
         if (!project) {
             return c.json({ error: 'Project not found' }, 404)
         }
         return c.json({ project: await toProjectDetails(store, project, userId, getOwnerUserId) })
     })
 
-    app.get('/projects/:id/members', (c) => {
+    app.get('/projects/:id/members', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
         if (access instanceof Response) return access
-        return c.json({ members: store.projects.listProjectMembers(access.project.id) })
+        return c.json({ members: await store.projects.listProjectMembers(access.project.id) })
     })
 
     app.get('/projects/:id/member-candidates', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         if (!roleCanManageMembers(access.role)) {
             return c.json({ error: 'Project access denied' }, 403)
         }
 
         const ownerId = await getOwnerUserId()
-        const localUsers = store.users.listUsersByNamespace(namespace).map(toEnterpriseUser)
+        const localUsers = (await store.users.listUsersByNamespace(namespace)).map(toEnterpriseUser)
         const users = [
             toOwnerEnterpriseUser(ownerId, namespace),
             ...localUsers.filter((user) => user.id !== ownerId)
@@ -249,7 +277,7 @@ export function createProjectsRoutes(
     app.post('/projects/:id/members', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         if (!roleCanManageMembers(access.role)) {
             return c.json({ error: 'Project access denied' }, 403)
@@ -259,59 +287,59 @@ export function createProjectsRoutes(
         if (!parsed.success) {
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
-        if (!canReferenceUser(store, namespace, userId, parsed.data.userId)) {
+        if (!await canReferenceUser(store, namespace, userId, parsed.data.userId)) {
             return c.json({ error: 'User not found' }, 404)
         }
         if (parsed.data.role === 'owner' && access.role !== 'owner') {
             return c.json({ error: 'Only owners can grant owner role' }, 403)
         }
-        const targetRole = store.projects.getProjectMemberRole(access.project.id, parsed.data.userId)
+        const targetRole = await store.projects.getProjectMemberRole(access.project.id, parsed.data.userId)
         if (targetRole === 'owner' && access.role !== 'owner') {
             return c.json({ error: 'Only owners can change owners' }, 403)
         }
         if (
             targetRole === 'owner'
             && parsed.data.role !== 'owner'
-            && store.projects.countProjectOwners(access.project.id) <= 1
+            && await store.projects.countProjectOwners(access.project.id) <= 1
         ) {
             return c.json({ error: 'Project must keep at least one owner' }, 400)
         }
-        const member = store.projects.addProjectMember(access.project.id, parsed.data.userId, parsed.data.role)
+        const member = await store.projects.addProjectMember(access.project.id, parsed.data.userId, parsed.data.role)
         return c.json({ member })
     })
 
-    app.delete('/projects/:id/members/:userId', (c) => {
+    app.delete('/projects/:id/members/:userId', async (c) => {
         const namespace = c.get('namespace')
         const actorUserId = c.get('userId')
-        const access = requireProjectRole(store, namespace, actorUserId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, actorUserId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         const targetUserId = Number(c.req.param('userId'))
         if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
             return c.json({ error: 'Invalid user id' }, 400)
         }
-        const targetRole = store.projects.getProjectMemberRole(access.project.id, targetUserId)
+        const targetRole = await store.projects.getProjectMemberRole(access.project.id, targetUserId)
         if (targetRole === 'owner' && access.role !== 'owner') {
             return c.json({ error: 'Only owners can remove owners' }, 403)
         }
-        if (targetRole === 'owner' && store.projects.countProjectOwners(access.project.id) <= 1) {
+        if (targetRole === 'owner' && await store.projects.countProjectOwners(access.project.id) <= 1) {
             return c.json({ error: 'Project must keep at least one owner' }, 400)
         }
-        store.projects.removeProjectMember(access.project.id, targetUserId)
+        await store.projects.removeProjectMember(access.project.id, targetUserId)
         return c.json({ ok: true })
     })
 
-    app.get('/projects/:id/workspaces', (c) => {
+    app.get('/projects/:id/workspaces', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'viewer')
         if (access instanceof Response) return access
-        return c.json({ workspaces: store.projects.listProjectWorkspaces(access.project.id) })
+        return c.json({ workspaces: await store.projects.listProjectWorkspaces(access.project.id) })
     })
 
     app.post('/projects/:id/workspaces', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         const body = await c.req.json().catch(() => null)
         const parsed = ProjectWorkspaceCreateRequestSchema.safeParse(body)
@@ -322,12 +350,12 @@ export function createProjectsRoutes(
         if (engine instanceof Response) {
             return engine
         }
-        const machine = requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
+        const machine = await requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
         if (machine instanceof Response) return machine
         if (!machineAllowsWorkspace(machine, parsed.data.rootPath)) {
             return c.json({ error: 'Workspace path is outside runner workspace roots' }, 400)
         }
-        const workspace = store.projects.addProjectWorkspace(
+        const workspace = await store.projects.addProjectWorkspace(
             access.project.id,
             parsed.data.machineId,
             parsed.data.rootPath,
@@ -336,12 +364,12 @@ export function createProjectsRoutes(
         return c.json({ workspace }, 201)
     })
 
-    app.delete('/projects/:id/workspaces/:workspaceId', (c) => {
+    app.delete('/projects/:id/workspaces/:workspaceId', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
-        const removed = store.projects.removeProjectWorkspace(access.project.id, c.req.param('workspaceId'))
+        const removed = await store.projects.removeProjectWorkspace(access.project.id, c.req.param('workspaceId'))
         if (!removed) {
             return c.json({ error: 'Workspace not found' }, 404)
         }
@@ -351,7 +379,7 @@ export function createProjectsRoutes(
     app.post('/projects/:id/workspaces/:workspaceId/move', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const sourceAccess = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const sourceAccess = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (sourceAccess instanceof Response) return sourceAccess
 
         const body = await c.req.json().catch(() => null)
@@ -363,14 +391,14 @@ export function createProjectsRoutes(
             return c.json({ error: 'Target project must be different' }, 400)
         }
 
-        const sourceWorkspace = store.projects
-            .listProjectWorkspaces(sourceAccess.project.id)
+        const sourceWorkspace = (await store.projects
+            .listProjectWorkspaces(sourceAccess.project.id))
             .find((workspace) => workspace.id === c.req.param('workspaceId'))
         if (!sourceWorkspace) {
             return c.json({ error: 'Workspace not found' }, 404)
         }
 
-        const targetAccess = requireProjectRole(store, namespace, userId, parsed.data.targetProjectId, 'admin')
+        const targetAccess = await requireProjectRole(store, namespace, userId, parsed.data.targetProjectId, 'admin')
         if (targetAccess instanceof Response) return targetAccess
 
         const engine = requireSyncEngine(c, getSyncEngine)
@@ -378,7 +406,8 @@ export function createProjectsRoutes(
 
         let workspace
         try {
-            workspace = engine.addProjectWorkspace(
+            workspace = await addProjectWorkspaceWithEngine(
+                engine,
                 targetAccess.project.id,
                 sourceWorkspace.machineId,
                 sourceWorkspace.rootPath,
@@ -387,9 +416,9 @@ export function createProjectsRoutes(
         } catch (error) {
             return c.json({ error: error instanceof Error ? error.message : 'Failed to move workspace' }, 400)
         }
-        store.projects.removeProjectWorkspace(sourceAccess.project.id, sourceWorkspace.id)
+        await store.projects.removeProjectWorkspace(sourceAccess.project.id, sourceWorkspace.id)
 
-        const sourceMachine = store.machines.getMachineByNamespace(sourceWorkspace.machineId, namespace)
+        const sourceMachine = await store.machines.getMachineByNamespace(sourceWorkspace.machineId, namespace)
         const windows = isWindowsMachineMetadata(sourceMachine?.metadata, sourceWorkspace.rootPath)
         for (const session of engine.getSessionsByNamespace(namespace)) {
             const directory = getSessionDirectory(session)
@@ -399,7 +428,7 @@ export function createProjectsRoutes(
                 && directory
                 && isPathInsideRoot(directory, sourceWorkspace.rootPath, windows)
             ) {
-                engine.assignSessionProject(session.id, namespace, targetAccess.project.id, userId)
+                await assignSessionProjectWithEngine(engine, session.id, namespace, targetAccess.project.id, userId)
             }
         }
 
@@ -409,7 +438,7 @@ export function createProjectsRoutes(
     app.post('/projects/:id/directories/move', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const sourceAccess = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const sourceAccess = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (sourceAccess instanceof Response) return sourceAccess
 
         const body = await c.req.json().catch(() => null)
@@ -421,13 +450,13 @@ export function createProjectsRoutes(
             return c.json({ error: 'Target project must be different' }, 400)
         }
 
-        const targetAccess = requireProjectRole(store, namespace, userId, parsed.data.targetProjectId, 'admin')
+        const targetAccess = await requireProjectRole(store, namespace, userId, parsed.data.targetProjectId, 'admin')
         if (targetAccess instanceof Response) return targetAccess
 
         const engine = requireSyncEngine(c, getSyncEngine)
         if (engine instanceof Response) return engine
 
-        const machine = requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
+        const machine = await requireMachine(c, engine, parsed.data.machineId, { ownerOnly: true })
         if (machine instanceof Response) return machine
         if (!machineAllowsWorkspace(machine, parsed.data.rootPath)) {
             return c.json({ error: 'Directory is outside runner workspace roots' }, 400)
@@ -435,8 +464,8 @@ export function createProjectsRoutes(
 
         const windows = isWindowsMachineMetadata(machine.metadata, parsed.data.rootPath)
         const sourceWorkspace = parsed.data.sourceWorkspaceId
-            ? store.projects
-                .listProjectWorkspaces(sourceAccess.project.id)
+            ? (await store.projects
+                .listProjectWorkspaces(sourceAccess.project.id))
                 .find((workspace) => workspace.id === parsed.data.sourceWorkspaceId)
             : null
         if (parsed.data.sourceWorkspaceId && !sourceWorkspace) {
@@ -445,7 +474,8 @@ export function createProjectsRoutes(
 
         let workspace
         try {
-            workspace = engine.addProjectWorkspace(
+            workspace = await addProjectWorkspaceWithEngine(
+                engine,
                 targetAccess.project.id,
                 machine.id,
                 parsed.data.rootPath,
@@ -460,7 +490,7 @@ export function createProjectsRoutes(
             && sourceWorkspace.machineId === machine.id
             && samePathForMachine(sourceWorkspace.rootPath, parsed.data.rootPath, windows)
         ) {
-            store.projects.removeProjectWorkspace(sourceAccess.project.id, sourceWorkspace.id)
+            await store.projects.removeProjectWorkspace(sourceAccess.project.id, sourceWorkspace.id)
         }
 
         for (const session of engine.getSessionsByNamespace(namespace)) {
@@ -471,7 +501,7 @@ export function createProjectsRoutes(
                 && directory
                 && isPathInsideRoot(directory, parsed.data.rootPath, windows)
             ) {
-                engine.assignSessionProject(session.id, namespace, targetAccess.project.id, userId)
+                await assignSessionProjectWithEngine(engine, session.id, namespace, targetAccess.project.id, userId)
             }
         }
 
@@ -481,7 +511,7 @@ export function createProjectsRoutes(
     app.post('/projects/:id/invites', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
-        const access = requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
+        const access = await requireProjectRole(store, namespace, userId, c.req.param('id'), 'admin')
         if (access instanceof Response) return access
         const body = await c.req.json().catch(() => null)
         const parsed = ProjectInviteCreateRequestSchema.safeParse(body)
@@ -492,7 +522,7 @@ export function createProjectsRoutes(
             return c.json({ error: 'Only owners can invite owners' }, 403)
         }
         const expiresAt = Date.now() + (parsed.data.expiresInHours ?? DEFAULT_INVITE_EXPIRES_IN_HOURS) * 60 * 60 * 1000
-        const { invite, token } = store.projects.createProjectInvite(access.project.id, parsed.data.role, expiresAt, userId)
+        const { invite, token } = await store.projects.createProjectInvite(access.project.id, parsed.data.role, expiresAt, userId)
         return c.json({
             invite: {
                 id: invite.id,
@@ -505,10 +535,10 @@ export function createProjectsRoutes(
         }, 201)
     })
 
-    app.post('/project-invites/:token/accept', (c) => {
+    app.post('/project-invites/:token/accept', async (c) => {
         const userId = c.get('userId')
         const namespace = c.get('namespace')
-        const result = store.projects.acceptProjectInvite(c.req.param('token'), userId, namespace)
+        const result = await store.projects.acceptProjectInvite(c.req.param('token'), userId, namespace)
         if (!result.ok) {
             const status = result.reason === 'not-found' ? 404 : 409
             return c.json({ error: result.reason }, status)

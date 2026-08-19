@@ -128,6 +128,16 @@ export const CancelQueuedMessageAckSchema = z.object({
 
 export type CancelQueuedMessageAck = z.infer<typeof CancelQueuedMessageAckSchema>
 
+export type ClientMessageAck = {
+    result: 'success'
+    messageId: string | null
+    seq: number | null
+} | {
+    result: 'error'
+    reason?: SocketErrorReason | 'invalid-payload' | 'persist-failed'
+    error?: string
+}
+
 export const UpdateSchema = z.object({
     id: z.string(),
     seq: z.number(),
@@ -200,7 +210,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-    message: (data: { sid: string; message: unknown; localId?: string }) => void
+    message: (data: { sid: string; message: unknown; localId?: string }, cb?: (answer: ClientMessageAck) => void) => void
     'session-alive': (data: {
         sid: string
         time: number

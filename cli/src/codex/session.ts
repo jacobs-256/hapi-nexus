@@ -84,6 +84,10 @@ export class CodexSession extends AgentSessionBase<EnhancedMode> {
         this.transcriptHistoryReplayPending = false;
     }
 
+    async hasAnyPersistedMessages(): Promise<boolean> {
+        return await this.client.hasAnyPersistedMessages();
+    }
+
     onTranscriptPathFound(path: string): void {
         if (this.transcriptPath === path) {
             return;

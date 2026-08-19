@@ -42,14 +42,14 @@ export type CliHandlersDeps = {
     store: Store
     rpcRegistry: RpcRegistry
     terminalRegistry: TerminalRegistry
-    onSessionAlive?: (payload: SessionAlivePayload) => void
-    onSessionReady?: (payload: SessionReadyPayload) => void
-    onSessionEnd?: (payload: SessionEndPayload) => void
+    onSessionAlive?: (payload: SessionAlivePayload) => void | Promise<void>
+    onSessionReady?: (payload: SessionReadyPayload) => void | Promise<void>
+    onSessionEnd?: (payload: SessionEndPayload) => void | Promise<void>
     onMachineAlive?: (payload: MachineAlivePayload) => void
-    onWebappEvent?: (event: SyncEvent) => void
+    onWebappEvent?: (event: SyncEvent) => void | Promise<void>
     onBackgroundTaskDelta?: (sessionId: string, delta: { started: number; completed: number }) => void
-    onSessionActivity?: (sessionId: string, updatedAt: number) => void
-    onSweepImmediateQueued?: (sessionId: string, now: number) => void
+    onSessionActivity?: (sessionId: string, updatedAt: number) => unknown | Promise<unknown>
+    onSweepImmediateQueued?: (sessionId: string, now: number) => void | Promise<void>
     onMessagesConsumed?: (sessionId: string) => void
 }
 
@@ -60,40 +60,40 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     const userId = typeof socket.data.userId === 'number' ? socket.data.userId : null
     const isUserToken = socket.data.cliAuthSource === 'user'
 
-    const resolveSessionAccess = (sessionId: string): AccessResult<StoredSession> => {
+    const resolveSessionAccess = async (sessionId: string): Promise<AccessResult<StoredSession>> => {
         if (!namespace) {
             return { ok: false, reason: 'namespace-missing' }
         }
-        const session = store.sessions.getSessionByNamespace(sessionId, namespace)
+        const session = await store.sessions.getSessionByNamespace(sessionId, namespace)
         if (session) {
             if (isUserToken) {
                 if (userId === null || session.projectId === null) {
                     return { ok: false, reason: 'access-denied' }
                 }
-                if (!store.projects.hasProjectRole(session.projectId, userId, 'editor')) {
+                if (!await store.projects.hasProjectRole(session.projectId, userId, 'editor')) {
                     return { ok: false, reason: 'access-denied' }
                 }
             }
             return { ok: true, value: session }
         }
-        if (store.sessions.getSession(sessionId)) {
+        if (await store.sessions.getSession(sessionId)) {
             return { ok: false, reason: 'access-denied' }
         }
         return { ok: false, reason: 'not-found' }
     }
 
-    const resolveMachineAccess = (machineId: string): AccessResult<StoredMachine> => {
+    const resolveMachineAccess = async (machineId: string): Promise<AccessResult<StoredMachine>> => {
         if (!namespace) {
             return { ok: false, reason: 'namespace-missing' }
         }
-        const machine = store.machines.getMachineByNamespace(machineId, namespace)
+        const machine = await store.machines.getMachineByNamespace(machineId, namespace)
         if (machine) {
             if (isUserToken && machine.ownerUserId !== userId) {
                 return { ok: false, reason: 'access-denied' }
             }
             return { ok: true, value: machine }
         }
-        if (store.machines.getMachine(machineId)) {
+        if (await store.machines.getMachine(machineId)) {
             return { ok: false, reason: 'access-denied' }
         }
         return { ok: false, reason: 'not-found' }
@@ -101,13 +101,17 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
 
     const auth = socket.handshake.auth as Record<string, unknown> | undefined
     const sessionId = typeof auth?.sessionId === 'string' ? auth.sessionId : null
-    if (sessionId && resolveSessionAccess(sessionId).ok) {
-        socket.join(`session:${sessionId}`)
+    if (sessionId) {
+        void resolveSessionAccess(sessionId).then((access) => {
+            if (access.ok) socket.join(`session:${sessionId}`)
+        })
     }
 
     const machineId = typeof auth?.machineId === 'string' ? auth.machineId : null
-    if (machineId && resolveMachineAccess(machineId).ok) {
-        socket.join(`machine:${machineId}`)
+    if (machineId) {
+        void resolveMachineAccess(machineId).then((access) => {
+            if (access.ok) socket.join(`machine:${machineId}`)
+        })
     }
 
     const emitAccessError = (scope: 'session' | 'machine', id: string, reason: AccessErrorReason) => {

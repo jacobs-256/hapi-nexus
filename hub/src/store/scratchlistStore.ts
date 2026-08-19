@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 
+import type { ScratchlistStorePort } from './ports/coreStores'
 import type { StoredScratchlistEntry } from './types'
 import {
     countScratchlistEntries,
@@ -13,7 +14,7 @@ import {
     type CreateScratchlistResult
 } from './scratchlist'
 
-export class ScratchlistStore {
+export class ScratchlistStore implements ScratchlistStorePort {
     private readonly db: Database
 
     constructor(db: Database, private readonly onChange?: () => void) {

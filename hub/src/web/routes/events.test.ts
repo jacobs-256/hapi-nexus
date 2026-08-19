@@ -10,7 +10,7 @@ describe('events routes', () => {
     it('checks machine ACL before opening a machine-scoped stream', async () => {
         const app = new Hono<WebAppEnv>()
         const engine = {
-            resolveMachineAccessForUser: () => ({ ok: false as const, reason: 'access-denied' as const })
+            resolveMachineAccessForUser: async () => ({ ok: false as const, reason: 'access-denied' as const })
         } as Partial<SyncEngine>
 
         app.use('*', async (c, next) => {

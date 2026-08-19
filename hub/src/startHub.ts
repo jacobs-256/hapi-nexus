@@ -5,6 +5,7 @@ import { NotificationHub } from './notifications/notificationHub'
 import type { NotificationChannel } from './notifications/notificationTypes'
 import { HappyBot } from './telegram/bot'
 import { startWebServer } from './web/server'
+import { resumeStorageMigrationIfNeeded } from './web/routes/storage'
 import { getOrCreateJwtSecret } from './config/jwtSecret'
 import { ensureInitialLocalAdmin } from './config/initialAdmin'
 import { createSocketServer } from './socket/server'
@@ -211,11 +212,11 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
         store,
         jwtSecret,
         corsOrigins,
-        getSession: (sessionId) => {
+        getSession: async (sessionId) => {
             if (syncEngine) {
-                return syncEngine.getSession(sessionId) ?? null
+                return await syncEngine.getSessionAsync(sessionId) ?? null
             }
-            return store.sessions.getSession(sessionId)
+            return await store.sessions.getSession(sessionId)
         },
         onWebappEvent: (event: SyncEvent) => syncEngine?.handleRealtimeEvent(event),
         onSessionAlive: (payload) => syncEngine?.handleSessionAlive(payload),
@@ -223,14 +224,14 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
         onSessionEnd: (payload) => syncEngine?.handleSessionEnd(payload),
         onMachineAlive: (payload) => syncEngine?.handleMachineAlive(payload),
         onBackgroundTaskDelta: (sessionId, delta) => syncEngine?.handleBackgroundTaskDelta(sessionId, delta),
-        onSessionActivity: (sessionId, updatedAt) => syncEngine?.recordSessionActivity(sessionId, updatedAt),
-        onSweepImmediateQueued: (sessionId, now) => syncEngine?.sweepImmediateQueuedOnSessionEnd(sessionId, now),
+        onSessionActivity: (sessionId, updatedAt) => syncEngine?.recordSessionActivityAsync(sessionId, updatedAt),
+        onSweepImmediateQueued: (sessionId, now) => syncEngine?.sweepImmediateQueuedOnSessionEndAsync(sessionId, now),
         onMessagesConsumed: (sessionId) => syncEngine?.clearQueuedThinkingGrace(sessionId)
     })
 
     syncEngine = new SyncEngine(store, socketServer.io, socketServer.rpcRegistry, sseManager)
     sseManager.setUserEventFilter((userId, namespace, event) =>
-        syncEngine?.canUserReceiveEvent(userId, namespace, event) ?? false
+        syncEngine?.canUserReceiveEventAsync(userId, namespace, event) ?? false
     )
 
     const fcmConfig = resolveFcmConfig()
@@ -303,6 +304,13 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
     console.log('')
     console.log('[Web] Hub listening on :' + config.listenPort)
     console.log('[Web] Local:  http://localhost:' + config.listenPort)
+
+    setTimeout(() => {
+        void resumeStorageMigrationIfNeeded(store, { settingsFile: config.settingsFile, config: config.storage })
+            .catch((error) => {
+                console.warn('[Storage] Failed to resume storage migration:', error instanceof Error ? error.message : error)
+            })
+    }, 10_000).unref()
 
     // Initialize tunnel AFTER web service is ready
     let tunnelUrl: string | null = null
@@ -391,15 +399,12 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
 
     return {
         stop: async () => {
+            webServer?.stop(true)
             await tunnelManager?.stop()
             await happyBot?.stop()
             notificationHub?.stop()
             syncEngine?.stop()
             sseManager?.stop()
-            await store.exportExternalSnapshot().catch((error) => {
-                console.warn('[Storage] Final external snapshot failed:', error instanceof Error ? error.message : error)
-            })
-            webServer?.stop()
             store.close()
         }
     }

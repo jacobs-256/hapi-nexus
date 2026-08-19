@@ -77,15 +77,15 @@ export class MachineCache {
         return this.getMachinesByNamespace(namespace).filter((machine) => machine.active)
     }
 
-    getOrCreateMachine(
+    async getOrCreateMachine(
         id: string,
         metadata: unknown,
         runnerState: unknown,
         namespace: string,
         options?: { ownerUserId?: number | null; teamId?: string | null }
-    ): Machine {
-        const stored = this.store.machines.getOrCreateMachine(id, metadata, runnerState, namespace, options)
-        return this.refreshMachine(stored.id) ?? (() => { throw new Error('Failed to load machine') })()
+    ): Promise<Machine> {
+        const stored = await this.store.machines.getOrCreateMachine(id, metadata, runnerState, namespace, options)
+        return await this.refreshMachine(stored.id) ?? (() => { throw new Error('Failed to load machine') })()
     }
 
     /**
@@ -109,7 +109,7 @@ export class MachineCache {
      */
     async renameMachine(machineId: string, displayName: string): Promise<void> {
         for (let attempt = 0; attempt < METADATA_RETRY_ATTEMPTS; attempt += 1) {
-            const stored = this.store.machines.getMachine(machineId)
+            const stored = await this.store.machines.getMachine(machineId)
             if (!stored) {
                 throw new Error('Machine not found')
             }
@@ -118,7 +118,7 @@ export class MachineCache {
             const { displayName: _previous, ...rest } = current
             const newMetadata = displayName.length > 0 ? { ...rest, displayName } : rest
 
-            const result = this.store.machines.updateMachineMetadata(
+            const result = await this.store.machines.updateMachineMetadata(
                 machineId,
                 newMetadata,
                 stored.metadataVersion,
@@ -129,7 +129,7 @@ export class MachineCache {
                 throw new Error('Failed to update machine metadata')
             }
 
-            this.refreshMachine(machineId)
+            await this.refreshMachine(machineId)
 
             if (result.result === 'success') {
                 return
@@ -139,8 +139,8 @@ export class MachineCache {
         throw new Error('Machine was modified concurrently. Please try again.')
     }
 
-    refreshMachine(machineId: string): Machine | null {
-        const stored = this.store.machines.getMachine(machineId)
+    async refreshMachine(machineId: string): Promise<Machine | null> {
+        const stored = await this.store.machines.getMachine(machineId)
         if (!stored) {
             const existing = this.machines.get(machineId)
             const existed = this.machines.delete(machineId)
@@ -173,7 +173,7 @@ export class MachineCache {
 
         const storedActiveAt = stored.activeAt ?? stored.createdAt
         const existingActiveAt = existing?.activeAt ?? 0
-        const useStoredActivity = storedActiveAt > existingActiveAt
+        const useStoredActivity = !existing?.active && storedActiveAt > existingActiveAt
 
         const machine: Machine = {
             id: stored.id,
@@ -184,7 +184,7 @@ export class MachineCache {
             createdAt: stored.createdAt,
             updatedAt: stored.updatedAt,
             active: useStoredActivity ? stored.active : (existing?.active ?? stored.active),
-            activeAt: useStoredActivity ? storedActiveAt : (existingActiveAt || storedActiveAt),
+            activeAt: Math.max(existingActiveAt, storedActiveAt),
             metadata,
             metadataVersion: stored.metadataVersion,
             runnerState,
@@ -197,18 +197,18 @@ export class MachineCache {
         return machine
     }
 
-    reloadAll(): void {
-        const machines = this.store.machines.getMachines()
+    async reloadAll(): Promise<void> {
+        const machines = await this.store.machines.getMachines()
         for (const machine of machines) {
-            this.refreshMachine(machine.id)
+            await this.refreshMachine(machine.id)
         }
     }
 
-    handleMachineAlive(payload: MachineAlivePayload): void {
+    async handleMachineAlive(payload: MachineAlivePayload): Promise<void> {
         const t = clampAliveTime(payload.time)
         if (!t) return
 
-        const machine = this.machines.get(payload.machineId) ?? this.refreshMachine(payload.machineId)
+        const machine = this.machines.get(payload.machineId) ?? await this.refreshMachine(payload.machineId)
         if (!machine) return
 
         const wasActive = machine.active

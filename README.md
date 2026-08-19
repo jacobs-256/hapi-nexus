@@ -88,6 +88,9 @@ For deployment options, see [Installation](docs/en/guide/installation.md).
 - [App](docs/en/guide/pwa.md)
 - [Accounts and Access](docs/en/guide/accounts.md)
 - [Settings Console](docs/en/guide/settings.md)
+- [Elasticsearch Conversation Storage Template](docs/en/storage/elasticsearch.md)
+- [Architecture](docs/en/development/architecture.md)
+- [Storage Development Guide](docs/en/development/storage.md)
 - [Projects and Sharing](docs/en/guide/projects.md)
 - [How it Works](docs/en/guide/how-it-works.md)
 - [License and Attribution](docs/en/guide/license.md)
@@ -96,6 +99,9 @@ For deployment options, see [Installation](docs/en/guide/installation.md).
 - [Voice Assistant](docs/en/guide/voice-assistant.md)
 - [Why HAPI Nexus](docs/en/guide/why-hapi.md)
 - [FAQ](docs/en/guide/faq.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Changelog](CHANGELOG.md)
 
 ## Build from source
 

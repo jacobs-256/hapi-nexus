@@ -53,7 +53,15 @@ Open **Settings -> Machines** to rename connected machines for display. Machine 
 
 ## Storage
 
-Open **Settings -> Storage** to inspect local storage usage. Session, message, user, project, and machine data are stored in the hub's SQLite database under `~/.hapi/` or the configured `HAPI_HOME`.
+Open **Settings -> Storage** to inspect and configure storage.
+
+- Conversation history can use SQLite or Elasticsearch.
+- Core hub data can use SQLite or MySQL, including users, permissions, projects, and machines.
+- When Elasticsearch/MySQL is selected, it becomes the direct runtime database; the hub does not write SQLite first and mirror asynchronously.
+- If data migration is enabled, the hub copies existing data into the new target storage.
+- Large migrations continue in the background. The web app is blocked only during the initial phase and can be used after that.
+
+If Elasticsearch uses a data stream, create the index template and data stream first. See [Elasticsearch storage template](../storage/elasticsearch.md).
 
 ## Personal Preferences
 

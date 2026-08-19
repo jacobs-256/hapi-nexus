@@ -39,10 +39,71 @@ import { PwaUpdateProvider } from '@/lib/pwa-update-context'
 import { ToastProvider, useToast } from '@/lib/toast-context'
 import { getVisibleSettingsCategories, settingsCategoryGroups } from '@/routes/settings/categories'
 import type { AuthResponse, SyncEvent } from '@/types/api'
+import type { StorageMigrationStatus } from '@hapi/protocol/apiTypes'
 
 type ToastEvent = Extract<SyncEvent, { type: 'toast' }>
 
 const REQUIRE_SERVER_URL = requireHubUrlForLogin()
+
+
+function storageMigrationStatusUrl(baseUrl: string): string {
+    const normalized = baseUrl.replace(/\/+$/, '')
+    return `${normalized}/api/storage/migration-status`
+}
+
+function useStorageMigrationStatus(baseUrl: string) {
+    const [status, setStatus] = useState<StorageMigrationStatus | null>(null)
+    useEffect(() => {
+        let cancelled = false
+        async function load() {
+            const controller = new AbortController()
+            const timeout = window.setTimeout(() => controller.abort(), 8000)
+            try {
+                const response = await fetch(storageMigrationStatusUrl(baseUrl), { cache: 'no-store', signal: controller.signal })
+                if (!response.ok) return
+                const payload = await response.json() as StorageMigrationStatus
+                if (!cancelled) setStatus(payload)
+            } catch {
+            } finally {
+                window.clearTimeout(timeout)
+            }
+        }
+        const onStarted = (event: Event) => {
+            const detail = (event as CustomEvent<StorageMigrationStatus>).detail
+            if (detail?.status === 'running') {
+                setStatus(detail)
+            }
+        }
+        window.addEventListener('hapi-storage-migration-started', onStarted)
+        void load()
+        const timer = window.setInterval(() => void load(), status?.status === 'running' ? 3000 : 10000)
+        return () => {
+            cancelled = true
+            window.clearInterval(timer)
+            window.removeEventListener('hapi-storage-migration-started', onStarted)
+        }
+    }, [baseUrl, status?.status])
+    return status
+}
+
+function StorageMigrationOverlay(props: { status: StorageMigrationStatus | null }) {
+    const { t } = useTranslation()
+    if (props.status?.status !== 'running' || props.status.blocking === false) return null
+    return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/45 px-6 backdrop-blur-[2px]">
+            <div className="max-w-md rounded-2xl border border-white/20 bg-[var(--app-bg)] p-6 text-center shadow-2xl">
+                <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-[var(--app-border)] border-t-[var(--app-link)]" />
+                <div className="text-lg font-semibold text-[var(--app-fg)]">{t('storageMigration.overlay.title')}</div>
+                <div className="mt-2 text-sm leading-6 text-[var(--app-hint)]">{t('storageMigration.overlay.body')}</div>
+                {props.status.startedAt ? (
+                    <div className="mt-3 text-xs text-[var(--app-hint)]">
+                        {t('storageMigration.overlay.startedAt', { time: new Date(props.status.startedAt).toLocaleString() })}
+                    </div>
+                ) : null}
+            </div>
+        </div>
+    )
+}
 
 function withPwaBanner(content: ReactNode) {
     return (
@@ -259,7 +320,7 @@ function AppStatusBar() {
     const { t } = useTranslation()
 
     return (
-        <footer className="shrink-0 bg-[var(--primary)] pb-[var(--app-shell-safe-area-bottom)]">
+        <footer className="shrink-0 bg-[var(--primary)] sm:pb-[var(--app-shell-safe-area-bottom)]">
             <div className="flex h-[22px] items-center gap-4 px-3 font-mono text-[10.5px] text-white/90">
                 <span className="opacity-80">{t('app.status.product')}</span>
                 <span className="hidden sm:inline">◉ {t('app.status.language')}</span>
@@ -286,6 +347,7 @@ function AppInner() {
     const { serverUrl, baseUrl, setServerUrl, clearServerUrl } = useServerUrl()
     const { authSource, isLoading: isAuthSourceLoading, setWebSession, clearAuth } = useAuthSource(baseUrl)
     const { token, user, api, isLoading: isAuthLoading, error: authError, needsBinding, bind } = useAuth(authSource, baseUrl)
+    const storageMigrationStatus = useStorageMigrationStatus(baseUrl)
     const goBack = useAppGoBack()
     const pathname = useLocation({ select: (location) => location.pathname })
     const matchRoute = useMatchRoute()
@@ -433,12 +495,8 @@ function AppInner() {
         // Increment token to track this specific connection
         const token = ++syncTokenRef.current
 
-        // Only force show banner on first connect (page load)
-        // Subsequent connects (session switches) use non-forced mode
-        // which only shows banner when returning from background
         if (isFirstConnectRef.current) {
             isFirstConnectRef.current = false
-            startSync({ force: true })
         } else {
             startSync()
         }
@@ -614,47 +672,57 @@ function AppInner() {
 
     // No auth source (browser environment, not logged in)
     if (!authSource) {
-        return withPwaBanner(
-            <LoginPrompt
-                onLogin={setWebSession}
-                baseUrl={baseUrl}
-                serverUrl={serverUrl}
-                setServerUrl={setServerUrl}
-                clearServerUrl={clearServerUrl}
-                requireServerUrl={REQUIRE_SERVER_URL}
-            />,
-        )
+        return (<>
+            {withPwaBanner(
+                <LoginPrompt
+                    onLogin={setWebSession}
+                    baseUrl={baseUrl}
+                    serverUrl={serverUrl}
+                    setServerUrl={setServerUrl}
+                    clearServerUrl={clearServerUrl}
+                    requireServerUrl={REQUIRE_SERVER_URL}
+                />,
+            )}
+            <StorageMigrationOverlay status={storageMigrationStatus} />
+        </>)
     }
 
     if (needsBinding) {
-        return withPwaBanner(
-            <LoginPrompt
-                mode="bind"
-                onBind={bind}
-                baseUrl={baseUrl}
-                serverUrl={serverUrl}
-                setServerUrl={setServerUrl}
-                clearServerUrl={clearServerUrl}
-                requireServerUrl={REQUIRE_SERVER_URL}
-                error={authError ?? undefined}
-            />,
-        )
+        return (<>
+            {withPwaBanner(
+                <LoginPrompt
+                    mode="bind"
+                    onBind={bind}
+                    baseUrl={baseUrl}
+                    serverUrl={serverUrl}
+                    setServerUrl={setServerUrl}
+                    clearServerUrl={clearServerUrl}
+                    requireServerUrl={REQUIRE_SERVER_URL}
+                    error={authError ?? undefined}
+                />,
+            )}
+            <StorageMigrationOverlay status={storageMigrationStatus} />
+        </>)
     }
 
     // Authenticating (also covers the gap before useAuth effect starts)
     if (isAuthLoading || (authSource && !token && !authError)) {
-        return withPwaBanner(
-            <div className="h-full flex items-center justify-center p-4">
-                <LoadingState label={t('authorizing')} className="text-sm" />
-            </div>,
-        )
+        return (<>
+            {withPwaBanner(
+                <div className="h-full flex items-center justify-center p-4">
+                    <LoadingState label={t('authorizing')} className="text-sm" />
+                </div>,
+            )}
+            <StorageMigrationOverlay status={storageMigrationStatus} />
+        </>)
     }
 
     // Auth error
     if (authError || !token || !api || !user) {
         // If using a browser Web session and auth failed, show login again.
         if (authSource.type === 'webSession') {
-            return withPwaBanner(
+            return (<>
+                {withPwaBanner(
                 <LoginPrompt
                     onLogin={setWebSession}
                     baseUrl={baseUrl}
@@ -664,11 +732,14 @@ function AppInner() {
                     requireServerUrl={REQUIRE_SERVER_URL}
                     error={authError ?? t('login.error.authFailed')}
                 />,
-            )
+            )}
+                <StorageMigrationOverlay status={storageMigrationStatus} />
+            </>)
         }
 
         // Telegram auth failed
-        return withPwaBanner(
+        return (<>
+            {withPwaBanner(
             <div className="p-4 space-y-3">
                 <div className="text-base font-semibold">{t('login.title')}</div>
                 <div className="text-sm text-red-600">
@@ -678,7 +749,9 @@ function AppInner() {
                     Open this page from Telegram using the bot's "Open App" button (not "Open in browser").
                 </div>
             </div>,
-        )
+        )}
+            <StorageMigrationOverlay status={storageMigrationStatus} />
+        </>)
     }
 
     return (
@@ -710,6 +783,7 @@ function AppInner() {
                 </div>
                 <ToastContainer />
                 <InstallPrompt />
+                <StorageMigrationOverlay status={storageMigrationStatus} />
             </VoiceProvider>
         </AppContextProvider>
     )

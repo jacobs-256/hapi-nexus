@@ -19,6 +19,15 @@ function optionalString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
+function optionalUrlString(value: unknown): string | undefined {
+    const text = optionalString(value)
+    if (!text) return undefined
+    // Some copy/paste sources, especially localized web consoles, can turn ":" into
+    // the fullwidth variant. curl treats that as part of the hostname, e.g.
+    // "elastic.cloud：443", and DNS resolution fails.
+    return text.replace(/\uFF1A/g, ':')
+}
+
 function optionalPort(value: unknown): number | undefined {
     if (value === undefined || value === null || value === '') return undefined
     const parsed = typeof value === 'number' ? value : Number(value)
@@ -66,7 +75,7 @@ function normalizeConversationConfig(input: unknown, defaults: StorageConfig): C
     if (backend === 'elasticsearch') {
         const es = getRecord(record.elasticsearch)
         const fallback = defaults.conversation.backend === 'elasticsearch' ? defaults.conversation.elasticsearch : undefined
-        const url = optionalString(es.url) ?? fallback?.url ?? ''
+        const url = optionalUrlString(es.url) ?? fallback?.url ?? ''
         const index = optionalString(es.index) ?? fallback?.index ?? 'hapi-conversations'
         const username = optionalString(es.username) ?? fallback?.username
         const password = optionalString(es.password) ?? fallback?.password
@@ -99,7 +108,7 @@ function normalizeCoreConfig(input: unknown, defaults: StorageConfig): CoreStora
     if (backend === 'mysql') {
         const mysql = getRecord(record.mysql)
         const fallback = defaults.core.backend === 'mysql' ? defaults.core.mysql : undefined
-        const url = optionalString(mysql.url) ?? fallback?.url
+        const url = optionalUrlString(mysql.url) ?? fallback?.url
         const host = optionalString(mysql.host) ?? fallback?.host
         const database = optionalString(mysql.database) ?? fallback?.database
         const user = optionalString(mysql.user) ?? fallback?.user
@@ -143,14 +152,14 @@ export function normalizeStorageConfig(input: unknown, dataDir: string, legacyDb
 export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.ProcessEnv = process.env): StorageConfig {
     let next = config
     const hasElasticsearchEnv = Boolean(
-        optionalString(env.ELASTICSEARCH_URL)
+        optionalUrlString(env.ELASTICSEARCH_URL)
         || optionalString(env.ELASTICSEARCH_INDEX)
         || optionalString(env.ELASTICSEARCH_USERNAME)
         || optionalString(env.ELASTICSEARCH_PASSWORD)
         || optionalString(env.ELASTICSEARCH_API_KEY)
     )
     const hasElasticsearchTargetEnv = Boolean(
-        optionalString(env.ELASTICSEARCH_URL)
+        optionalUrlString(env.ELASTICSEARCH_URL)
         || (config.conversation.backend === 'elasticsearch' && hasElasticsearchEnv)
     )
     const conversationBackend = (
@@ -173,7 +182,7 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
                 conversation: {
                     backend: 'elasticsearch',
                     elasticsearch: {
-                        url: optionalString(env.ELASTICSEARCH_URL) ?? (config.conversation.backend === 'elasticsearch' ? config.conversation.elasticsearch.url : ''),
+                        url: optionalUrlString(env.ELASTICSEARCH_URL) ?? (config.conversation.backend === 'elasticsearch' ? config.conversation.elasticsearch.url : ''),
                         index: optionalString(env.ELASTICSEARCH_INDEX) ?? (config.conversation.backend === 'elasticsearch' ? config.conversation.elasticsearch.index : 'hapi-conversations'),
                         ...(optionalString(env.ELASTICSEARCH_USERNAME) ? { username: optionalString(env.ELASTICSEARCH_USERNAME) } : {}),
                         ...(optionalString(env.ELASTICSEARCH_PASSWORD) ? { password: optionalString(env.ELASTICSEARCH_PASSWORD) } : {}),
@@ -187,7 +196,7 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
     }
 
     const hasMysqlEnv = Boolean(
-        optionalString(env.MYSQL_URL)
+        optionalUrlString(env.MYSQL_URL)
         || optionalString(env.MYSQL_HOST)
         || optionalString(env.MYSQL_PORT)
         || optionalString(env.MYSQL_DATABASE)
@@ -196,7 +205,7 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
         || optionalString(env.MYSQL_SOCKET_PATH)
     )
     const hasMysqlTargetEnv = Boolean(
-        optionalString(env.MYSQL_URL)
+        optionalUrlString(env.MYSQL_URL)
         || optionalString(env.MYSQL_DATABASE)
         || optionalString(env.MYSQL_SOCKET_PATH)
         || (config.core.backend === 'mysql' && hasMysqlEnv)
@@ -221,7 +230,7 @@ export function applyStorageEnvOverrides(config: StorageConfig, env: NodeJS.Proc
                 core: {
                     backend: 'mysql',
                     mysql: {
-                        ...(optionalString(env.MYSQL_URL) ? { url: optionalString(env.MYSQL_URL) } : {}),
+                        ...(optionalUrlString(env.MYSQL_URL) ? { url: optionalUrlString(env.MYSQL_URL) } : {}),
                         ...(optionalString(env.MYSQL_HOST) ? { host: optionalString(env.MYSQL_HOST) } : {}),
                         ...(optionalPort(env.MYSQL_PORT) ? { port: optionalPort(env.MYSQL_PORT) } : {}),
                         ...(optionalString(env.MYSQL_DATABASE) ? { database: optionalString(env.MYSQL_DATABASE) } : {}),
@@ -244,6 +253,16 @@ export function validateStorageConfig(config: StorageConfig): void {
     }
     if (config.conversation.backend === 'elasticsearch' && !config.conversation.elasticsearch.url) {
         throw new Error('Elasticsearch URL is required for conversation storage')
+    }
+    if (config.conversation.backend === 'elasticsearch') {
+        try {
+            const url = new URL(config.conversation.elasticsearch.url)
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+                throw new Error('unsupported protocol')
+            }
+        } catch {
+            throw new Error('Elasticsearch URL must be a valid http(s) URL, for example https://example.es.us-west-2.aws.elastic.cloud:443')
+        }
     }
     if (config.core.backend === 'sqlite' && !config.core.sqlite.path) {
         throw new Error('Core SQLite path is required')

@@ -31,6 +31,7 @@ hapi --version
 - **Codex 目录历史同步** - 将某个工作目录下的全部 Codex CLI transcript 导入 HAPI Nexus，并可从最新导入会话继续 Web 或 `hapi resume` 工作流。
 - **项目共享** - 创建项目、绑定 runner 工作区、邀请用户并共享会话，无需把源码复制到每台设备。
 - **私有 Hub 账号** - 浏览器用户使用本地用户名/密码登录。管理员可以创建用户、分配角色、重置密码，并为每个用户签发 companion/CLI 使用的 access token。
+- **可配置存储** - 对话历史支持 SQLite 或 Elasticsearch；其他 Hub 数据支持 SQLite 或 MySQL，可在设置中的存储页面选择，并支持切换时迁移数据。
 
 ## 快速开始
 
@@ -87,6 +88,9 @@ CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-roo
 - [App](docs/zh-CN/guide/pwa.md)
 - [账号与访问](docs/zh-CN/guide/accounts.md)
 - [设置控制台](docs/zh-CN/guide/settings.md)
+- [Elasticsearch 对话存储模板](docs/zh-CN/storage/elasticsearch.md)
+- [架构说明](docs/zh-CN/development/architecture.md)
+- [存储开发指南](docs/zh-CN/development/storage.md)
 - [项目与共享](docs/zh-CN/guide/projects.md)
 - [工作原理](docs/zh-CN/guide/how-it-works.md)
 - [许可证与归属](docs/zh-CN/guide/license.md)
@@ -95,6 +99,9 @@ CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-roo
 - [语音助手](docs/zh-CN/guide/voice-assistant.md)
 - [为什么选择 HAPI Nexus](docs/zh-CN/guide/why-hapi.md)
 - [FAQ](docs/zh-CN/guide/faq.md)
+- [参与贡献](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+- [更新日志](CHANGELOG.md)
 
 ## 从源码构建
 

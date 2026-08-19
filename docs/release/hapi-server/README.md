@@ -83,7 +83,11 @@ Common server variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HAPI_HOME` | `~/.hapi` | Server config/data directory |
-| `DB_PATH` | `$HAPI_HOME/hapi.db` | SQLite database file path |
+| `DB_PATH` | `$HAPI_HOME/hapi.db` | Legacy/default SQLite database file path |
+| `HAPI_CONVERSATION_STORE` | `sqlite` | Conversation storage backend: `sqlite` or `elasticsearch` |
+| `ELASTICSEARCH_URL` / `ELASTICSEARCH_INDEX` / `ELASTICSEARCH_API_KEY` | unset | Elasticsearch conversation storage settings |
+| `HAPI_CORE_STORE` | `sqlite` | Core storage backend: `sqlite` or `mysql` |
+| `MYSQL_URL` or `MYSQL_HOST`/`MYSQL_PORT`/`MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD` | unset | MySQL core storage settings |
 | `HAPI_LISTEN_HOST` | `127.0.0.1` | HTTP bind address |
 | `HAPI_LISTEN_PORT` | `3006` | HTTP port |
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | Browser-facing URL |
@@ -154,7 +158,7 @@ Expected response includes `status: "ok"`.
 
 ## Database Upgrades
 
-`hapi-server` stores the SQLite schema version in `PRAGMA user_version`. When a newer server starts with an older database, it runs the built-in migration chain before accepting traffic.
+`hapi-server` stores the SQLite schema version in `PRAGMA user_version` for SQLite-backed data files. When a newer server starts with an older SQLite database, it runs the built-in migration chain before accepting traffic. If Settings -> Storage selects Elasticsearch for conversations or MySQL for core data, that external backend is the direct runtime database for its domain; explicit storage switching can copy existing data and long copies continue in the background.
 
 Before migrating a non-empty database, HAPI Nexus writes a backup under:
 
@@ -162,7 +166,7 @@ Before migrating a non-empty database, HAPI Nexus writes a backup under:
 <directory-containing-hapi.db>/backups/
 ```
 
-Migration history is recorded in the `schema_migrations` table, including source version, target version, duration, and backup path.
+SQLite migration history is recorded in the `schema_migrations` table, including source version, target version, duration, and backup path. Storage-switch migration status is exposed in Web Settings -> Storage.
 
 Recommended upgrade flow:
 
@@ -227,7 +231,7 @@ sudo systemctl restart hapi-server
 - Restrict security groups or firewall rules to trusted networks when possible.
 - Keep `CLI_API_TOKEN` and user access tokens secret.
 - Rotate the default admin password immediately.
-- Back up `DB_PATH` and attachment data under `HAPI_HOME`.
+- Back up `DB_PATH`, `HAPI_HOME`, and any configured MySQL/Elasticsearch backends.
 - Check `/health` from the load balancer.
 - Check Web Settings -> Storage after upgrades.
 

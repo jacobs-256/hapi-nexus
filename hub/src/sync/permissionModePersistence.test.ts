@@ -91,13 +91,13 @@ describe('permission mode persistence', () => {
         const store = new Store(':memory:')
         const engine = createEngine(store)
 
-        const machine = engine.getOrCreateMachine(
+        const machine = await engine.getOrCreateMachine(
             'machine-1',
             { host: 'localhost', platform: 'linux', happyCliVersion: '0.1.0' },
             null,
             'default'
         )
-        engine.handleMachineAlive({ machineId: machine.id, time: Date.now() })
+        await engine.handleMachineAlive({ machineId: machine.id, time: Date.now() })
 
         const session = engine.getOrCreateSession(
             'resume-permission-mode-restart',
@@ -120,7 +120,7 @@ describe('permission mode persistence', () => {
         engine.handleSessionEnd({ sid: session.id, time: Date.now() })
 
         const restartedEngine = simulateHubRestart(store)
-        restartedEngine.handleMachineAlive({ machineId: machine.id, time: Date.now() })
+        await restartedEngine.handleMachineAlive({ machineId: machine.id, time: Date.now() })
 
         let capturedSpawnPermissionMode: string | undefined
         let configRpcCalls = 0

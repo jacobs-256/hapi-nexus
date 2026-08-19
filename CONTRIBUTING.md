@@ -58,12 +58,33 @@ Have an idea to improve HAPI? Open an issue with:
    ```bash
    bun install
    ```
-3. Start development:
+3. Run checks:
+   ```bash
+   bun typecheck
+   bun run test
+   ```
+4. Start development:
    ```bash
    bun run dev
    ```
 
 See the [README](README.md) for more build options.
+
+## Development Structure
+
+See:
+
+- [Architecture](docs/en/development/architecture.md)
+- [Storage Development Guide](docs/en/development/storage.md)
+
+Keep package boundaries clear:
+
+- `shared/` for cross-package types, schemas, and socket/API contracts
+- `cli/` for local agent wrappers, local terminal/tool execution, and runner behavior
+- `hub/` for server APIs, sync logic, storage, migrations, and background jobs
+- `web/` for browser UI, routes, hooks, and API client logic
+
+When changing persistence behavior, include the necessary upgrade or migration logic and focused tests.
 
 ## License
 

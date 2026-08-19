@@ -175,11 +175,11 @@ export class SyncEngine {
             store,
             io,
             this.eventPublisher,
-            (sessionId, updatedAt) => this.recordSessionActivity(sessionId, updatedAt)
+            (sessionId, updatedAt) => this.recordSessionActivityAsync(sessionId, updatedAt)
         )
         this.rpcGateway = new RpcGateway(io, rpcRegistry)
-        this.reloadAll()
-        this.inactivityTimer = setInterval(() => this.expireInactive(), 5_000)
+        void this.reloadAll()
+        this.inactivityTimer = setInterval(() => void this.expireInactive(), 5_000)
     }
 
     stop(): void {
@@ -293,28 +293,67 @@ export class SyncEngine {
             })
     }
 
+    async getSessionsForUserAsync(namespace: string, userId: number): Promise<Session[]> {
+        const projects = await this.store.projects.listProjectsForUser(namespace, userId)
+        const allowedProjectIds = new Set(projects.map((project) => project.id))
+        const result: Session[] = []
+        for (const session of this.sessionCache.getSessionsByNamespace(namespace)) {
+            const refreshed = session.projectId === null
+                ? await this.sessionCache.refreshSessionAsync(session.id) ?? session
+                : session
+            if (refreshed.projectId !== null && allowedProjectIds.has(refreshed.projectId)) {
+                result.push(refreshed)
+            }
+        }
+        return result
+    }
+
     getProjectsForUser(namespace: string, userId: number): StoredProject[] {
         return this.store.projects.listProjectsForUser(namespace, userId)
+    }
+
+    async getProjectsForUserAsync(namespace: string, userId: number): Promise<StoredProject[]> {
+        return await this.store.projects.listProjectsForUser(namespace, userId)
     }
 
     getProjectByNamespace(projectId: string, namespace: string): StoredProject | null {
         return this.store.projects.getProjectByNamespace(projectId, namespace)
     }
 
+    async getProjectByNamespaceAsync(projectId: string, namespace: string): Promise<StoredProject | null> {
+        return await this.store.projects.getProjectByNamespace(projectId, namespace)
+    }
+
     getProjectMemberRole(projectId: string, userId: number): ProjectRole | null {
         return this.store.projects.getProjectMemberRole(projectId, userId)
+    }
+
+    async getProjectMemberRoleAsync(projectId: string, userId: number): Promise<ProjectRole | null> {
+        return await this.store.projects.getProjectMemberRole(projectId, userId)
     }
 
     hasProjectRole(projectId: string, userId: number, role: ProjectRole): boolean {
         return this.store.projects.hasProjectRole(projectId, userId, role)
     }
 
+    async hasProjectRoleAsync(projectId: string, userId: number, role: ProjectRole): Promise<boolean> {
+        return await this.store.projects.hasProjectRole(projectId, userId, role)
+    }
+
     listProjectWorkspaces(projectId: string) {
         return this.store.projects.listProjectWorkspaces(projectId)
     }
 
+    async listProjectWorkspacesAsync(projectId: string) {
+        return await this.store.projects.listProjectWorkspaces(projectId)
+    }
+
     listProjectWorkspacesForUser(namespace: string, userId: number, role: ProjectRole = 'viewer') {
         return this.store.projects.listProjectWorkspacesForUser(namespace, userId, role)
+    }
+
+    async listProjectWorkspacesForUserAsync(namespace: string, userId: number, role: ProjectRole = 'viewer') {
+        return await this.store.projects.listProjectWorkspacesForUser(namespace, userId, role)
     }
 
     addProjectWorkspace(
@@ -324,6 +363,15 @@ export class SyncEngine {
         createdByUserId: number
     ) {
         return this.store.projects.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
+    }
+
+    async addProjectWorkspaceAsync(
+        projectId: string,
+        machineId: string,
+        rootPath: string,
+        createdByUserId: number
+    ) {
+        return await this.store.projects.addProjectWorkspace(projectId, machineId, rootPath, createdByUserId)
     }
 
     getFutureScheduledMessageCounts(sessionIds: string[], now: number = Date.now()): Map<string, number> {
@@ -338,6 +386,10 @@ export class SyncEngine {
         return this.sessionCache.getSession(sessionId) ?? this.sessionCache.refreshSession(sessionId) ?? undefined
     }
 
+    async getSessionAsync(sessionId: string): Promise<Session | undefined> {
+        return this.sessionCache.getSession(sessionId) ?? await this.sessionCache.refreshSessionAsync(sessionId) ?? undefined
+    }
+
     getSessionByNamespace(sessionId: string, namespace: string): Session | undefined {
         const session = this.sessionCache.getSessionByNamespace(sessionId, namespace)
             ?? this.sessionCache.refreshSession(sessionId)
@@ -347,11 +399,22 @@ export class SyncEngine {
         return session
     }
 
+    async getSessionByNamespaceAsync(sessionId: string, namespace: string): Promise<Session | undefined> {
+        return await this.sessionCache.getSessionByNamespaceAsync(sessionId, namespace)
+    }
+
     resolveSessionAccess(
         sessionId: string,
         namespace: string
     ): { ok: true; sessionId: string; session: Session } | { ok: false; reason: 'not-found' | 'access-denied' } {
         return this.sessionCache.resolveSessionAccess(sessionId, namespace)
+    }
+
+    async resolveSessionAccessAsync(
+        sessionId: string,
+        namespace: string
+    ): Promise<{ ok: true; sessionId: string; session: Session } | { ok: false; reason: 'not-found' | 'access-denied' }> {
+        return await this.sessionCache.resolveSessionAccessAsync(sessionId, namespace)
     }
 
     resolveSessionAccessForUser(
@@ -374,6 +437,26 @@ export class SyncEngine {
         return access
     }
 
+    async resolveSessionAccessForUserAsync(
+        sessionId: string,
+        namespace: string,
+        userId: number,
+        requiredRole: ProjectRole = 'viewer'
+    ): Promise<{ ok: true; sessionId: string; session: Session } | { ok: false; reason: 'not-found' | 'access-denied' }> {
+        const access = await this.sessionCache.resolveSessionAccessAsync(sessionId, namespace)
+        if (!access.ok) {
+            return access
+        }
+        const projectId = access.session.projectId
+        if (!projectId) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        if (!await this.store.projects.hasProjectRole(projectId, userId, requiredRole)) {
+            return { ok: false, reason: 'access-denied' }
+        }
+        return access
+    }
+
     canUserReceiveEvent(userId: number, namespace: string, event: SyncEvent): boolean {
         if (event.type === 'connection-changed') {
             return true
@@ -391,8 +474,32 @@ export class SyncEngine {
             return access.ok
         }
         if ('machineId' in event) {
-            const access = this.resolveMachineAccessForUser(event.machineId, namespace, userId, 'viewer')
+            const machine = this.machineCache.getMachineByNamespace(event.machineId, namespace)
+            return Boolean(machine && (machine.ownerUserId === userId || machine.ownerUserId === null))
+        }
+        return true
+    }
+
+    async canUserReceiveEventAsync(userId: number, namespace: string, event: SyncEvent): Promise<boolean> {
+        if (event.type === 'connection-changed') {
+            return true
+        }
+        const eventNamespace = event.namespace
+        if (eventNamespace && eventNamespace !== namespace) {
+            return false
+        }
+        if ('sessionId' in event) {
+            const access = await this.resolveSessionAccessForUserAsync(event.sessionId, namespace, userId, 'viewer')
             return access.ok
+        }
+        if (event.type === 'toast' && event.data.sessionId) {
+            const access = await this.resolveSessionAccessForUserAsync(event.data.sessionId, namespace, userId, 'viewer')
+            return access.ok
+        }
+        if ('machineId' in event) {
+            const machine = this.machineCache.getMachineByNamespace(event.machineId, namespace)
+                ?? await this.machineCache.refreshMachine(event.machineId)
+            return Boolean(machine && machine.namespace === namespace && (machine.ownerUserId === userId || machine.ownerUserId === null))
         }
         return true
     }
@@ -409,16 +516,16 @@ export class SyncEngine {
         return this.machineCache.getMachinesByNamespace(namespace)
     }
 
-    ensureNamespaceDefaults(namespace: string, ownerUserId: number): StoredProject {
-        const project = this.store.projects.ensureDefaults(namespace, ownerUserId)
+    async ensureNamespaceDefaults(namespace: string, ownerUserId: number): Promise<StoredProject> {
+        const project = await this.store.projects.ensureDefaults(namespace, ownerUserId)
         for (const session of this.sessionCache.getSessionsByNamespace(namespace)) {
             if (session.projectId === null) {
-                this.sessionCache.refreshSession(session.id)
+                await this.sessionCache.refreshSessionAsync(session.id)
             }
         }
         for (const machine of this.machineCache.getMachinesByNamespace(namespace)) {
             if (machine.ownerUserId === null || machine.teamId === null) {
-                this.machineCache.refreshMachine(machine.id)
+                void this.machineCache.refreshMachine(machine.id)
             }
         }
         return project
@@ -440,12 +547,12 @@ export class SyncEngine {
         return this.machineCache.getOnlineMachinesByNamespace(namespace)
     }
 
-    getOnlineMachinesForUser(namespace: string, userId: number): Machine[] {
-        return this.getMachinesForUser(namespace, userId).filter((machine) => machine.active)
+    async getOnlineMachinesForUser(namespace: string, userId: number): Promise<Machine[]> {
+        return (await this.getMachinesForUser(namespace, userId)).filter((machine) => machine.active)
     }
 
-    getMachinesForUser(namespace: string, userId: number): Machine[] {
-        const rootsByMachine = this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, 'viewer')
+    async getMachinesForUser(namespace: string, userId: number): Promise<Machine[]> {
+        const rootsByMachine = await this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, 'viewer')
         return this.machineCache.getMachinesByNamespace(namespace)
             .filter((machine) => machine.ownerUserId === userId || rootsByMachine.has(machine.id))
             .map((machine) => machine.ownerUserId === userId
@@ -453,13 +560,13 @@ export class SyncEngine {
                 : this.maskMachineWorkspaceRoots(machine, rootsByMachine.get(machine.id) ?? []))
     }
 
-    resolveMachineAccessForUser(
+    async resolveMachineAccessForUser(
         machineId: string,
         namespace: string,
         userId: number,
         requiredRole: ProjectRole = 'viewer'
-    ): { ok: true; machine: Machine } | { ok: false; reason: 'not-found' | 'access-denied' } {
-        const machine = this.machineCache.getMachine(machineId) ?? this.machineCache.refreshMachine(machineId)
+    ): Promise<{ ok: true; machine: Machine } | { ok: false; reason: 'not-found' | 'access-denied' }> {
+        const machine = this.machineCache.getMachine(machineId) ?? await this.machineCache.refreshMachine(machineId)
         if (!machine) {
             return { ok: false, reason: 'not-found' }
         }
@@ -470,7 +577,7 @@ export class SyncEngine {
             return { ok: true, machine }
         }
 
-        const rootsByMachine = this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, requiredRole)
+        const rootsByMachine = await this.getProjectWorkspaceRootsByMachineForUser(namespace, userId, requiredRole)
         const roots = rootsByMachine.get(machineId)
         if (!roots || roots.length === 0) {
             return { ok: false, reason: 'access-denied' }
@@ -478,13 +585,13 @@ export class SyncEngine {
         return { ok: true, machine: this.maskMachineWorkspaceRoots(machine, roots) }
     }
 
-    private getProjectWorkspaceRootsByMachineForUser(
+    private async getProjectWorkspaceRootsByMachineForUser(
         namespace: string,
         userId: number,
         requiredRole: ProjectRole
-    ): Map<string, string[]> {
+    ): Promise<Map<string, string[]>> {
         const rootsByMachine = new Map<string, string[]>()
-        for (const workspace of this.store.projects.listProjectWorkspacesForUser(namespace, userId, requiredRole)) {
+        for (const workspace of await this.store.projects.listProjectWorkspacesForUser(namespace, userId, requiredRole)) {
             const roots = rootsByMachine.get(workspace.machineId) ?? []
             if (!roots.includes(workspace.rootPath)) {
                 roots.push(workspace.rootPath)
@@ -508,11 +615,11 @@ export class SyncEngine {
     }
 
     async renameMachine(machineId: string, displayName: string): Promise<void> {
-        return this.machineCache.renameMachine(machineId, displayName)
+        return await this.machineCache.renameMachine(machineId, displayName)
     }
 
     async deleteMachine(machineId: string, namespace: string): Promise<DeleteMachineCascadeResult> {
-        const result = this.store.machines.deleteMachineByNamespace(machineId, namespace)
+        const result = await this.store.machines.deleteMachineByNamespace(machineId, namespace)
         if (!result.machineDeleted) {
             throw new Error('Machine not found')
         }
@@ -520,7 +627,7 @@ export class SyncEngine {
         for (const sessionId of result.deletedSessionIds) {
             this.sessionCache.forgetDeletedSession(sessionId, namespace)
         }
-        this.machineCache.refreshMachine(machineId)
+        await this.machineCache.refreshMachine(machineId)
 
         void import('../scratchlistAttachments/storage').then(async ({
             deleteScratchlistSessionAttachmentDir,
@@ -554,24 +661,45 @@ export class SyncEngine {
         return this.messageService.getMessagesPage(sessionId, options)
     }
 
+    async getMessagesPageAsync(
+        sessionId: string,
+        options: {
+            limit: number
+            before?: { at: number; seq: number } | null
+            after?: { at: number; seq: number } | null
+            until?: { at: number; seq: number } | null
+            epoch?: number | null
+        }
+    ): Promise<MessagesResponse> {
+        return await this.messageService.getMessagesPageAsync(sessionId, options)
+    }
+
     getQueuedState(sessionId: string, localIds: string[]): QueuedStateResponse {
         return this.messageService.getQueuedState(sessionId, localIds)
     }
 
-    getSessionExport(sessionId: string, session: Session): HapiSessionExportResult {
-        return this.messageService.getSessionExport(sessionId, session)
+    async getQueuedStateAsync(sessionId: string, localIds: string[]): Promise<QueuedStateResponse> {
+        return await this.messageService.getQueuedStateAsync(sessionId, localIds)
+    }
+
+    async getSessionExport(sessionId: string, session: Session): Promise<HapiSessionExportResult> {
+        return await this.messageService.getSessionExport(sessionId, session)
     }
 
     getDeliverableMessagesAfter(sessionId: string, options: { afterSeq: number; limit: number; now: number }): DecryptedMessage[] {
         return this.messageService.getDeliverableMessagesAfter(sessionId, options)
     }
 
-    handleRealtimeEvent(event: SyncEvent): void {
+    async getDeliverableMessagesAfterAsync(sessionId: string, options: { afterSeq: number; limit: number; now: number }): Promise<DecryptedMessage[]> {
+        return await this.messageService.getDeliverableMessagesAfterAsync(sessionId, options)
+    }
+
+    async handleRealtimeEvent(event: SyncEvent): Promise<void> {
         if (event.type === 'session-updated' && event.sessionId) {
             // Snapshot agent session IDs before refresh — safe because JS is single-threaded
             // and refreshSession replaces the Map entry with a new object.
             const before = this.sessionCache.getSession(event.sessionId)
-            this.sessionCache.refreshSession(event.sessionId)
+            await this.sessionCache.refreshSessionAsync(event.sessionId)
             const after = this.sessionCache.getSession(event.sessionId)
             if (after?.metadata && !this.hasSameAgentSessionIds(before?.metadata ?? null, after.metadata)) {
                 if (!this.canRunCursorDedup(after)) {
@@ -585,20 +713,20 @@ export class SyncEngine {
         }
 
         if (event.type === 'machine-updated' && event.machineId) {
-            this.machineCache.refreshMachine(event.machineId)
+            await this.machineCache.refreshMachine(event.machineId)
             return
         }
 
         if (event.type === 'message-received' && event.sessionId) {
-            if (!this.getSession(event.sessionId)) {
-                this.sessionCache.refreshSession(event.sessionId)
+            if (!await this.getSessionAsync(event.sessionId)) {
+                await this.sessionCache.refreshSessionAsync(event.sessionId)
             }
         }
 
         this.eventPublisher.emit(event)
     }
 
-    handleSessionAlive(payload: {
+    async handleSessionAlive(payload: {
         sid: string
         time: number
         thinking?: boolean
@@ -609,27 +737,27 @@ export class SyncEngine {
         effort?: string | null
         serviceTier?: string | null
         collaborationMode?: CodexCollaborationMode
-    }): void {
-        this.sessionCache.handleSessionAlive(payload)
-        this.triggerDedupIfNeeded(payload.sid)
+    }): Promise<void> {
+        await this.sessionCache.handleSessionAliveAsync(payload)
+        await this.triggerDedupIfNeeded(payload.sid)
     }
 
-    handleSessionReady(payload: { sid: string; time: number }): void {
+    async handleSessionReady(payload: { sid: string; time: number }): Promise<void> {
         this.sessionReadyIds.add(payload.sid)
-        this.triggerDedupIfNeeded(payload.sid)
+        await this.triggerDedupIfNeeded(payload.sid)
     }
 
     clearQueuedThinkingGrace(sessionId: string): void {
         this.sessionCache.clearQueuedThinkingGrace(sessionId)
     }
 
-    handleSessionEnd(payload: { sid: string; time: number; reason?: 'completed' | 'terminated' | 'error' }): void {
+    async handleSessionEnd(payload: { sid: string; time: number; reason?: 'completed' | 'terminated' | 'error' }): Promise<void> {
         const before = this.sessionCache.getSession(payload.sid)
         const isCursorAcp = before?.metadata?.flavor === 'cursor'
             && before.metadata.cursorSessionProtocol === 'acp'
         const shouldRetryDedup = !isCursorAcp || this.sessionReadyIds.has(payload.sid)
 
-        this.sessionCache.handleSessionEnd(payload)
+        await this.sessionCache.handleSessionEndAsync(payload)
         this.eventPublisher.emit({
             type: 'session-ended',
             sessionId: payload.sid,
@@ -639,7 +767,7 @@ export class SyncEngine {
         // skipped it because it was still active at the time. Cursor ACP rows that
         // never reached session-ready must not dedup-merge the original on failure.
         if (shouldRetryDedup) {
-            this.triggerDedupIfNeeded(payload.sid)
+            await this.triggerDedupIfNeeded(payload.sid)
         }
         this.sessionReadyIds.delete(payload.sid)
     }
@@ -652,20 +780,24 @@ export class SyncEngine {
         this.sessionCache.recordSessionActivity(sessionId, updatedAt)
     }
 
+    async recordSessionActivityAsync(sessionId: string, updatedAt: number): Promise<void> {
+        await this.sessionCache.recordSessionActivityAsync(sessionId, updatedAt)
+    }
+
     /**
      * tiann/hapi#893 (scratchlist v2). Read-side: list entries for a
      * session. Auth / namespace check is the route layer's job (via
      * `requireSessionFromParam`); by the time we get here the caller
      * already proved access.
      */
-    listScratchlistEntries(sessionId: string): Array<{
+    async listScratchlistEntries(sessionId: string): Promise<Array<{
         entryId: string
         text: string
         createdAt: number
         updatedAt: number
         attachments: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
-    }> {
-        return this.store.scratchlist.list(sessionId).map((row) => ({
+    }>> {
+        return (await this.store.scratchlist.list(sessionId)).map((row) => ({
             entryId: row.entryId,
             text: row.text,
             createdAt: row.createdAt,
@@ -674,12 +806,12 @@ export class SyncEngine {
         }))
     }
 
-    countScratchlistEntries(sessionId: string): number {
-        return this.store.scratchlist.count(sessionId)
+    async countScratchlistEntries(sessionId: string): Promise<number> {
+        return await this.store.scratchlist.count(sessionId)
     }
 
-    sumScratchlistAttachmentBytes(sessionId: string): number {
-        return this.store.scratchlist.sumAttachmentBytes(sessionId)
+    async sumScratchlistAttachmentBytes(sessionId: string): Promise<number> {
+        return await this.store.scratchlist.sumAttachmentBytes(sessionId)
     }
 
     /**
@@ -689,17 +821,17 @@ export class SyncEngine {
      * session that has hit `SCRATCHLIST_MAX_ENTRIES` would 409 when it
      * should 200 with the existing row.
      */
-    getScratchlistEntry(
+    async getScratchlistEntry(
         sessionId: string,
         entryId: string
-    ): {
+    ): Promise<{
         entryId: string
         text: string
         createdAt: number
         updatedAt: number
         attachments: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
-    } | null {
-        const row = this.store.scratchlist.get(sessionId, entryId)
+    } | null> {
+        const row = await this.store.scratchlist.get(sessionId, entryId)
         if (!row) return null
         return {
             entryId: row.entryId,
@@ -722,7 +854,7 @@ export class SyncEngine {
      * a hard error. Route layer maps duplicate → 200/conflict per its
      * own contract; this layer just reports it.
      */
-    createScratchlistEntry(
+    async createScratchlistEntry(
         sessionId: string,
         text: string,
         options?: {
@@ -730,7 +862,7 @@ export class SyncEngine {
             createdAt?: number
             attachments?: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
         }
-    ): {
+    ): Promise<{
         outcome: 'created' | 'duplicate'
         entry: {
             entryId: string
@@ -739,13 +871,13 @@ export class SyncEngine {
             updatedAt: number
             attachments: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
         }
-    } | { outcome: 'session-not-found' } {
-        const result = this.store.scratchlist.create(sessionId, text, options)
+    } | { outcome: 'session-not-found' }> {
+        const result = await this.store.scratchlist.create(sessionId, text, options)
         if (result.outcome === 'session-not-found') {
             return result
         }
         if (result.outcome === 'created') {
-            this.sessionCache.emitScratchlistChanged(sessionId, result.entry.updatedAt)
+            await this.sessionCache.emitScratchlistChangedAsync(sessionId, result.entry.updatedAt)
         }
         return {
             outcome: result.outcome,
@@ -759,23 +891,23 @@ export class SyncEngine {
         }
     }
 
-    updateScratchlistEntry(
+    async updateScratchlistEntry(
         sessionId: string,
         entryId: string,
         patch: {
             text?: string
             attachments?: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
         }
-    ): {
+    ): Promise<{
         entryId: string
         text: string
         createdAt: number
         updatedAt: number
         attachments: import('@hapi/protocol').ScratchlistAttachmentMetadata[]
-    } | null {
-        const updated = this.store.scratchlist.update(sessionId, entryId, patch)
+    } | null> {
+        const updated = await this.store.scratchlist.update(sessionId, entryId, patch)
         if (!updated) return null
-        this.sessionCache.emitScratchlistChanged(sessionId, updated.updatedAt)
+        await this.sessionCache.emitScratchlistChangedAsync(sessionId, updated.updatedAt)
         return {
             entryId: updated.entryId,
             text: updated.text,
@@ -785,15 +917,15 @@ export class SyncEngine {
         }
     }
 
-    deleteScratchlistEntry(sessionId: string, entryId: string): boolean {
-        const existing = this.store.scratchlist.get(sessionId, entryId)
-        const removed = this.store.scratchlist.delete(sessionId, entryId)
+    async deleteScratchlistEntry(sessionId: string, entryId: string): Promise<boolean> {
+        const existing = await this.store.scratchlist.get(sessionId, entryId)
+        const removed = await this.store.scratchlist.delete(sessionId, entryId)
         if (removed && existing) {
             // Attachment ids may be shared across entries (direct REST).
             // Only delete blobs that no remaining entry still references.
             const remainingIds = new Set(
-                this.store.scratchlist
-                    .list(sessionId)
+                (await this.store.scratchlist
+                    .list(sessionId))
                     .flatMap((entry) => entry.attachments.map((att) => att.id))
             )
             const orphaned = existing.attachments.filter((att) => !remainingIds.has(att.id))
@@ -802,7 +934,7 @@ export class SyncEngine {
                     deleteScratchlistAttachmentFiles(getHapiHomeDir(), orphaned)
                 )
             }
-            this.sessionCache.emitScratchlistChanged(sessionId, Date.now())
+            await this.sessionCache.emitScratchlistChangedAsync(sessionId, Date.now())
         }
         return removed
     }
@@ -928,12 +1060,12 @@ async uploadScratchlistAttachment(
         return { buffer: read.buffer, mimeType: 'application/octet-stream', filename: 'attachment' }
     }
 
-    handleMachineAlive(payload: { machineId: string; time: number; health?: unknown }): void {
-        this.machineCache.handleMachineAlive(payload)
+    async handleMachineAlive(payload: { machineId: string; time: number; health?: unknown }): Promise<void> {
+        await this.machineCache.handleMachineAlive(payload)
     }
 
-    private expireInactive(): void {
-        const expired = this.sessionCache.expireInactive()
+    private async expireInactive(): Promise<void> {
+        const expired = await this.sessionCache.expireInactiveAsync()
         // Sort by most recent first so dedup keeps the newest session when multiple
         // duplicates for the same agent thread expire in the same sweep.
         const sorted = expired
@@ -941,17 +1073,19 @@ async uploadScratchlistAttachment(
             .filter((s): s is NonNullable<typeof s> => s != null)
             .sort((a, b) => (b.activeAt - a.activeAt) || (b.updatedAt - a.updatedAt))
         for (const session of sorted) {
-            this.triggerDedupIfNeeded(session.id)
+            await this.triggerDedupIfNeeded(session.id)
         }
         this.machineCache.expireInactive()
         // Piggybacked on the inactivity tick; not a logical part of expireInactive
         // but shares its 5s cadence (avoids a second timer).
-        this.messageService.releaseMatureScheduledMessages(Date.now())
+        await this.messageService.releaseMatureScheduledMessagesAsync(Date.now()).catch((error) => {
+            console.warn('[SyncEngine] Failed to release mature scheduled messages:', error instanceof Error ? error.message : error)
+        })
     }
 
-    private reloadAll(): void {
-        this.sessionCache.reloadAll()
-        this.machineCache.reloadAll()
+    private async reloadAll(): Promise<void> {
+        await this.sessionCache.reloadAllAsync()
+        // Machine rows are refreshed lazily by heartbeats/API access. Avoid an async startup refresh racing with live heartbeats.
     }
 
     getOrCreateSession(
@@ -978,6 +1112,30 @@ async uploadScratchlistAttachment(
         )
     }
 
+    async getOrCreateSessionAsync(
+        tag: string,
+        metadata: unknown,
+        agentState: unknown,
+        namespace: string,
+        model?: string,
+        effort?: string,
+        modelReasoningEffort?: string,
+        requestedId?: string,
+        options?: { projectId?: string | null; createdByUserId?: number | null }
+    ): Promise<Session> {
+        return await this.sessionCache.getOrCreateSessionAsync(
+            tag,
+            metadata,
+            agentState,
+            namespace,
+            model,
+            effort,
+            modelReasoningEffort,
+            requestedId,
+            options
+        )
+    }
+
     assignSessionProject(
         sessionId: string,
         namespace: string,
@@ -985,6 +1143,15 @@ async uploadScratchlistAttachment(
         createdByUserId: number
     ): Session | null {
         return this.sessionCache.assignSessionProject(sessionId, namespace, projectId, createdByUserId)
+    }
+
+    async assignSessionProjectAsync(
+        sessionId: string,
+        namespace: string,
+        projectId: string,
+        createdByUserId: number
+    ): Promise<Session | null> {
+        return await this.sessionCache.assignSessionProjectAsync(sessionId, namespace, projectId, createdByUserId)
     }
 
     async assignSessionProjectWhenAvailable(
@@ -996,22 +1163,22 @@ async uploadScratchlistAttachment(
     ): Promise<boolean> {
         const start = Date.now()
         while (Date.now() - start < timeoutMs) {
-            if (this.assignSessionProject(sessionId, namespace, projectId, createdByUserId)) {
+            if (await this.assignSessionProjectAsync(sessionId, namespace, projectId, createdByUserId)) {
                 return true
             }
             await new Promise((resolve) => setTimeout(resolve, 250))
         }
-        return this.assignSessionProject(sessionId, namespace, projectId, createdByUserId) !== null
+        return await this.assignSessionProjectAsync(sessionId, namespace, projectId, createdByUserId) !== null
     }
 
-    getOrCreateMachine(
+    async getOrCreateMachine(
         id: string,
         metadata: unknown,
         runnerState: unknown,
         namespace: string,
         options?: { ownerUserId?: number | null; teamId?: string | null }
-    ): Machine {
-        return this.machineCache.getOrCreateMachine(id, metadata, runnerState, namespace, options)
+    ): Promise<Machine> {
+        return await this.machineCache.getOrCreateMachine(id, metadata, runnerState, namespace, options)
     }
 
     async sendMessage(
@@ -1033,7 +1200,7 @@ async uploadScratchlistAttachment(
     ): Promise<void> {
         await this.messageService.sendMessage(sessionId, payload)
         this.sessionCache.markMessageQueued(sessionId)
-        this.sessionCache.recordSessionActivity(sessionId, Date.now())
+        await this.sessionCache.recordSessionActivityAsync(sessionId, Date.now())
     }
 
     async cancelQueuedMessage(
@@ -1045,6 +1212,10 @@ async uploadScratchlistAttachment(
 
     sweepImmediateQueuedOnSessionEnd(sessionId: string, invokedAt: number): void {
         this.messageService.sweepImmediateQueuedOnSessionEnd(sessionId, invokedAt)
+    }
+
+    async sweepImmediateQueuedOnSessionEndAsync(sessionId: string, invokedAt: number): Promise<void> {
+        await this.messageService.sweepImmediateQueuedOnSessionEndAsync(sessionId, invokedAt)
     }
 
     async approvePermission(
@@ -1084,12 +1255,12 @@ async uploadScratchlistAttachment(
             await this.rpcGateway.killSession(sessionId)
         } catch (error) {
             if (error instanceof RpcTargetMissingError) {
-                this.sessionCache.markSessionArchivedFromHub(sessionId, 'Archived from hub (CLI unreachable)')
+                await this.sessionCache.markSessionArchivedFromHubAsync(sessionId, 'Archived from hub (CLI unreachable)')
             } else {
                 throw error
             }
         }
-        this.handleSessionEnd({ sid: sessionId, time: Date.now() })
+        await this.handleSessionEnd({ sid: sessionId, time: Date.now() })
     }
 
     /**
@@ -1105,14 +1276,14 @@ async uploadScratchlistAttachment(
      * succeeds. Kept on the engine (not on the migrator) so that all hapi.db
      * writes funnel through the existing cache-refresh path.
      */
-    flipCursorSessionProtocolToAcp(
+    async flipCursorSessionProtocolToAcp(
         sessionId: string,
         namespace: string,
         lastUsedModel: string | null
-    ): { result: 'success' | 'version-mismatch' | 'not-found' | 'session-active' } {
+    ): Promise<{ result: 'success' | 'version-mismatch' | 'not-found' | 'session-active' }> {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const latest = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-                ?? this.sessionCache.refreshSession(sessionId)
+                ?? await this.sessionCache.refreshSessionAsync(sessionId)
             if (!latest?.metadata) {
                 return { result: 'not-found' }
             }
@@ -1163,7 +1334,7 @@ async uploadScratchlistAttachment(
             if (carriedMigrationState !== undefined) {
                 delete nextMetadata.cursorMigrationState
             }
-            const result = this.store.sessions.updateSessionMetadata(
+            const result = await this.store.sessions.updateSessionMetadata(
                 sessionId,
                 nextMetadata,
                 latest.metadataVersion,
@@ -1171,16 +1342,16 @@ async uploadScratchlistAttachment(
                 { touchUpdatedAt: false }
             )
             if (result.result === 'version-mismatch') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 continue
             }
             if (result.result !== 'success') {
                 return { result: 'not-found' }
             }
-            this.sessionCache.refreshSession(sessionId)
+            await this.sessionCache.refreshSessionAsync(sessionId)
             if (lastUsedModel && lastUsedModel.trim().length > 0) {
-                this.store.sessions.setSessionModel(sessionId, lastUsedModel.trim(), namespace, { touchUpdatedAt: false })
-                this.sessionCache.refreshSession(sessionId)
+                await this.store.sessions.setSessionModel(sessionId, lastUsedModel.trim(), namespace, { touchUpdatedAt: false })
+                await this.sessionCache.refreshSessionAsync(sessionId)
             }
             return { result: 'success' }
         }
@@ -1198,7 +1369,7 @@ async uploadScratchlistAttachment(
         request: CursorMigrateToAcpRequest
     ): Promise<CursorMigrateOutcome> {
         const session = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-            ?? this.sessionCache.refreshSession(sessionId)
+            ?? await this.sessionCache.refreshSessionAsync(sessionId)
         if (!session) {
             return { ok: false, sessionId, reason: 'internal_error', message: 'session not found in namespace', durationMs: 0 }
         }
@@ -1231,8 +1402,8 @@ async uploadScratchlistAttachment(
                     cursorSessionProtocol: typeof s.metadata?.cursorSessionProtocol === 'string' ? s.metadata.cursorSessionProtocol : undefined
                 }
             },
-            updateSessionAfterMigrate: (sessionId, namespace, lastUsedModel) => {
-                const result = this.flipCursorSessionProtocolToAcp(sessionId, namespace, lastUsedModel)
+            updateSessionAfterMigrate: async (sessionId, namespace, lastUsedModel) => {
+                const result = await this.flipCursorSessionProtocolToAcp(sessionId, namespace, lastUsedModel)
                 if (result.result === 'success') return { ok: true }
                 if (result.result === 'session-active') return { ok: false, reason: 'session_active' as const }
                 return { ok: false, reason: 'version_mismatch_or_missing' as const }
@@ -1242,9 +1413,11 @@ async uploadScratchlistAttachment(
             // count. The store-handle stays on the engine; we only thread
             // the count through so the migrator stays free of a direct
             // hub.Store dependency.
-            getHapiMessageCount: (sessionId, _namespace) => {
+            getHapiMessageCount: async (sessionId, _namespace) => {
                 try {
-                    return this.store.messages.countMessages(sessionId)
+                    return this.store.messages.countMessagesAsync
+                        ? await this.store.messages.countMessagesAsync(sessionId)
+                        : this.store.messages.countMessages(sessionId)
                 } catch (err) {
                     // tiann/hapi#873 cold review: a silent 0 here trips
                     // the migrator's "skip sanity" branch and chronically
@@ -1289,7 +1462,7 @@ async uploadScratchlistAttachment(
             // For inactive sessions, update the in-memory cache directly without
             // an RPC call — the CLI is not running yet. The updated value will be
             // passed to the spawned process when the session is resumed.
-            this.sessionCache.applySessionConfig(sessionId, config)
+            await this.sessionCache.applySessionConfigAsync(sessionId, config)
             return
         }
 
@@ -1323,7 +1496,7 @@ async uploadScratchlistAttachment(
             }
         }
 
-        this.sessionCache.applySessionConfig(sessionId, applied)
+        await this.sessionCache.applySessionConfigAsync(sessionId, applied)
     }
 
     async spawnSession(
@@ -1365,7 +1538,7 @@ async uploadScratchlistAttachment(
         return isKnownFlavor(flavor) ? flavor : 'claude'
     }
 
-    private resolveAgentResumeId(session: Session, namespace: string): string | null {
+    private async resolveAgentResumeId(session: Session, namespace: string): Promise<string | null> {
         const metadata = session.metadata
         if (!metadata) {
             return null
@@ -1373,7 +1546,7 @@ async uploadScratchlistAttachment(
 
         const flavor = this.resolveFlavor(session)
         if (flavor === 'codex') {
-            return metadata.codexSessionId ?? this.recoverCodexSessionIdFromMessages(session.id, namespace)
+            return metadata.codexSessionId ?? await this.recoverCodexSessionIdFromMessages(session.id, namespace)
         }
         if (flavor === 'gemini') return metadata.geminiSessionId ?? null
         if (flavor === 'opencode') return metadata.opencodeSessionId ?? null
@@ -1382,11 +1555,11 @@ async uploadScratchlistAttachment(
         if (flavor === 'kimi') return metadata.kimiSessionId ?? null
         if (flavor === 'pi') return metadata.piSessionId ?? null
 
-        return metadata.claudeSessionId ?? this.recoverClaudeSessionIdFromMessages(session.id, namespace)
+        return metadata.claudeSessionId ?? await this.recoverClaudeSessionIdFromMessages(session.id, namespace)
     }
 
-    resolveLocalResumeTarget(sessionId: string, namespace: string): LocalResumeTargetResult {
-        const access = this.sessionCache.resolveSessionAccess(sessionId, namespace)
+    async resolveLocalResumeTarget(sessionId: string, namespace: string): Promise<LocalResumeTargetResult> {
+        const access = await this.sessionCache.resolveSessionAccessAsync(sessionId, namespace)
         if (!access.ok) {
             return {
                 type: 'error',
@@ -1401,7 +1574,7 @@ async uploadScratchlistAttachment(
             return { type: 'error', message: 'Session metadata missing path', code: 'resume_unavailable' }
         }
 
-        const agentSessionId = this.resolveAgentResumeId(session, namespace)
+        const agentSessionId = await this.resolveAgentResumeId(session, namespace)
         if (!agentSessionId) {
             return {
                 type: 'error',
@@ -1431,11 +1604,14 @@ async uploadScratchlistAttachment(
         }
     }
 
-    listLocalResumableSessions(namespace: string, opts?: { machineId?: string }): ResumableSession[] {
-        return this.getSessionsByNamespace(namespace)
-            .map((session) => this.resolveLocalResumeTarget(session.id, namespace))
+    async listLocalResumableSessions(namespace: string, opts?: { machineId?: string }): Promise<ResumableSession[]> {
+        const targets = await Promise.all(
+            this.getSessionsByNamespace(namespace)
+                .map((session) => this.resolveLocalResumeTarget(session.id, namespace))
+        )
+        const resumable = await Promise.all(targets
             .filter((result): result is { type: 'success'; target: LocalResumeTarget } => result.type === 'success')
-            .map(({ target }) => {
+            .map(async ({ target }) => {
                 const session = this.getSessionByNamespace(target.sessionId, namespace)
                 return {
                     sessionId: target.sessionId,
@@ -1455,15 +1631,19 @@ async uploadScratchlistAttachment(
                     updatedAt: session?.updatedAt ?? 0,
                     name: session?.metadata?.name,
                     summary: session?.metadata?.summary?.text,
-                    firstUserMessage: this.resolveFirstUserMessage(target.sessionId)
+                    firstUserMessage: await this.resolveFirstUserMessage(target.sessionId)
                 }
-            })
+            }))
+        return resumable
             .filter((session) => !opts?.machineId || session.machineId === opts.machineId)
             .sort((a, b) => b.updatedAt - a.updatedAt)
     }
 
-    private resolveFirstUserMessage(sessionId: string): string | undefined {
-        for (const message of this.store.messages.getFirstMessages(sessionId, 50)) {
+    private async resolveFirstUserMessage(sessionId: string): Promise<string | undefined> {
+        const messages = this.store.messages.getFirstMessagesAsync
+            ? await this.store.messages.getFirstMessagesAsync(sessionId, 50)
+            : this.store.messages.getFirstMessages(sessionId, 50)
+        for (const message of messages) {
             const roleWrapped = unwrapRoleWrappedRecordEnvelope(message.content)
             const text = roleWrapped?.role === 'user'
                 ? extractUserMessageText(roleWrapped.content)
@@ -1532,7 +1712,7 @@ async uploadScratchlistAttachment(
         // flipCursorSessionProtocolToAcp) so the banner disappears in the
         // same render tick the chat re-renders as ACP — no flicker. On
         // failure we clear the flag explicitly in the catch path below.
-        const flagSet = this.setCursorMigrationStateInProgress(session.id, namespace)
+        const flagSet = await this.setCursorMigrationStateInProgress(session.id, namespace)
         let bannerCleanupNeeded = flagSet
         try {
             const migrator = this.buildMigratorForRequest({})
@@ -1579,7 +1759,7 @@ async uploadScratchlistAttachment(
                     reason: outcome.reason,
                     message: outcome.message
                 })
-                const promoted = this.setCursorMigrationStateAmbiguous(session.id, namespace)
+                const promoted = await this.setCursorMigrationStateAmbiguous(session.id, namespace)
                 if (promoted) {
                     // We replaced the in-progress flag with the
                     // ambiguous flag; the cleanup write below would
@@ -1616,7 +1796,7 @@ async uploadScratchlistAttachment(
             // so the user isn't left with a permanent "Upgrading..." banner
             // even though we silently fell back to the legacy launcher.
             if (bannerCleanupNeeded) {
-                this.clearCursorMigrationState(session.id, namespace)
+                await this.clearCursorMigrationState(session.id, namespace)
             }
         }
         return session
@@ -1627,14 +1807,14 @@ async uploadScratchlistAttachment(
      * the web banner can switch from "Upgrading..." to "Manual resolution
      * needed". Returns true if the new flag persisted. tiann/hapi#872.
      */
-    private setCursorMigrationStateAmbiguous(sessionId: string, namespace: string): boolean {
+    private async setCursorMigrationStateAmbiguous(sessionId: string, namespace: string): Promise<boolean> {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const latest = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-                ?? this.sessionCache.refreshSession(sessionId)
+                ?? await this.sessionCache.refreshSessionAsync(sessionId)
             if (!latest?.metadata) return false
             if (latest.metadata.cursorMigrationState === 'ambiguous') return true
             const nextMetadata = { ...latest.metadata, cursorMigrationState: 'ambiguous' as const }
-            const result = this.store.sessions.updateSessionMetadata(
+            const result = await this.store.sessions.updateSessionMetadata(
                 sessionId,
                 nextMetadata,
                 latest.metadataVersion,
@@ -1642,11 +1822,11 @@ async uploadScratchlistAttachment(
                 { touchUpdatedAt: false }
             )
             if (result.result === 'success') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 return true
             }
             if (result.result === 'version-mismatch') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 continue
             }
             return false
@@ -1662,14 +1842,14 @@ async uploadScratchlistAttachment(
      * and there's nothing to clean up. UX A++ helper for the auto-migrate
      * banner; see maybeAutoMigrateLegacyCursorSession.
      */
-    private setCursorMigrationStateInProgress(sessionId: string, namespace: string): boolean {
+    private async setCursorMigrationStateInProgress(sessionId: string, namespace: string): Promise<boolean> {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const latest = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-                ?? this.sessionCache.refreshSession(sessionId)
+                ?? await this.sessionCache.refreshSessionAsync(sessionId)
             if (!latest?.metadata) return false
             if (latest.metadata.cursorMigrationState === 'in_progress') return true
             const nextMetadata = { ...latest.metadata, cursorMigrationState: 'in_progress' as const }
-            const result = this.store.sessions.updateSessionMetadata(
+            const result = await this.store.sessions.updateSessionMetadata(
                 sessionId,
                 nextMetadata,
                 latest.metadataVersion,
@@ -1677,11 +1857,11 @@ async uploadScratchlistAttachment(
                 { touchUpdatedAt: false }
             )
             if (result.result === 'success') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 return true
             }
             if (result.result === 'version-mismatch') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 continue
             }
             return false
@@ -1693,15 +1873,15 @@ async uploadScratchlistAttachment(
      * Clear `metadata.cursorMigrationState` (failure / exception cleanup).
      * Idempotent; safe to call when the flag was never set. UX A++ helper.
      */
-    private clearCursorMigrationState(sessionId: string, namespace: string): void {
+    private async clearCursorMigrationState(sessionId: string, namespace: string): Promise<void> {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const latest = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-                ?? this.sessionCache.refreshSession(sessionId)
+                ?? await this.sessionCache.refreshSessionAsync(sessionId)
             if (!latest?.metadata) return
             if (latest.metadata.cursorMigrationState === undefined) return
             const nextMetadata: typeof latest.metadata = { ...latest.metadata }
             delete nextMetadata.cursorMigrationState
-            const result = this.store.sessions.updateSessionMetadata(
+            const result = await this.store.sessions.updateSessionMetadata(
                 sessionId,
                 nextMetadata,
                 latest.metadataVersion,
@@ -1709,11 +1889,11 @@ async uploadScratchlistAttachment(
                 { touchUpdatedAt: false }
             )
             if (result.result === 'success') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 return
             }
             if (result.result === 'version-mismatch') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 continue
             }
             return
@@ -1721,15 +1901,18 @@ async uploadScratchlistAttachment(
     }
 
     /** Inactive session with directory path but no agent thread and no prior user turn. */
-    private canFreshSpawnNeverStartedSession(session: Session, sessionId: string, namespace: string): boolean {
+    private async canFreshSpawnNeverStartedSession(session: Session, sessionId: string, namespace: string): Promise<boolean> {
         const metadata = session.metadata
         if (!metadata || typeof metadata.path !== 'string' || metadata.path.length === 0) {
             return false
         }
-        if (this.resolveAgentResumeId(session, namespace)) {
+        if (await this.resolveAgentResumeId(session, namespace)) {
             return false
         }
-        return this.store.messages.getFirstMessages(sessionId, 1).length === 0
+        const firstMessages = this.store.messages.getFirstMessagesAsync
+            ? await this.store.messages.getFirstMessagesAsync(sessionId, 1)
+            : this.store.messages.getFirstMessages(sessionId, 1)
+        return firstMessages.length === 0
     }
 
     async resumeSession(sessionId: string, namespace: string, opts?: { permissionMode?: PermissionMode }): Promise<ResumeSessionResult> {
@@ -1755,7 +1938,7 @@ async uploadScratchlistAttachment(
         // loading state for ~3–5s longer; the session opens as ACP.
         const session = await this.maybeAutoMigrateLegacyCursorSession(initialSession, namespace)
 
-        const targetResult = this.resolveLocalResumeTarget(access.sessionId, namespace)
+        const targetResult = await this.resolveLocalResumeTarget(access.sessionId, namespace)
         let flavor: AgentFlavor
         let resumeToken: string | undefined
         let directory: string
@@ -1766,7 +1949,7 @@ async uploadScratchlistAttachment(
             directory = targetResult.target.directory
         } else if (
             targetResult.code === 'resume_unavailable'
-            && this.canFreshSpawnNeverStartedSession(session, access.sessionId, namespace)
+            && await this.canFreshSpawnNeverStartedSession(session, access.sessionId, namespace)
         ) {
             const metadata = session.metadata!
             flavor = this.resolveFlavor(session)
@@ -1874,7 +2057,7 @@ async uploadScratchlistAttachment(
             }
         }
 
-        this.sessionCache.markSessionActive(spawnResult.sessionId)
+        await this.sessionCache.markSessionActiveAsync(spawnResult.sessionId)
         return { type: 'success', sessionId: spawnResult.sessionId }
     }
 
@@ -1920,7 +2103,10 @@ async uploadScratchlistAttachment(
 
         if (isArchived && metadata) {
             if (metadata.flavor === 'cursor' && !metadata.cursorSessionId) {
-                const hasMessages = this.store.messages.getFirstMessages(access.sessionId, 1).length > 0
+                const firstMessages = this.store.messages.getFirstMessagesAsync
+                    ? await this.store.messages.getFirstMessagesAsync(access.sessionId, 1)
+                    : this.store.messages.getFirstMessages(access.sessionId, 1)
+                const hasMessages = firstMessages.length > 0
                 if (hasMessages) {
                     return {
                         type: 'incomplete',
@@ -2022,19 +2208,19 @@ async uploadScratchlistAttachment(
         return { type: 'success' }
     }
 
-    private recoverClaudeSessionIdFromMessages(sessionId: string, namespace: string): string | null {
-        const messages = this.messageService.getMessages(sessionId, 200)
+    private async recoverClaudeSessionIdFromMessages(sessionId: string, namespace: string): Promise<string | null> {
+        const messages = await this.messageService.getMessagesAsync(sessionId, 200)
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const found = this.extractClaudeSessionId(messages[i].content)
             if (!found) continue
 
-            return this.persistRecoveredAgentSessionId(sessionId, namespace, 'claudeSessionId', found)
+            return await this.persistRecoveredAgentSessionId(sessionId, namespace, 'claudeSessionId', found)
         }
         return null
     }
 
-    private recoverCodexSessionIdFromMessages(sessionId: string, namespace: string): string | null {
-        const messages = this.messageService.getMessages(sessionId, 200)
+    private async recoverCodexSessionIdFromMessages(sessionId: string, namespace: string): Promise<string | null> {
+        const messages = await this.messageService.getMessagesAsync(sessionId, 200)
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const content = messages[i].content
             if (this.isCodexContextResetMessage(content)) return null
@@ -2042,7 +2228,7 @@ async uploadScratchlistAttachment(
             const found = this.extractCodexParentThreadId(content)
             if (!found) continue
 
-            return this.persistRecoveredAgentSessionId(sessionId, namespace, 'codexSessionId', found)
+            return await this.persistRecoveredAgentSessionId(sessionId, namespace, 'codexSessionId', found)
         }
         return null
     }
@@ -2120,15 +2306,15 @@ async uploadScratchlistAttachment(
             : null
     }
 
-    private persistRecoveredAgentSessionId(
+    private async persistRecoveredAgentSessionId(
         sessionId: string,
         namespace: string,
         field: 'claudeSessionId' | 'codexSessionId',
         agentSessionId: string
-    ): string {
+    ): Promise<string> {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             const latest = this.sessionCache.getSessionByNamespace(sessionId, namespace)
-                ?? this.sessionCache.refreshSession(sessionId)
+                ?? await this.sessionCache.refreshSessionAsync(sessionId)
             if (!latest?.metadata) return agentSessionId
 
             const existingAgentSessionId = latest.metadata[field]
@@ -2136,7 +2322,7 @@ async uploadScratchlistAttachment(
                 return existingAgentSessionId
             }
 
-            const result = this.store.sessions.updateSessionMetadata(
+            const result = await this.store.sessions.updateSessionMetadata(
                 sessionId,
                 { ...latest.metadata, [field]: agentSessionId },
                 latest.metadataVersion,
@@ -2144,14 +2330,14 @@ async uploadScratchlistAttachment(
                 { touchUpdatedAt: false }
             )
             if (result.result === 'success') {
-                this.sessionCache.refreshSession(sessionId)
+                await this.sessionCache.refreshSessionAsync(sessionId)
                 return agentSessionId
             }
             if (result.result !== 'version-mismatch') {
                 return agentSessionId
             }
 
-            this.sessionCache.refreshSession(sessionId)
+            await this.sessionCache.refreshSessionAsync(sessionId)
             const refreshed = this.sessionCache.getSessionByNamespace(sessionId, namespace)
             const authoritativeAgentSessionId = refreshed?.metadata?.[field]
             if (typeof authoritativeAgentSessionId === 'string') {
@@ -2185,13 +2371,13 @@ async uploadScratchlistAttachment(
         return this.sessionReadyIds.has(session.id)
     }
 
-    private triggerDedupIfNeeded(sessionId: string): void {
+    private async triggerDedupIfNeeded(sessionId: string): Promise<void> {
         const session = this.sessionCache.getSession(sessionId)
         if (session?.metadata) {
             if (!this.canRunCursorDedup(session)) {
                 return
             }
-            void this.sessionCache.deduplicateByAgentSessionId(sessionId).catch(() => {
+            await this.sessionCache.deduplicateByAgentSessionId(sessionId).catch(() => {
                 // best-effort: web-side safety net hides remaining duplicates
             })
         }

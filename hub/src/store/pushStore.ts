@@ -1,9 +1,10 @@
 import type { Database } from 'bun:sqlite'
 
+import type { PushStorePort } from './ports/coreStores'
 import type { StoredPushSubscription } from './types'
 import { addPushSubscription, getPushSubscriptionsByNamespace, removePushSubscription } from './pushSubscriptions'
 
-export class PushStore {
+export class PushStore implements PushStorePort {
     private readonly db: Database
 
     constructor(db: Database, private readonly onChange?: () => void) {

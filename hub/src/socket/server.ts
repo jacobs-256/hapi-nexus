@@ -34,15 +34,15 @@ export type SocketServerDeps = {
     store: Store
     jwtSecret: Uint8Array
     corsOrigins?: string[]
-    getSession?: (sessionId: string) => { active: boolean; namespace: string } | null
-    onWebappEvent?: (event: SyncEvent) => void
-    onSessionAlive?: (payload: { sid: string; time: number; thinking?: boolean; mode?: 'local' | 'remote' }) => void
-    onSessionReady?: (payload: { sid: string; time: number }) => void
-    onSessionEnd?: (payload: { sid: string; time: number }) => void
+    getSession?: (sessionId: string) => Promise<{ active: boolean; namespace: string } | null>
+    onWebappEvent?: (event: SyncEvent) => void | Promise<void>
+    onSessionAlive?: (payload: { sid: string; time: number; thinking?: boolean; mode?: 'local' | 'remote' }) => void | Promise<void>
+    onSessionReady?: (payload: { sid: string; time: number }) => void | Promise<void>
+    onSessionEnd?: (payload: { sid: string; time: number }) => void | Promise<void>
     onMachineAlive?: (payload: { machineId: string; time: number; health?: unknown }) => void
     onBackgroundTaskDelta?: (sessionId: string, delta: { started: number; completed: number }) => void
-    onSessionActivity?: (sessionId: string, updatedAt: number) => void
-    onSweepImmediateQueued?: (sessionId: string, now: number) => void
+    onSessionActivity?: (sessionId: string, updatedAt: number) => unknown | Promise<unknown>
+    onSweepImmediateQueued?: (sessionId: string, now: number) => void | Promise<void>
     onMessagesConsumed?: (sessionId: string) => void
 }
 
@@ -155,8 +155,8 @@ export function createSocketServer(deps: SocketServerDeps): {
     })
     terminalNs.on('connection', (socket) => registerTerminalHandlers(socket, {
         io,
-        getSession: (sessionId) => {
-            return deps.getSession?.(sessionId) ?? deps.store.sessions.getSession(sessionId)
+        getSession: async (sessionId) => {
+            return await deps.getSession?.(sessionId) ?? await deps.store.sessions.getSession(sessionId)
         },
         terminalRegistry,
         maxTerminalsPerSocket,

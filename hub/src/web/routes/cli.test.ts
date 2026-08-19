@@ -188,7 +188,7 @@ describe('cli lazy session creation', () => {
         const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
         const getOrCreateSession = mock(() => ({ id: sessionId }))
         const app = createApp({
-            ensureNamespaceDefaults: defaultProject,
+            ensureNamespaceDefaults: async () => defaultProject(),
             getMachine: () => null,
             getOrCreateMachine,
             getOrCreateSession
@@ -339,7 +339,7 @@ describe('cli lazy session creation', () => {
         const getOrCreateMachine = mock(() => ({ id: 'machine-1' }))
         const getOrCreateSession = mock(() => ({ id: sessionId }))
         const app = createApp({
-            ensureNamespaceDefaults: defaultProject,
+            ensureNamespaceDefaults: async () => defaultProject(),
             getMachine: () => ({ id: 'machine-1', namespace: 'other' }),
             getOrCreateMachine,
             getOrCreateSession
@@ -366,7 +366,7 @@ describe('cli lazy session creation', () => {
 
     it('returns 409 for a requested identity conflict', async () => {
         const app = createApp({
-            ensureNamespaceDefaults: defaultProject,
+            ensureNamespaceDefaults: async () => defaultProject(),
             getOrCreateSession: () => {
                 throw new SessionIdentityConflictError('Session tag is already bound to a different id')
             }

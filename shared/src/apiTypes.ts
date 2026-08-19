@@ -916,6 +916,23 @@ export type SqliteStorageUsageResponse = SqliteStorageFileUsage & {
     expectedSchemaVersion: number
 }
 
+export type StorageMigrationStatus = {
+    id: string
+    status: 'idle' | 'running' | 'success' | 'failed'
+    startedAt: number | null
+    finishedAt: number | null
+    message: string | null
+    error: string | null
+    blocking?: boolean
+    progress?: {
+        copiedRows: number
+        totalRows?: number
+        currentTable?: string
+        tableOffsets?: Record<string, number>
+        tableTotals?: Record<string, number>
+    }
+}
+
 export type StorageSettingsResponse = {
     config: StorageConfig
     effectiveConfig: StorageConfig
@@ -926,15 +943,27 @@ export type StorageSettingsResponse = {
         core?: SqliteStorageFileUsage & { schemaVersion: number; expectedSchemaVersion: number }
         conversation?: SqliteStorageFileUsage & { schemaVersion: number; expectedSchemaVersion: number }
     }
+    migration?: StorageMigrationStatus
+    externalSync?: Partial<Record<'core' | 'conversation', {
+        running: boolean
+        lastStartedAt: number | null
+        lastSucceededAt: number | null
+        lastFailedAt: number | null
+        lastError: string | null
+        lastCopiedRows: number | null
+    }>>
 }
 
 export type UpdateStorageSettingsRequest = {
     config: StorageConfig
     migrate?: StorageMigrationMode
+    restart?: boolean
 }
 
 export type UpdateStorageSettingsResponse = StorageSettingsResponse & {
     saved: true
     migrated: boolean
     migrationMessage?: string
+    migrationStarted?: boolean
+    restarting?: boolean
 }
