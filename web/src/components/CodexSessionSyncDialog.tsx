@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/use-translation'
-import { readCodexImportedSessions, subscribeCodexImportedSessions } from '@/lib/codexImportedSessions'
 
 const ALL_WORKDIR_FILTER = '__all__'
 
@@ -59,14 +58,10 @@ function isForkedCodexSession(session: CodexLocalSessionSummary): boolean {
     return typeof session.forkedFromId === 'string' && session.forkedFromId.trim().length > 0
 }
 
-function isCodexSessionImported(
-    session: CodexLocalSessionSummary,
-    importedSessions: Record<string, number>
-): boolean {
-    if (typeof session.imported === 'boolean') {
-        return session.imported
-    }
-    return Boolean(importedSessions[session.id])
+function isCodexSessionImported(session: CodexLocalSessionSummary): boolean {
+    // 中文注释：是否阻止再次导入必须以服务端匹配结果为准。localStorage 只代表本机曾经导入过，
+    // 当用户删除 HAPI 会话或运行 doctor clean 后会变成陈旧数据，不能继续禁用这些 Codex 线程。
+    return session.imported === true
 }
 
 export function CodexSessionSyncDialog(props: {
@@ -111,11 +106,8 @@ export function CodexSessionSyncDialog(props: {
     const [searchQuery, setSearchQuery] = useState('')
     const [archiveError, setArchiveError] = useState<string | null>(null)
     const wasOpenRef = useRef(false)
-    const [importedSessions, setImportedSessions] = useState(() => readCodexImportedSessions())
     const [archiveMenuSessionId, setArchiveMenuSessionId] = useState<string | null>(null)
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-    useEffect(() => subscribeCodexImportedSessions(() => setImportedSessions(readCodexImportedSessions())), [])
 
     const sessionIdSet = useMemo(
         () => new Set(sessions.map((session) => session.id)),
@@ -149,8 +141,8 @@ export function CodexSessionSyncDialog(props: {
         })
     }, [searchQuery, sessions, workdirFilter])
     const selectableFilteredSessions = useMemo(
-        () => filteredSessions.filter((session) => !isCodexSessionImported(session, importedSessions)),
-        [filteredSessions, importedSessions]
+        () => filteredSessions.filter((session) => !isCodexSessionImported(session)),
+        [filteredSessions]
     )
     const visibleImportJobs = useMemo(
         () => importJobs
@@ -204,21 +196,21 @@ export function CodexSessionSyncDialog(props: {
         const currentSession = currentCodexSessionId
             ? sessions.find((session) => session.id === currentCodexSessionId)
             : null
-        const defaultSelected = currentSession && sessionIdSet.has(currentSession.id) && !isCodexSessionImported(currentSession, importedSessions)
+        const defaultSelected = currentSession && sessionIdSet.has(currentSession.id) && !isCodexSessionImported(currentSession)
             ? [currentSession.id]
             : []
         setSelectedSessionIds(defaultSelected)
         setHasInitializedSelection(true)
-    }, [currentCodexSessionId, hasInitializedSelection, importedSessions, isLoading, isOpen, sessionIdSet, sessions])
+    }, [currentCodexSessionId, hasInitializedSelection, isLoading, isOpen, sessionIdSet, sessions])
 
     useEffect(() => {
         if (!isOpen || selectedSessionIds.length === 0) return
         const sessionsById = new Map(sessions.map((session) => [session.id, session]))
         setSelectedSessionIds((current) => current.filter((sessionId) => {
             const session = sessionsById.get(sessionId)
-            return Boolean(session && !isCodexSessionImported(session, importedSessions))
+            return Boolean(session && !isCodexSessionImported(session))
         }))
-    }, [importedSessions, isOpen, selectedSessionIds.length, sessions])
+    }, [isOpen, selectedSessionIds.length, sessions])
 
     const clearLongPressTimer = () => {
         if (longPressTimerRef.current) {
@@ -249,7 +241,7 @@ export function CodexSessionSyncDialog(props: {
     const toggleSession = (sessionId: string) => {
         if (isPending || isLoading) return
         const session = sessions.find((candidate) => candidate.id === sessionId)
-        if (!session || isCodexSessionImported(session, importedSessions)) return
+        if (!session || isCodexSessionImported(session)) return
 
         if (selectionMode === 'single') {
             setSelectedSessionIds([sessionId])
@@ -397,7 +389,7 @@ export function CodexSessionSyncDialog(props: {
                             <div className="divide-y divide-[var(--app-border)]">
                                 {filteredSessions.map((session) => {
                                     const checked = selectedSessionIdSet.has(session.id)
-                                    const isImported = isCodexSessionImported(session, importedSessions)
+                                    const isImported = isCodexSessionImported(session)
                                     const time = formatCodexSessionTime(session.modifiedAt)
                                     const preview = getCodexSessionPreview(session)
                                     const cwd = getCodexSessionCwd(session)

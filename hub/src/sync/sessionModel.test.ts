@@ -3429,6 +3429,35 @@ describe('session model', () => {
     })
 
     describe('reopenSession rollback', () => {
+        it('returns incomplete instead of an internal error when metadata is missing', async () => {
+            const store = new Store(':memory:')
+            const engine = new SyncEngine(
+                store,
+                {} as never,
+                new RpcRegistry(),
+                { broadcast() {} } as never
+            )
+
+            try {
+                const session = engine.getOrCreateSession(
+                    'session-reopen-missing-metadata',
+                    null,
+                    null,
+                    'default'
+                )
+
+                const result = await engine.reopenSession(session.id, 'default')
+
+                expect(result).toEqual({
+                    type: 'incomplete',
+                    message: 'Session metadata is missing; this saved session cannot be reopened. Start a new session in the same directory.',
+                    missing: ['metadata']
+                })
+            } finally {
+                engine.stop()
+            }
+        })
+
         it('restores archive metadata when resumeSession fails after the clear', async () => {
             const store = new Store(':memory:')
             const engine = new SyncEngine(

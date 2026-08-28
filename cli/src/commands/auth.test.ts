@@ -25,7 +25,7 @@ vi.mock('@/ui/apiUrlInit', () => ({
     initializeApiUrl: initializeApiUrlMock
 }))
 
-import { handleAuthCommand } from './auth'
+import { handleAuthCommand, normalizeHubUrlInput } from './auth'
 
 function stripAnsi(value: string): string {
     return value.replace(/\u001B\[[0-9;]*m/g, '')
@@ -63,5 +63,11 @@ describe('handleAuthCommand', () => {
         } finally {
             logSpy.mockRestore()
         }
+    })
+
+    it('normalizes the login hub url and ignores paths', () => {
+        expect(normalizeHubUrlInput('', 'http://localhost:3006')).toBe('http://localhost:3006')
+        expect(normalizeHubUrlInput('https://hapi.example.com/foo?bar=1', 'http://localhost:3006')).toBe('https://hapi.example.com')
+        expect(() => normalizeHubUrlInput('ftp://hapi.example.com', 'http://localhost:3006')).toThrow('Hub URL must use http or https')
     })
 })

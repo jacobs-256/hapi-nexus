@@ -169,10 +169,40 @@ vi.mock('./ActionButtons', () => ({
     )
 }))
 
-import { NewSession } from './index'
+import { NewSession, getMachineForDirectory, isPathInsideSelectedMachineRoots } from './index'
 
 const machine = { id: 'machine-1' } as Machine
 const api = {} as ApiClient
+
+describe('NewSession workspace root helpers', () => {
+    it('rejects paths outside the selected machine workspace roots', () => {
+        const scopedMachine = {
+            id: 'machine-1',
+            metadata: {
+                platform: 'darwin',
+                workspaceRoots: ['/Users/jacobs/Documents/wwwroot']
+            }
+        } as Machine
+
+        expect(isPathInsideSelectedMachineRoots(scopedMachine, '/Users/jacobs/Documents/wwwroot/HAPI')).toBe(true)
+        expect(isPathInsideSelectedMachineRoots(scopedMachine, '/Users/mac/Documents/wwwroot/HAPI')).toBe(false)
+    })
+
+    it('selects the machine that can access an initial directory', () => {
+        const machines = [
+            {
+                id: 'jacobs',
+                metadata: { platform: 'darwin', workspaceRoots: ['/Users/jacobs/Documents'] }
+            },
+            {
+                id: 'mac',
+                metadata: { platform: 'darwin', workspaceRoots: ['/Users/mac/Documents'] }
+            }
+        ] as Machine[]
+
+        expect(getMachineForDirectory(machines, '/Users/mac/Documents/wwwroot/HAPI')?.id).toBe('mac')
+    })
+})
 
 describe('NewSession launch preferences', () => {
     beforeEach(() => {

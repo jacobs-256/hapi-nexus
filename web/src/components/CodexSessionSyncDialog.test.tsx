@@ -213,6 +213,31 @@ describe('CodexSessionSyncDialog', () => {
         expect(onConfirm).toHaveBeenCalledWith(['deleted-import-session'])
     })
 
+    it('allows a locally remembered import to be selected again when the server does not report an active import match', async () => {
+        window.localStorage.setItem('hapi.codexImportedSessions', JSON.stringify({
+            'locally-remembered-session': Date.now()
+        }))
+        const onConfirm = vi.fn(async () => {})
+        renderDialog([
+            {
+                id: 'locally-remembered-session',
+                title: 'Locally remembered session',
+                cwd: '/home/user/project',
+                file: '/home/user/.codex/sessions/remembered.jsonl',
+                modifiedAt: Date.UTC(2026, 0, 2, 3, 4, 5)
+            }
+        ], onConfirm)
+
+        const checkbox = screen.getByRole('checkbox') as HTMLInputElement
+        expect(checkbox).toBeEnabled()
+        expect(screen.queryByText('Imported')).not.toBeInTheDocument()
+
+        fireEvent.click(checkbox)
+        fireEvent.click(screen.getByRole('button', { name: 'Queue import' }))
+
+        expect(onConfirm).toHaveBeenCalledWith(['locally-remembered-session'])
+    })
+
     it('replaces hidden selections when selecting all filtered sessions', async () => {
         const onConfirm = vi.fn(async () => {})
         renderDialog([
@@ -324,11 +349,7 @@ describe('CodexSessionSyncDialog', () => {
         expect(onRestartCodexDesktop).toHaveBeenCalledTimes(1)
     })
 
-    it('shows imported badge on original session and fork badge on forked session', () => {
-        window.localStorage.setItem('hapi.codexImportedSessions', JSON.stringify({
-            'original-session-id': Date.now()
-        }))
-
+    it('shows imported badge on server-imported original session and fork badge on forked session', () => {
         renderDialog([
             {
                 id: 'fork-session-id',
@@ -350,7 +371,8 @@ describe('CodexSessionSyncDialog', () => {
                 originator: 'Codex Desktop',
                 cliVersion: '0.142.2',
                 source: 'vscode',
-                threadSource: 'user'
+                threadSource: 'user',
+                imported: true
             }
         ])
 

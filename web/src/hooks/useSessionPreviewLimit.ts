@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export const DEFAULT_SESSION_PREVIEW_LIMIT = 8
+export const DEFAULT_SESSION_PREVIEW_LIMIT = 3
 export const MIN_SESSION_PREVIEW_LIMIT = 1
 export const MAX_SESSION_PREVIEW_LIMIT = 99
 const SESSION_PREVIEW_LIMIT_CHANGED_EVENT = 'hapi-session-preview-limit-changed'

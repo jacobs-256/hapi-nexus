@@ -2099,6 +2099,14 @@ async uploadScratchlistAttachment(
             return { type: 'success', sessionId: access.sessionId, resumed: false }
         }
 
+        if (!metadata) {
+            return {
+                type: 'incomplete',
+                message: 'Session metadata is missing; this saved session cannot be reopened. Start a new session in the same directory.',
+                missing: ['metadata']
+            }
+        }
+
         const isArchived = metadata?.lifecycleState === 'archived'
 
         if (isArchived && metadata) {
@@ -2128,6 +2136,13 @@ async uploadScratchlistAttachment(
                 applied = await this.sessionCache.clearSessionArchiveMetadata(access.sessionId)
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to clear archive metadata'
+                if (message === 'Session metadata missing') {
+                    return {
+                        type: 'incomplete',
+                        message: 'Session metadata is missing; this saved session cannot be reopened. Start a new session in the same directory.',
+                        missing: ['metadata']
+                    }
+                }
                 return { type: 'error', message, code: 'metadata_conflict' }
             }
 

@@ -5,6 +5,7 @@ import {
     expandSelectedSessionCollapseOverrides,
     filterActiveSessionsOnly,
     getDeletableGroupSessions,
+    getGroupDisplayName,
     getSessionTimeRange,
     getNextSessionVisibleCount,
     getPreviousSessionVisibleCount,
@@ -83,6 +84,18 @@ describe('getWorktreeSessionLabel', () => {
         })
 
         expect(getWorktreeSessionLabel(session)).toBe('fix-resume')
+    })
+})
+
+describe('getGroupDisplayName', () => {
+    it('keeps useful two-segment project names', () => {
+        expect(getGroupDisplayName('/Users/mac/Documents/Sandbox/HAPI')).toBe('Sandbox/HAPI')
+        expect(getGroupDisplayName('/work/Esp32-s3/xiaozhi-esp32')).toBe('Esp32-s3/xiaozhi-esp32')
+    })
+
+    it('drops generic parent folders so long paths read as project names', () => {
+        expect(getGroupDisplayName('/Users/mac/Documents/wwwroot/XthingsID-Card-Doc')).toBe('XthingsID-Card-Doc')
+        expect(getGroupDisplayName('/Users/mac/Library/Application/google.gw-service.u-tec.xyz')).toBe('google.gw-service.u-tec.xyz')
     })
 })
 

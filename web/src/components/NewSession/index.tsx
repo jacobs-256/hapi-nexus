@@ -47,7 +47,7 @@ import { FastModeSelector } from './FastModeSelector'
 import { MachineSelector } from './MachineSelector'
 import { ModelSelector } from './ModelSelector'
 import { OpencodeModelSelector } from './OpencodeModelSelector'
-import { isEditableProject, projectMatchesDirectory, projectMatchesMachine, ProjectSelector } from './ProjectSelector'
+import { isEditableProject, isPathInsideProjectRoot, projectMatchesDirectory, projectMatchesMachine, ProjectSelector } from './ProjectSelector'
 import { LaunchEffortSelector } from './LaunchEffortSelector'
 import { shouldEnableOpencodeModelDiscovery } from './opencodeModelsGate'
 import { buildGrokEffortOptions, buildGrokModelOptions, shouldEnableGrokModelDiscovery } from './grokModels'
@@ -71,6 +71,22 @@ import { useToast } from '@/lib/toast-context'
 
 const CODEX_IMPORT_JOB_POLL_INTERVAL_MS = 1000
 const CODEX_IMPORT_JOB_MAX_POLLS = 30 * 60
+
+export function isPathInsideSelectedMachineRoots(machine: Machine | null, path: string): boolean {
+    const roots = machine?.metadata?.workspaceRoots ?? []
+    if (!machine || roots.length === 0) return true
+    return roots.some((root) => isPathInsideProjectRoot(machine, path, root))
+}
+
+export function getFirstWorkspaceRoot(machine: Machine | null): string {
+    return machine?.metadata?.workspaceRoots?.[0] ?? ''
+}
+
+export function getMachineForDirectory(machines: Machine[], directory: string): Machine | null {
+    const trimmed = directory.trim()
+    if (!trimmed) return null
+    return machines.find((machine) => isPathInsideSelectedMachineRoots(machine, trimmed)) ?? null
+}
 
 
 export function NewSession(props: {
@@ -233,13 +249,19 @@ export function NewSession(props: {
         if (props.machines.length === 0) return
         if (machineId && props.machines.find((m) => m.id === machineId)) return
 
+        const initialDirectoryMachine = !props.initialMachineId && props.initialDirectory
+            ? getMachineForDirectory(props.machines, props.initialDirectory)
+            : null
         const lastUsed = getLastUsedMachineId()
         const foundLast = lastUsed ? props.machines.find((m) => m.id === lastUsed) : null
 
-        if (foundLast) {
+        if (initialDirectoryMachine) {
+            setMachineId(initialDirectoryMachine.id)
+        } else if (foundLast) {
             setMachineId(foundLast.id)
             if (!props.initialDirectory) {
                 const paths = getRecentPaths(foundLast.id)
+                    .filter((path) => isPathInsideSelectedMachineRoots(foundLast, path))
                 if (paths[0]) setDirectory(paths[0])
             }
         } else if (props.machines[0]) {
@@ -470,11 +492,18 @@ export function NewSession(props: {
     })
 
     const recentPaths = useMemo(
-        () => getRecentPaths(machineId),
-        [getRecentPaths, machineId]
+        () => getRecentPaths(machineId)
+            .filter((path) => isPathInsideSelectedMachineRoots(selectedMachine, path)),
+        [getRecentPaths, machineId, selectedMachine]
     )
 
     const trimmedDirectory = directory.trim()
+    useEffect(() => {
+        if (!selectedMachine || !trimmedDirectory) return
+        if (isPathInsideSelectedMachineRoots(selectedMachine, trimmedDirectory)) return
+        setDirectory(recentPaths[0] ?? getFirstWorkspaceRoot(selectedMachine))
+    }, [selectedMachine, trimmedDirectory, recentPaths])
+
     const deferredDirectory = useDeferredValue(trimmedDirectory)
     const editableProjects = useMemo(
         () => projects.filter(isEditableProject),
@@ -694,19 +723,26 @@ export function NewSession(props: {
         model
     ])
 
-    const currentDirectoryExists = trimmedDirectory ? pathExistence[trimmedDirectory] : undefined
+    const directoryOutsideWorkspaceRoots = Boolean(
+        selectedMachine
+        && trimmedDirectory
+        && !isPathInsideSelectedMachineRoots(selectedMachine, trimmedDirectory)
+    )
+    const currentDirectoryExists = trimmedDirectory && !directoryOutsideWorkspaceRoots ? pathExistence[trimmedDirectory] : undefined
     const needsDirectoryCreationWarning = sessionType === 'simple' && trimmedDirectory !== '' && currentDirectoryExists === false
     const missingWorktreeDirectory = sessionType === 'worktree' && trimmedDirectory !== '' && currentDirectoryExists === false
-    const directoryStatusMessage = missingWorktreeDirectory
-        ? t('session.directoryMissingWorktree')
-        : needsDirectoryCreationWarning
-            ? (
-                directoryCreationConfirmed
-                    ? t('session.directoryMissingSimpleConfirm')
-                    : t('session.directoryMissingSimple')
-            )
-            : null
-    const directoryStatusTone = missingWorktreeDirectory ? 'error' : needsDirectoryCreationWarning ? 'warning' : null
+    const directoryStatusMessage = directoryOutsideWorkspaceRoots
+        ? t('session.directoryOutsideWorkspaceRoots')
+        : missingWorktreeDirectory
+            ? t('session.directoryMissingWorktree')
+            : needsDirectoryCreationWarning
+                ? (
+                    directoryCreationConfirmed
+                        ? t('session.directoryMissingSimpleConfirm')
+                        : t('session.directoryMissingSimple')
+                )
+                : null
+    const directoryStatusTone = directoryOutsideWorkspaceRoots || missingWorktreeDirectory ? 'error' : needsDirectoryCreationWarning ? 'warning' : null
     const createLabel = needsDirectoryCreationWarning && directoryCreationConfirmed
         ? t('session.createAndCreateDirectory')
         : undefined
@@ -1148,13 +1184,15 @@ export function NewSession(props: {
         setSelectedCodexImportSessionId(null)
         setCodexImportSessions([])
         setCodexImportMachineId(null)
+        const nextMachine = props.machines.find((machine) => machine.id === newMachineId) ?? null
         const paths = getRecentPaths(newMachineId)
+            .filter((path) => isPathInsideSelectedMachineRoots(nextMachine, path))
         if (paths[0]) {
             setDirectory(paths[0])
         } else {
-            setDirectory('')
+            setDirectory(getFirstWorkspaceRoot(nextMachine))
         }
-    }, [getRecentPaths])
+    }, [getRecentPaths, props.machines])
 
     const handleCursorBaseChange = useCallback((baseKey: string) => {
         if (baseKey === 'auto') {
@@ -1277,6 +1315,11 @@ export function NewSession(props: {
 
     async function handleCreate() {
         if (!machineId || !trimmedDirectory || createInFlightRef.current) return
+        if (directoryOutsideWorkspaceRoots) {
+            haptic.notification('error')
+            setError(t('session.directoryOutsideWorkspaceRoots'))
+            return
+        }
 
         createInFlightRef.current = true
         setIsCreating(true)
@@ -1455,6 +1498,7 @@ export function NewSession(props: {
         && !isFormDisabled
         && !projectsLoading
         && !projectsError
+        && !directoryOutsideWorkspaceRoots
         && !missingWorktreeDirectory
         && !isLaunchPreferenceValidationPending
         && !fastModeSelectionPending

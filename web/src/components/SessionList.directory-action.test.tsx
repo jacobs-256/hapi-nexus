@@ -232,7 +232,7 @@ describe('SessionList directory action', () => {
         openGroupActions()
         const syncItem = screen.getByRole('menuitem', { name: 'Sync Codex sessions' })
         const newItem = screen.getByRole('menuitem', { name: 'New session in this directory' })
-        expect(syncItem.compareDocumentPosition(newItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        expect(newItem.compareDocumentPosition(syncItem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
         fireEvent.click(syncItem)
 
@@ -335,22 +335,22 @@ describe('SessionList directory action', () => {
             />
         )
 
-        expect(screen.getByText(/wwwroot\/OA1000/)).toBeInTheDocument()
+        expect(screen.getByText(/OA1000/)).toBeInTheDocument()
         expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
 
         openGroupActions()
         fireEvent.click(screen.getByRole('menuitem', { name: 'Rename group' }))
 
         const input = screen.getByRole('textbox', { name: 'Group display name' }) as HTMLInputElement
-        expect(input.value).toBe('wwwroot/OA1000')
+        expect(input.value).toBe('OA1000')
 
-        fireEvent.change(input, { target: { value: 'OA1000' } })
+        fireEvent.change(input, { target: { value: 'OA Project' } })
         fireEvent.keyDown(input, { key: 'Enter' })
 
-        expect(screen.getByText(/OA1000/)).toBeInTheDocument()
+        expect(screen.getByText(/OA Project/)).toBeInTheDocument()
         expect(screen.queryByText('wwwroot/OA1000')).toBeNull()
         expect(JSON.parse(localStorage.getItem(SESSION_GROUP_ALIAS_STORAGE_KEY) ?? '{}')).toEqual({
-            [`__unknown__::${session.metadata?.path}`]: 'OA1000',
+            [`__unknown__::${session.metadata?.path}`]: 'OA Project',
         })
 
         cleanup()
@@ -368,7 +368,7 @@ describe('SessionList directory action', () => {
             />
         )
 
-        expect(screen.getByText(/OA1000/)).toBeInTheDocument()
+        expect(screen.getByText(/OA Project/)).toBeInTheDocument()
         expect(screen.getByTitle('/Users/mac/Documents/wwwroot/OA1000')).toBeInTheDocument()
     })
 

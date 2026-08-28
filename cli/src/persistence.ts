@@ -6,7 +6,7 @@
 
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync } from 'node:fs'
 import { configuration } from '@/configuration'
 import { isProcessAlive } from '@/utils/process';
 
@@ -42,6 +42,8 @@ export interface RunnerLocallyPersistedState {
   startedWithCliApiTokenHash?: string;
   // SHA-256 of canonicalized extra headers. Raw header values must never be persisted here.
   startedWithExtraHeadersHash?: string;
+  machineRegisteredAt?: string;
+  lastMachineRegistrationError?: string;
   /**
    * Original process.argv.slice(2) of the runner process at start time, e.g.
    * ['runner', 'start-sync', '--workspace-root', '/home/user/code'].
@@ -204,7 +206,9 @@ export async function readRunnerState(): Promise<RunnerLocallyPersistedState | n
  * Write runner state to local file (synchronously for atomic operation)
  */
 export function writeRunnerState(state: RunnerLocallyPersistedState): void {
-  writeFileSync(configuration.runnerStateFile, JSON.stringify(state, null, 2), 'utf-8');
+  const tmpFile = `${configuration.runnerStateFile}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  writeFileSync(tmpFile, JSON.stringify(state, null, 2), 'utf-8');
+  renameSync(tmpFile, configuration.runnerStateFile);
 }
 
 /**

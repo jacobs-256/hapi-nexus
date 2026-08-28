@@ -780,11 +780,20 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
         shouldRetry: isRetryableConnectionError,
         onRetry: (error, attempt, nextDelayMs) => {
           const errorMsg = error instanceof Error ? error.message : String(error)
+          writeRunnerState({
+            ...fileState,
+            lastMachineRegistrationError: errorMsg
+          });
           logger.debug(`[RUNNER RUN] Failed to register machine (attempt ${attempt}), retrying in ${nextDelayMs}ms: ${errorMsg}`)
         }
       }
     );
     logger.debug(`[RUNNER RUN] Machine registered: ${machine.id}`);
+    writeRunnerState({
+      ...fileState,
+      machineRegisteredAt: new Date().toLocaleString(),
+      lastMachineRegistrationError: undefined
+    });
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine, { workspaceRoots });
@@ -1025,6 +1034,8 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
           startedWithExtraHeadersHash: fileState.startedWithExtraHeadersHash,
           startedWithArgv,
           startedWithVersionHandoffDisabled,
+          machineRegisteredAt: runnerState?.machineRegisteredAt,
+          lastMachineRegistrationError: runnerState?.lastMachineRegistrationError,
           lastHeartbeat: new Date().toLocaleString(),
           runnerLogPath: fileState.runnerLogPath
         };

@@ -13,6 +13,7 @@ import { getLatestRunnerLog } from '@/ui/logger'
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI'
 import { runDoctorCommand } from '@/ui/doctor'
 import { initializeToken } from '@/ui/tokenInit'
+import { readRunnerState } from '@/persistence'
 import type { CommandDefinition } from './types'
 
 /**
@@ -81,6 +82,30 @@ async function waitForRunnerToStop(maxAttempts = 50): Promise<boolean> {
     return false
 }
 
+async function waitForRunnerToRegister(maxAttempts = 100): Promise<{
+    ok: boolean
+    lastError?: string
+    logPath?: string
+}> {
+    let lastError: string | undefined
+    let logPath: string | undefined
+    for (let i = 0; i < maxAttempts; i++) {
+        const running = await checkIfRunnerRunningAndCleanupStaleState()
+        const state = await readRunnerState()
+        lastError = state?.lastMachineRegistrationError ?? lastError
+        logPath = state?.runnerLogPath ?? logPath
+        if (running && state?.machineRegisteredAt) {
+            return { ok: true, logPath }
+        }
+        if (!running && state) {
+            return { ok: false, lastError, logPath }
+        }
+        await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    return { ok: false, lastError, logPath }
+}
+
 export const runnerCommand: CommandDefinition = {
     name: 'runner',
     requiresRuntimeAssets: true,
@@ -145,19 +170,17 @@ export const runnerCommand: CommandDefinition = {
             })
             child.unref()
 
-            let started = false
-            for (let i = 0; i < 50; i++) {
-                if (await checkIfRunnerRunningAndCleanupStaleState()) {
-                    started = true
-                    break
-                }
-                await new Promise(resolve => setTimeout(resolve, 100))
-            }
-
-            if (started) {
+            const started = await waitForRunnerToRegister()
+            if (started.ok) {
                 console.log('Runner started successfully')
             } else {
-                console.error('Failed to start runner')
+                console.error('Failed to start runner: machine did not register with the Hub')
+                if (started.lastError) {
+                    console.error(`Last registration error: ${started.lastError}`)
+                }
+                if (started.logPath) {
+                    console.error(`Runner log: ${started.logPath}`)
+                }
                 process.exit(1)
             }
             process.exit(0)

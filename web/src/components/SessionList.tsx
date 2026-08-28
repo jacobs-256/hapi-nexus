@@ -166,12 +166,33 @@ function writeSessionListProjectFilter(projectId: string | null): void {
 }
 
 
-function getGroupDisplayName(directory: string): string {
+const GENERIC_PATH_SEGMENTS = new Set([
+    'users',
+    'home',
+    'documents',
+    'desktop',
+    'downloads',
+    'wwwroot',
+    'workspace',
+    'workspaces',
+    'projects',
+    'repos',
+    'repositories',
+    'application',
+    'applications',
+    'library',
+    'support',
+])
+
+export function getGroupDisplayName(directory: string): string {
     if (directory === 'Other') return directory
     const parts = directory.split(/[\\/]+/).filter(Boolean)
     if (parts.length === 0) return directory
     if (parts.length === 1) return parts[0]
-    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`
+    const parent = parts[parts.length - 2]
+    const leaf = parts[parts.length - 1]
+    if (GENERIC_PATH_SEGMENTS.has(parent.toLowerCase())) return leaf
+    return `${parent}/${leaf}`
 }
 
 export const UNKNOWN_MACHINE_ID = '__unknown__'
@@ -303,6 +324,13 @@ export function getSessionGroupStatusCounts(group: Pick<SessionGroup, 'sessions'
         if (session.pendingRequestsCount > 0) pending += session.pendingRequestsCount
     }
     return { active, pending }
+}
+
+function getSessionGroupCountLabel(group: Pick<SessionGroup, 'sessions'>, counts: { active: number; pending: number }): string {
+    const total = group.sessions.length
+    if (counts.pending > 0) return counts.pending === total ? String(counts.pending) : `${counts.pending}/${total}`
+    if (counts.active > 0) return counts.active === total ? String(counts.active) : `${counts.active}/${total}`
+    return String(total)
 }
 
 export function getDeletableGroupSessions(group: Pick<SessionGroup, 'sessions'>): SessionSummary[] {
@@ -556,6 +584,79 @@ function MoreVerticalIcon(props: { className?: string }) {
     )
 }
 
+function SidebarLayoutIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M8 4v16" />
+            <path d="M12 8h6" />
+            <path d="M12 12h6" />
+            <path d="M12 16h4" />
+        </svg>
+    )
+}
+
+function SidebarLayoutMenu(props: {
+    onExpandActive: () => void
+    onCollapseAll: () => void
+}) {
+    const { t } = useTranslation()
+    const [open, setOpen] = useState(false)
+    return (
+        <Popover.Root open={open} onOpenChange={setOpen}>
+            <Popover.Trigger asChild>
+                <button
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-[var(--app-hint)] transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                    title={t('sessions.group.layout')}
+                    aria-label={t('sessions.group.layout')}
+                >
+                    <SidebarLayoutIcon className="h-4 w-4" />
+                </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+                <Popover.Content
+                    side="bottom"
+                    align="end"
+                    sideOffset={6}
+                    collisionPadding={10}
+                    className="z-50 w-44 rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-2 text-[var(--app-fg)] shadow-xl outline-none"
+                >
+                    <div role="menu" aria-label={t('sessions.group.layout')} className="flex flex-col gap-1">
+                        <GroupActionMenuItem
+                            icon={<SidebarLayoutIcon className="h-3.5 w-3.5" />}
+                            label={t('sessions.group.expandActive')}
+                            onClick={() => {
+                                setOpen(false)
+                                props.onExpandActive()
+                            }}
+                        />
+                        <GroupActionMenuItem
+                            icon={<ChevronIcon className="h-3.5 w-3.5" collapsed />}
+                            label={t('sessions.group.collapseAll')}
+                            onClick={() => {
+                                setOpen(false)
+                                props.onCollapseAll()
+                            }}
+                        />
+                    </div>
+                </Popover.Content>
+            </Popover.Portal>
+        </Popover.Root>
+    )
+}
+
 function CopyPathMenuItem({ path }: { path: string }) {
     const { t } = useTranslation()
     const [copied, setCopied] = useState(false)
@@ -773,7 +874,7 @@ function SessionGroupActionMenu(props: {
                 <button
                     type="button"
                     onClick={(event) => event.stopPropagation()}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] opacity-70 transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] text-[var(--muted-foreground)] opacity-100 transition-colors hover:bg-[var(--secondary)] hover:text-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] sm:opacity-0 sm:group-hover/project:opacity-100 sm:focus:opacity-100 sm:data-[state=open]:opacity-100"
                     title={t('sessions.group.actions.open')}
                     aria-label={t('sessions.group.actions.open')}
                 >
@@ -813,24 +914,17 @@ function SessionGroupActionMenu(props: {
                         </div>
                     ) : (
                         <div role="menu" aria-label={t('sessions.group.actions.open')} className="flex flex-col gap-1">
-                            <GroupActionMenuItem
-                                icon={<InfoIcon className="h-3.5 w-3.5" />}
-                                label={t('sessions.group.details.open')}
-                                onClick={(event) => {
-                                    event.stopPropagation()
-                                    setPanel('details')
-                                }}
-                            />
-                            <GroupActionMenuItem
-                                icon={<PencilIcon className="h-3.5 w-3.5" />}
-                                label={t('sessions.group.rename')}
-                                onClick={(event) => {
-                                    event.stopPropagation()
-                                    closeMenu()
-                                    props.onRename()
-                                }}
-                            />
-                            <CopyPathMenuItem path={props.group.directory} />
+                            {props.onNewSessionInDirectory && props.canStartInGroupDirectory ? (
+                                <GroupActionMenuItem
+                                    icon={<PlusIcon className="h-3.5 w-3.5" />}
+                                    label={t('sessions.group.new')}
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        closeMenu()
+                                        props.onNewSessionInDirectory?.()
+                                    }}
+                                />
+                            ) : null}
                             {props.onSyncCodexSessions && props.canSyncCodexSessions ? (
                                 <GroupActionMenuItem
                                     icon={<SyncIcon className="h-3.5 w-3.5" />}
@@ -842,6 +936,25 @@ function SessionGroupActionMenu(props: {
                                     }}
                                 />
                             ) : null}
+                            <GroupActionMenuItem
+                                icon={<PencilIcon className="h-3.5 w-3.5" />}
+                                label={t('sessions.group.rename')}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    closeMenu()
+                                    props.onRename()
+                                }}
+                            />
+                            <CopyPathMenuItem path={props.group.directory} />
+                            <GroupActionMenuItem
+                                icon={<InfoIcon className="h-3.5 w-3.5" />}
+                                label={t('sessions.group.details.open')}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    setPanel('details')
+                                }}
+                            />
+                            <div className="my-1 h-px bg-[var(--app-divider)]" aria-hidden="true" />
                             <GroupActionMenuItem
                                 icon={<TrashIcon className="h-3.5 w-3.5" />}
                                 label={t('sessions.group.delete')}
@@ -857,17 +970,6 @@ function SessionGroupActionMenu(props: {
                                     props.onDeleteGroup()
                                 }}
                             />
-                            {props.onNewSessionInDirectory && props.canStartInGroupDirectory ? (
-                                <GroupActionMenuItem
-                                    icon={<PlusIcon className="h-3.5 w-3.5" />}
-                                    label={t('sessions.group.new')}
-                                    onClick={(event) => {
-                                        event.stopPropagation()
-                                        closeMenu()
-                                        props.onNewSessionInDirectory?.()
-                                    }}
-                                />
-                            ) : null}
                         </div>
                     )}
                 </Popover.Content>
@@ -2114,6 +2216,29 @@ export function SessionList(props: {
         )
     }
 
+    const collapseAllGroups = () => {
+        setCollapseOverrides(prev => {
+            const next = new Map(prev)
+            for (const group of groups) {
+                next.set(group.key, true)
+            }
+            return next
+        })
+    }
+
+    const expandActiveGroups = () => {
+        setCollapseOverrides(prev => {
+            const next = new Map(prev)
+            for (const group of groups) {
+                const hasSelectedSession = selectedSessionId
+                    ? group.sessions.some(session => session.id === selectedSessionId)
+                    : false
+                next.set(group.key, !(group.hasActiveSession || hasSelectedSession))
+            }
+            return next
+        })
+    }
+
     // Auto-expand group containing the selected session only when
     // the selected-session/group pair changes. Without this guard, every live
     // session-list refresh (for example tool-call updates from a running selected
@@ -2183,6 +2308,7 @@ export function SessionList(props: {
     }, [showSearch])
 
     const showHeaderRow = showSearch || renderHeader || Boolean(props.headerActions)
+    const showGroupLayoutControls = groups.length > 1 && !isFiltering && !(showSearch && searchExpanded)
 
     // Pull-to-refresh on the scrollable list. Touch-only gesture mirroring the
     // pull-to-load-older pattern in HappyThread; desktop has no overscroll
@@ -2307,6 +2433,12 @@ export function SessionList(props: {
                                     className="flex-1"
                                 />
                             ) : <div className="flex-1" />}
+                            {showGroupLayoutControls ? (
+                                <SidebarLayoutMenu
+                                    onExpandActive={expandActiveGroups}
+                                    onCollapseAll={collapseAllGroups}
+                                />
+                            ) : null}
                             {renderHeader ? (
                                 <button
                                     type="button"
@@ -2409,13 +2541,14 @@ export function SessionList(props: {
                     const groupMachineId = group.machineId
                     const canSyncCodexSessions = Boolean(api && groupMachineId && canStartInGroupDirectory && groupHasCodexSessions(group))
                     const groupStatusCounts = getSessionGroupStatusCounts(group)
+                    const groupCountLabel = getSessionGroupCountLabel(group, groupStatusCounts)
                     return (
                         <div key={group.key}>
                             <div
                                 className={cn(
                                     'group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg border border-transparent bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]',
-                                    groupStatusCounts.pending > 0 && 'border-amber-500/25 bg-amber-500/5',
-                                    groupStatusCounts.pending === 0 && groupStatusCounts.active > 0 && 'border-[var(--app-link)]/20 bg-[var(--app-link)]/5'
+                                    groupStatusCounts.pending > 0 && 'border-amber-500/20 bg-amber-500/5',
+                                    groupStatusCounts.pending === 0 && groupStatusCounts.active > 0 && 'border-[var(--app-link)]/15 bg-[var(--app-link)]/[0.04]'
                                 )}
                                 onClick={() => {
                                     if (activeGroupEdit) return
@@ -2470,7 +2603,7 @@ export function SessionList(props: {
                                         title={t('sessions.group.pending', { n: groupStatusCounts.pending })}
                                     >
                                         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-                                        {groupStatusCounts.pending}
+                                        {groupCountLabel}
                                     </span>
                                 ) : !activeGroupEdit && groupStatusCounts.active > 0 ? (
                                     <span
@@ -2478,7 +2611,14 @@ export function SessionList(props: {
                                         title={t('sessions.group.active', { n: groupStatusCounts.active })}
                                     >
                                         <span className="h-1.5 w-1.5 rounded-full bg-[var(--app-link)]" aria-hidden="true" />
-                                        {groupStatusCounts.active}
+                                        {groupCountLabel}
+                                    </span>
+                                ) : !activeGroupEdit ? (
+                                    <span
+                                        className="shrink-0 text-[11px] tabular-nums text-[var(--app-hint)]"
+                                        title={t('sessions.group.details.sessions')}
+                                    >
+                                        {groupCountLabel}
                                     </span>
                                 ) : null}
                                 {!activeGroupEdit && shared ? (
@@ -2546,15 +2686,12 @@ export function SessionList(props: {
                                         }}
                                     />
                                 ) : null}
-                                <span className="text-[11px] tabular-nums text-[var(--app-hint)] shrink-0">
-                                    ({group.sessions.length})
-                                </span>
                             </div>
 
                             {/* Sessions */}
                             <div className="collapsible-panel" data-open={!isCollapsed || undefined}>
                                 <div className="collapsible-inner">
-                                <div className="ml-3 flex flex-col gap-0.5 border-l border-[var(--app-divider)] py-1 pl-1.5">
+                                <div className="ml-5 flex flex-col gap-0.5 py-1">
                                     {visibleGroupSessions.map((s) => (
                                         <SessionItem
                                             key={s.id}

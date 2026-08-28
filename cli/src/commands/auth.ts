@@ -7,6 +7,24 @@ import { readSettings, clearMachineId, updateSettings } from '@/persistence'
 import { initializeApiUrl } from '@/ui/apiUrlInit'
 import type { CommandDefinition } from './types'
 
+export function normalizeHubUrlInput(input: string, currentUrl: string): string {
+    const raw = input.trim()
+    const value = raw || currentUrl
+    let parsed: URL
+    try {
+        parsed = new URL(value)
+    } catch {
+        throw new Error('Hub URL must be a valid http(s) URL')
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Hub URL must use http or https')
+    }
+    parsed.pathname = ''
+    parsed.search = ''
+    parsed.hash = ''
+    return parsed.toString().replace(/\/$/g, '')
+}
+
 export async function handleAuthCommand(args: string[]): Promise<void> {
     const subcommand = args[0]
 
@@ -44,13 +62,17 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     if (subcommand === 'login') {
         if (!process.stdin.isTTY) {
             console.error(chalk.red('Cannot prompt for token in non-TTY environment.'))
-            console.error(chalk.gray('Set CLI_API_TOKEN environment variable instead.'))
+            console.error(chalk.gray('Set HAPI_API_URL and CLI_API_TOKEN environment variables instead.'))
             process.exit(1)
         }
 
+        await initializeApiUrl()
         const rl = readline.createInterface({ input, output })
 
         try {
+            const currentUrl = configuration.apiUrl
+            const hubUrlInput = await rl.question(chalk.cyan(`Hub URL [${currentUrl}]: `))
+            const apiUrl = normalizeHubUrlInput(hubUrlInput, currentUrl)
             const token = await rl.question(chalk.cyan('Enter CLI/runner access token: '))
 
             if (!token.trim()) {
@@ -60,9 +82,12 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
 
             await updateSettings(current => ({
                 ...current,
+                apiUrl,
                 cliApiToken: token.trim()
             }))
+            configuration._setApiUrl(apiUrl)
             configuration._setCliApiToken(token.trim())
+            console.log(chalk.green(`\nHub URL saved: ${apiUrl}`))
             console.log(chalk.green(`\nToken saved to ${configuration.settingsFile}`))
         } finally {
             rl.close()
@@ -92,13 +117,13 @@ ${chalk.bold('hapi auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
   hapi auth status            Show current configuration
-  hapi auth login             Enter and save the CLI/runner access token
+  hapi auth login             Enter and save Hub URL + CLI/runner access token
   hapi auth logout            Clear saved credentials
 
-${chalk.bold('Token priority (highest to lowest):')}
-  1. CLI_API_TOKEN environment variable
+${chalk.bold('Configuration priority (highest to lowest):')}
+  1. HAPI_API_URL / CLI_API_TOKEN environment variables
   2. ~/.hapi/settings.json
-  3. Interactive prompt (on first run)
+  3. Defaults / interactive prompt
 `)
 }
 
