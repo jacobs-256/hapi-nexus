@@ -286,7 +286,8 @@ export function CodexSessionSyncDialog(props: {
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-xl">
+            <DialogContent className="flex max-h-[min(92dvh,calc(var(--app-viewport-height,100dvh)-24px))] max-w-xl flex-col overflow-hidden p-0">
+                <div className="shrink-0 p-4 pb-0">
                 <div className="flex items-start justify-between gap-3 pr-10" data-testid="codex-import-dialog-header">
                     <DialogHeader className="min-w-0 flex-1 pr-0 text-left">
                         <DialogTitle>{t('codexSync.confirm.title')}</DialogTitle>
@@ -308,8 +309,9 @@ export function CodexSessionSyncDialog(props: {
                         {isRestartingCodexDesktop ? t('codexSync.restart.confirming') : t('codexSync.restart.tooltip')}
                     </Button>
                 </div>
+                </div>
 
-                <div className="mt-4 space-y-3">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4" data-testid="codex-import-dialog-body">
                     {error || archiveError ? (
                         <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
                             {error || archiveError}
@@ -378,7 +380,7 @@ export function CodexSessionSyncDialog(props: {
                         </label>
                     ) : null}
 
-                    <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]">
+                    <div className="min-h-0 overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]" data-testid="codex-import-session-list">
                         {isLoading ? (
                             <div className="px-4 py-8 text-center text-sm text-[var(--app-hint)]">
                                 {t('codexSync.confirm.loading')}
@@ -546,7 +548,7 @@ export function CodexSessionSyncDialog(props: {
                     ) : null}
                 </div>
 
-                <div className="mt-4 flex justify-end gap-2">
+                <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--app-border)] bg-[var(--app-dialog-bg)] p-4 pt-3" data-testid="codex-import-dialog-footer">
                     <Button
                         type="button"
                         variant="secondary"

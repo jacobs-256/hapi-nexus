@@ -320,7 +320,7 @@ function AppStatusBar() {
     const { t } = useTranslation()
 
     return (
-        <footer className="shrink-0 bg-[var(--primary)] sm:pb-[var(--app-shell-safe-area-bottom)]">
+        <footer className="shrink-0 bg-[var(--primary)] pb-[var(--app-shell-safe-area-bottom)]">
             <div className="flex h-[22px] items-center gap-4 px-3 font-mono text-[10.5px] text-white/90">
                 <span className="opacity-80">{t('app.status.product')}</span>
                 <span className="hidden sm:inline">◉ {t('app.status.language')}</span>

@@ -305,6 +305,10 @@ export function getSessionGroupStatusCounts(group: Pick<SessionGroup, 'sessions'
     return { active, pending }
 }
 
+export function getDeletableGroupSessions(group: Pick<SessionGroup, 'sessions'>): SessionSummary[] {
+    return group.sessions.filter((session) => !session.active)
+}
+
 function findWorkspaceForGroup(
     group: SessionGroup,
     projects: ProjectWithDetails[],
@@ -385,6 +389,7 @@ export function isSidebarEmptySessionStub(session: SessionSummary): boolean {
     if (session.active) return false
     const meta = session.metadata
     if (!meta) return true
+    if (meta.lifecycleState === 'archived') return false
     if (meta.agentSessionId?.trim()) return false
     if (hasSidebarTitleSignal(session)) return false
     return true
@@ -702,15 +707,27 @@ function GroupActionMenuItem(props: {
     icon: React.ReactNode
     label: string
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => void
+    disabled?: boolean
+    destructive?: boolean
+    title?: string
 }) {
     return (
         <button
             type="button"
             role="menuitem"
             onClick={props.onClick}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] focus:bg-[var(--app-subtle-bg)] focus:outline-none"
+            disabled={props.disabled}
+            title={props.title}
+            className={cn(
+                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus:bg-[var(--app-subtle-bg)] focus:outline-none',
+                props.disabled
+                    ? 'cursor-not-allowed text-[var(--app-hint)] opacity-50'
+                    : props.destructive
+                        ? 'text-red-600 hover:bg-red-500/10'
+                        : 'text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]'
+            )}
         >
-            <span className="shrink-0 text-[var(--app-hint)]">{props.icon}</span>
+            <span className={cn('shrink-0', props.destructive && !props.disabled ? 'text-red-500' : 'text-[var(--app-hint)]')}>{props.icon}</span>
             <span className="min-w-0 truncate">{props.label}</span>
         </button>
     )
@@ -732,6 +749,7 @@ function SessionGroupActionMenu(props: {
     canStartInGroupDirectory: boolean
     canSyncCodexSessions: boolean
     onRename: () => void
+    onDeleteGroup: () => void
     onSyncCodexSessions?: () => void
     onNewSessionInDirectory?: () => void
     onMoveTargetChange: (projectId: string) => void
@@ -824,6 +842,21 @@ function SessionGroupActionMenu(props: {
                                     }}
                                 />
                             ) : null}
+                            <GroupActionMenuItem
+                                icon={<TrashIcon className="h-3.5 w-3.5" />}
+                                label={t('sessions.group.delete')}
+                                destructive
+                                disabled={getDeletableGroupSessions(props.group).length === 0}
+                                title={getDeletableGroupSessions(props.group).length === 0
+                                    ? t('sessions.group.deleteNoInactive')
+                                    : undefined}
+                                onClick={(event) => {
+                                    event.stopPropagation()
+                                    if (getDeletableGroupSessions(props.group).length === 0) return
+                                    closeMenu()
+                                    props.onDeleteGroup()
+                                }}
+                            />
                             {props.onNewSessionInDirectory && props.canStartInGroupDirectory ? (
                                 <GroupActionMenuItem
                                     icon={<PlusIcon className="h-3.5 w-3.5" />}
@@ -986,6 +1019,29 @@ function ShareIcon(props: { className?: string }) {
             <circle cx="18" cy="19" r="3" />
             <path d="m8.6 13.5 6.8 4" />
             <path d="m15.4 6.5-6.8 4" />
+        </svg>
+    )
+}
+
+function TrashIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+        >
+            <path d="M3 6h18" />
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+            <line x1="10" x2="10" y1="11" y2="17" />
+            <line x1="14" x2="14" y1="11" y2="17" />
         </svg>
     )
 }
@@ -1585,6 +1641,12 @@ export function SessionList(props: {
     const [isLoadingCodexSyncSessions, setIsLoadingCodexSyncSessions] = useState(false)
     const [isQueueingCodexSync, setIsQueueingCodexSync] = useState(false)
     const [isRestartingCodexDesktop, setIsRestartingCodexDesktop] = useState(false)
+    const [deleteGroupTarget, setDeleteGroupTarget] = useState<{
+        key: string
+        title: string
+        sessions: SessionSummary[]
+        activeCount: number
+    } | null>(null)
     const completedCodexSyncJobIdsRef = useRef(new Set<string>())
     const currentUserId = props.currentUser?.id ?? null
     const projectsById = useMemo(
@@ -1623,6 +1685,40 @@ export function SessionList(props: {
                 ...prev,
                 [input.groupKey]: error instanceof Error ? error.message : t('dialog.error.default')
             }))
+        }
+    })
+
+    const deleteGroupMutation = useMutation({
+        mutationFn: async (sessions: SessionSummary[]) => {
+            if (!api) throw new Error('API unavailable')
+            const results = await Promise.allSettled(sessions.map((session) => api.deleteSession(session.id)))
+            return {
+                sessions,
+                failureCount: results.filter((result) => result.status === 'rejected').length
+            }
+        },
+        onSuccess: async (result) => {
+            setDeleteGroupTarget(null)
+            for (const session of result.sessions) {
+                queryClient.removeQueries({ queryKey: queryKeys.session(session.id) })
+            }
+            await queryClient.invalidateQueries({ queryKey: queryKeys.sessions })
+            if (result.failureCount > 0) {
+                addToast({
+                    title: t('sessions.group.deleteFailed.title'),
+                    body: t('sessions.group.deleteFailed.partial', { n: result.failureCount }),
+                    sessionId: '',
+                    url: ''
+                })
+            }
+        },
+        onError: (error) => {
+            addToast({
+                title: t('sessions.group.deleteFailed.title'),
+                body: error instanceof Error ? error.message : t('dialog.error.default'),
+                sessionId: '',
+                url: ''
+            })
         }
     })
 
@@ -2411,6 +2507,15 @@ export function SessionList(props: {
                                         canStartInGroupDirectory={canStartInGroupDirectory}
                                         canSyncCodexSessions={canSyncCodexSessions}
                                         onRename={() => startRenamingGroup(group, groupDisplayName)}
+                                        onDeleteGroup={() => {
+                                            const deletableSessions = getDeletableGroupSessions(group)
+                                            setDeleteGroupTarget({
+                                                key: group.key,
+                                                title: groupTitle,
+                                                sessions: deletableSessions,
+                                                activeCount: group.sessions.length - deletableSessions.length
+                                            })
+                                        }}
                                         onSyncCodexSessions={canSyncCodexSessions && groupMachineId
                                             ? () => openCodexSyncDialog({
                                                 groupKey: group.key,
@@ -2494,6 +2599,31 @@ export function SessionList(props: {
             </div>
             </div>
             </div>
+            {deleteGroupTarget ? (
+                <ConfirmDialog
+                    isOpen={true}
+                    onClose={() => setDeleteGroupTarget(null)}
+                    title={t('sessions.group.deleteConfirm.title')}
+                    description={deleteGroupTarget.activeCount > 0
+                        ? t('sessions.group.deleteConfirm.descriptionWithActive', {
+                            name: deleteGroupTarget.title,
+                            n: deleteGroupTarget.sessions.length,
+                            active: deleteGroupTarget.activeCount
+                        })
+                        : t('sessions.group.deleteConfirm.description', {
+                            name: deleteGroupTarget.title,
+                            n: deleteGroupTarget.sessions.length
+                        })}
+                    confirmLabel={t('sessions.group.deleteConfirm.confirm')}
+                    confirmingLabel={t('sessions.group.deleteConfirm.confirming')}
+                    onConfirm={async () => {
+                        await deleteGroupMutation.mutateAsync(deleteGroupTarget.sessions)
+                    }}
+                    isPending={deleteGroupMutation.isPending}
+                    destructive
+                    centerTitle
+                />
+            ) : null}
             {codexSyncTarget ? (
                 <CodexSessionSyncDialog
                     isOpen={true}

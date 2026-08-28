@@ -267,4 +267,23 @@ describe('cascade-delete safety (regression)', () => {
         await cache.deleteSession(newSession.id)
         expect(store.scratchlist.list(newSession.id)).toEqual([])
     })
+
+    it('awaits async scratchlist.list before deleting the session', async () => {
+        const { store, cache } = setup()
+        const { newSession } = makeSessions(cache)
+        store.scratchlist.create(newSession.id, 'async note', { entryId: 'e-async', createdAt: 100 })
+
+        const syncList = store.scratchlist.list.bind(store.scratchlist)
+        ;(store.scratchlist as unknown as {
+            list: typeof store.scratchlist.list
+        }).list = (async (sessionId: string) => syncList(sessionId)) as unknown as typeof store.scratchlist.list
+
+        const cached = cache.getSession(newSession.id)
+        if (cached) cached.active = false
+
+        await cache.deleteSession(newSession.id)
+
+        expect(cache.getSession(newSession.id)).toBeUndefined()
+        expect(syncList(newSession.id)).toEqual([])
+    })
 })

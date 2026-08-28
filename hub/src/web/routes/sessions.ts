@@ -453,7 +453,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!isPermissionModeAllowedForFlavor(mode, flavor)) {
             return c.json({ error: 'Invalid permission mode for session flavor' }, 400)
         }
-        if (flavor === 'opencode' && mode === 'plan' && sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && flavor === 'opencode' && mode === 'plan' && sessionResult.session.agentState?.controlledByUser === true) {
             return c.json({ error: 'OpenCode plan mode is only supported for remote sessions' }, 409)
         }
 
@@ -472,7 +472,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -481,7 +481,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (flavor !== 'codex') {
             return c.json({ error: 'Collaboration mode is only supported for Codex sessions' }, 400)
         }
-        if (sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && sessionResult.session.agentState?.controlledByUser === true) {
             return c.json({ error: 'Collaboration mode can only be changed for remote Codex sessions' }, 409)
         }
 
@@ -506,7 +506,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -521,7 +521,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!supportsModelChange(flavor)) {
             return c.json({ error: 'Model selection is not supported for this session' }, 400)
         }
-        if (sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && sessionResult.session.agentState?.controlledByUser === true) {
             if (flavor === 'codex') {
                 return c.json({ error: 'Model selection can only be changed for remote Codex sessions' }, 409)
             }
@@ -548,7 +548,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -557,7 +557,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (flavor !== 'codex' && flavor !== 'opencode') {
             return c.json({ error: 'Model reasoning effort is only supported for Codex and OpenCode sessions' }, 400)
         }
-        if (sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && sessionResult.session.agentState?.controlledByUser === true) {
             return c.json({ error: 'Model reasoning effort can only be changed for remote sessions' }, 409)
         }
 
@@ -584,7 +584,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -599,7 +599,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (!supportsEffort(flavor)) {
             return c.json({ error: 'Effort selection is not supported for this session type' }, 400)
         }
-        if (flavor === 'grok' && sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && flavor === 'grok' && sessionResult.session.agentState?.controlledByUser === true) {
             return c.json({ error: 'Effort can only be changed for remote Grok sessions' }, 409)
         }
 
@@ -618,7 +618,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
             return engine
         }
 
-        const sessionResult = await requireSessionFromParam(c, engine, { requireActive: true, role: 'editor' })
+        const sessionResult = await requireSessionFromParam(c, engine, { role: 'editor' })
         if (sessionResult instanceof Response) {
             return sessionResult
         }
@@ -627,7 +627,7 @@ export function createSessionsRoutes(getSyncEngine: () => SyncEngine | null): Ho
         if (flavor !== 'codex') {
             return c.json({ error: 'Fast mode is only supported for Codex sessions' }, 400)
         }
-        if (sessionResult.session.agentState?.controlledByUser === true) {
+        if (sessionResult.session.active && sessionResult.session.agentState?.controlledByUser === true) {
             return c.json({ error: 'Fast mode can only be changed for remote sessions' }, 409)
         }
 

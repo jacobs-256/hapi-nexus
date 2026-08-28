@@ -296,6 +296,25 @@ describe('CodexSessionSyncDialog', () => {
         expect(screen.getByRole('button', { name: 'Restart Codex client' })).toHaveClass('shrink-0')
     })
 
+    it('keeps import actions reachable by constraining the mobile dialog height', () => {
+        renderDialog(Array.from({ length: 40 }, (_, index) => ({
+            id: `codex-session-${index}`,
+            title: `Session ${index}`,
+            cwd: '/home/user/project',
+            file: `/home/user/.codex/sessions/${index}.jsonl`,
+            modifiedAt: Date.UTC(2026, 0, 2, 3, index, 5)
+        })))
+
+        const dialog = screen.getByRole('dialog')
+        expect(dialog).toHaveClass('flex')
+        expect(dialog).toHaveClass('max-h-[min(92dvh,calc(var(--app-viewport-height,100dvh)-24px))]')
+        expect(dialog).toHaveClass('overflow-hidden')
+        expect(screen.getByTestId('codex-import-dialog-body')).toHaveClass('min-h-0')
+        expect(screen.getByTestId('codex-import-dialog-body')).toHaveClass('overflow-y-auto')
+        expect(screen.getByTestId('codex-import-dialog-footer')).toHaveClass('shrink-0')
+        expect(screen.getByRole('button', { name: 'Queue import' })).toBeInTheDocument()
+    })
+
     it('restarts Codex Desktop from the header control', () => {
         const onRestartCodexDesktop = vi.fn(async () => {})
         renderDialog([], undefined, null, onRestartCodexDesktop)

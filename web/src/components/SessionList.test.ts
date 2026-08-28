@@ -4,6 +4,7 @@ import {
     deduplicateSessionsByAgentId,
     expandSelectedSessionCollapseOverrides,
     filterActiveSessionsOnly,
+    getDeletableGroupSessions,
     getSessionTimeRange,
     getNextSessionVisibleCount,
     getPreviousSessionVisibleCount,
@@ -218,6 +219,13 @@ describe('isSidebarEmptySessionStub', () => {
             metadata: { path: '/work/hapi', summary: { text: 'Fix sidebar' } }
         }))).toBe(false)
     })
+
+    it('does not treat archived sessions as stubs', () => {
+        expect(isSidebarEmptySessionStub(makeSession({
+            id: 'archived',
+            metadata: { path: '/work/hapi', lifecycleState: 'archived' }
+        }))).toBe(false)
+    })
 })
 
 describe('prepareSidebarSessions', () => {
@@ -245,6 +253,16 @@ describe('prepareSidebarSessions', () => {
 
         const result = prepareSidebarSessions(sessions, 'stub')
         expect(result.map(session => session.id).sort()).toEqual(['real', 'stub'])
+    })
+
+    it('keeps archived sessions visible even without title or agent id', () => {
+        const sessions = [
+            makeSession({ id: 'stub', metadata: { path: '/work/hapi' } }),
+            makeSession({ id: 'archived', metadata: { path: '/work/hapi', lifecycleState: 'archived' } })
+        ]
+
+        const result = prepareSidebarSessions(sessions)
+        expect(result.map(session => session.id)).toEqual(['archived'])
     })
 
     it('deduplicates before filtering stubs', () => {
@@ -494,5 +512,20 @@ describe('getPullToRefreshState', () => {
         expect(getPullToRefreshState(16)).toBe('pulling')
         expect(getPullToRefreshState(63)).toBe('pulling')
         expect(getPullToRefreshState(64)).toBe('ready')
+    })
+})
+
+describe('getDeletableGroupSessions', () => {
+    it('only deletes inactive sessions from a group', () => {
+        const inactive = makeSession({ id: 'inactive' })
+        const archived = makeSession({
+            id: 'archived',
+            metadata: { path: '/work/project', lifecycleState: 'archived' }
+        })
+        const active = makeSession({ id: 'active', active: true })
+
+        expect(getDeletableGroupSessions({
+            sessions: [inactive, active, archived]
+        }).map((session) => session.id)).toEqual(['inactive', 'archived'])
     })
 })

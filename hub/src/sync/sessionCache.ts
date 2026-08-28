@@ -1428,8 +1428,7 @@ export class SessionCache {
             throw new Error('Cannot delete active session')
         }
 
-        const scratchlistAttachments = this.store.scratchlist
-            .list(sessionId)
+        const scratchlistAttachments = (await this.store.scratchlist.list(sessionId))
             .flatMap((entry) => entry.attachments)
 
         const deleted = await this.store.sessions.deleteSession(sessionId, session.namespace)

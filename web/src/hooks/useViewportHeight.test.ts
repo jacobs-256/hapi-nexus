@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { shouldUseVisualViewportHeight } from './useViewportHeight'
 
 /**
  * Unit tests for the useViewportHeight hook logic.
@@ -17,12 +18,12 @@ describe('useViewportHeight update logic', () => {
         root.style.removeProperty('--app-viewport-height')
     })
 
-    it('sets --app-viewport-height when visual viewport is smaller than window', () => {
+    it('sets --app-viewport-height when visual viewport is smaller than window and an input is focused', () => {
+        const input = document.createElement('textarea')
         // Simulate the update logic from the hook
         const viewportHeight = 400
         const windowHeight = 800
-        const diff = windowHeight - viewportHeight
-        if (diff > 1) {
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: input })) {
             root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
         } else {
             root.style.removeProperty('--app-viewport-height')
@@ -38,8 +39,7 @@ describe('useViewportHeight update logic', () => {
         // Then simulate keyboard close
         const viewportHeight = 800
         const windowHeight = 800
-        const diff = windowHeight - viewportHeight
-        if (diff > 1) {
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: document.createElement('textarea') })) {
             root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
         } else {
             root.style.removeProperty('--app-viewport-height')
@@ -51,8 +51,19 @@ describe('useViewportHeight update logic', () => {
     it('ignores sub-pixel differences (threshold of 1px)', () => {
         const viewportHeight = 799.5
         const windowHeight = 800
-        const diff = windowHeight - viewportHeight
-        if (diff > 1) {
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: document.createElement('textarea') })) {
+            root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
+        } else {
+            root.style.removeProperty('--app-viewport-height')
+        }
+
+        expect(root.style.getPropertyValue('--app-viewport-height')).toBe('')
+    })
+
+    it('does not set --app-viewport-height for iOS safe-area differences when no editable control is focused', () => {
+        const viewportHeight = 720
+        const windowHeight = 800
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: document.body })) {
             root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
         } else {
             root.style.removeProperty('--app-viewport-height')
@@ -69,8 +80,7 @@ describe('useViewportHeight update logic', () => {
 
         const viewportHeight = 400
         const windowHeight = 800
-        const diff = windowHeight - viewportHeight
-        if (diff > 1) {
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: document.createElement('textarea') })) {
             root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
             if (window.scrollY > 0) {
                 window.scrollTo(0, 0)
@@ -91,8 +101,7 @@ describe('useViewportHeight update logic', () => {
 
         const viewportHeight = 400
         const windowHeight = 800
-        const diff = windowHeight - viewportHeight
-        if (diff > 1) {
+        if (shouldUseVisualViewportHeight({ windowHeight, viewportHeight, activeElement: document.createElement('textarea') })) {
             root.style.setProperty('--app-viewport-height', `${viewportHeight}px`)
             if (window.scrollY > 0) {
                 window.scrollTo(0, 0)

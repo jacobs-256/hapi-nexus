@@ -326,6 +326,29 @@ describe('sessions routes', () => {
         ])
     })
 
+    it('applies collaboration mode changes for inactive Codex sessions', async () => {
+        const session = createSession({
+            active: false,
+            agentState: {
+                controlledByUser: true,
+                requests: {},
+                completedRequests: {}
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/collaboration-mode', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ mode: 'plan' })
+        })
+
+        expect(response.status).toBe(200)
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { collaborationMode: 'plan' }]
+        ])
+    })
+
     it('rejects model reasoning effort changes for unsupported sessions', async () => {
         const session = createSession({
             metadata: {
@@ -388,6 +411,29 @@ describe('sessions routes', () => {
         ])
     })
 
+    it('applies model reasoning effort changes for inactive Codex sessions', async () => {
+        const session = createSession({
+            active: false,
+            agentState: {
+                controlledByUser: true,
+                requests: {},
+                completedRequests: {}
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/model-reasoning-effort', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ modelReasoningEffort: 'xhigh' })
+        })
+
+        expect(response.status).toBe(200)
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { modelReasoningEffort: 'xhigh' }]
+        ])
+    })
+
 
 
     it('applies model reasoning effort changes for remote OpenCode sessions', async () => {
@@ -424,6 +470,29 @@ describe('sessions routes', () => {
 
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ ok: true })
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { serviceTier: 'fast' }]
+        ])
+    })
+
+    it('applies fast service tier changes for inactive Codex sessions', async () => {
+        const session = createSession({
+            active: false,
+            agentState: {
+                controlledByUser: true,
+                requests: {},
+                completedRequests: {}
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/service-tier', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ serviceTier: 'fast' })
+        })
+
+        expect(response.status).toBe(200)
         expect(applySessionConfigCalls).toEqual([
             ['session-1', { serviceTier: 'fast' }]
         ])
@@ -489,6 +558,29 @@ describe('sessions routes', () => {
 
         expect(response.status).toBe(200)
         expect(await response.json()).toEqual({ ok: true })
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { model: 'gpt-5.5' }]
+        ])
+    })
+
+    it('applies model changes for inactive Codex sessions', async () => {
+        const session = createSession({
+            active: false,
+            agentState: {
+                controlledByUser: true,
+                requests: {},
+                completedRequests: {}
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/model', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model: 'gpt-5.5' })
+        })
+
+        expect(response.status).toBe(200)
         expect(applySessionConfigCalls).toEqual([
             ['session-1', { model: 'gpt-5.5' }]
         ])
@@ -686,6 +778,29 @@ describe('sessions routes', () => {
         ])
     })
 
+    it('applies effort changes for inactive Claude sessions', async () => {
+        const session = createSession({
+            active: false,
+            metadata: {
+                path: '/tmp/project',
+                host: 'localhost',
+                flavor: 'claude'
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/effort', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ effort: 'max' })
+        })
+
+        expect(response.status).toBe(200)
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { effort: 'max' }]
+        ])
+    })
+
     it('applies effort changes for remote Grok sessions and rejects local control', async () => {
         const remote = createSession({
             metadata: { path: '/tmp/project', host: 'localhost', flavor: 'grok' }
@@ -878,6 +993,30 @@ describe('sessions routes', () => {
         expect(await response.json()).toEqual({ ok: true })
         expect(applySessionConfigCalls).toEqual([
             ['session-1', { permissionMode: 'bypassPermissions' }]
+        ])
+    })
+
+    it('applies OpenCode plan mode changes for inactive local sessions', async () => {
+        const session = createSession({
+            active: false,
+            metadata: { path: '/tmp/project', host: 'localhost', flavor: 'opencode' },
+            agentState: {
+                controlledByUser: true,
+                requests: {},
+                completedRequests: {}
+            }
+        })
+        const { app, applySessionConfigCalls } = createApp(session)
+
+        const response = await app.request('/api/sessions/session-1/permission-mode', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ mode: 'plan' })
+        })
+
+        expect(response.status).toBe(200)
+        expect(applySessionConfigCalls).toEqual([
+            ['session-1', { permissionMode: 'plan' }]
         ])
     })
 

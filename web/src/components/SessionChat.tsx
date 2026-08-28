@@ -635,13 +635,14 @@ function SessionChatInner(props: SessionChatProps) {
     )
     const agentFlavor = props.session.metadata?.flavor ?? null
     const controlledByUser = props.session.agentState?.controlledByUser === true
-    const codexCollaborationModeSupported = agentFlavor === 'codex' && !controlledByUser
+    const canApplyRemoteSessionConfig = !props.session.active || !controlledByUser
+    const codexCollaborationModeSupported = agentFlavor === 'codex' && canApplyRemoteSessionConfig
     const codexModelsState = useCodexModels({
         api: props.api,
         machineId: props.session.metadata?.machineId ?? null,
         sessionId: props.session.id,
         projectId: props.session.projectId ?? null,
-        enabled: agentFlavor === 'codex' && props.session.active && !controlledByUser
+        enabled: agentFlavor === 'codex' && canApplyRemoteSessionConfig
     })
     const effectiveCodexServiceTier = agentFlavor === 'codex'
         ? getEffectiveCodexServiceTier(
@@ -697,12 +698,12 @@ function SessionChatInner(props: SessionChatProps) {
     const grokModelsState = useGrokModels({
         api: props.api,
         sessionId: props.session.id,
-        enabled: agentFlavor === 'grok' && props.session.active && !controlledByUser
+        enabled: agentFlavor === 'grok' && props.session.active && canApplyRemoteSessionConfig
     })
     const grokEffortState = useGrokReasoningEffortOptions({
         api: props.api,
         sessionId: props.session.id,
-        enabled: agentFlavor === 'grok' && props.session.active && !controlledByUser
+        enabled: agentFlavor === 'grok' && props.session.active && canApplyRemoteSessionConfig
     })
     const grokModelOptions = useMemo(() => (
         agentFlavor === 'grok'
@@ -724,7 +725,7 @@ function SessionChatInner(props: SessionChatProps) {
     const machineCursorModelsState = useCursorModelsForMachine({
         api: props.api,
         machineId: sessionMachineId,
-        enabled: agentFlavor === 'cursor' && props.session.active && Boolean(sessionMachineId)
+        enabled: agentFlavor === 'cursor' && canApplyRemoteSessionConfig && Boolean(sessionMachineId)
     })
     const sessionCliModelSkus = useMemo(() => (
         mergeCursorCliModelSkus(
@@ -1503,7 +1504,7 @@ function SessionChatInner(props: SessionChatProps) {
                         contextWindow={reduced.latestUsage?.contextWindow ?? piContextWindow}
                         controlledByUser={controlledByUser}
                         onCollaborationModeChange={
-                            codexCollaborationModeSupported && props.session.active && !controlledByUser
+                            codexCollaborationModeSupported
                                 ? handleCollaborationModeChange
                                 : undefined
                         }
@@ -1529,10 +1530,9 @@ function SessionChatInner(props: SessionChatProps) {
                         }
                         onModelChange={
                             agentFlavor === 'codex'
-                                ? (props.session.active && !controlledByUser && !codexModelsState.error ? handleModelChange : undefined)
+                                ? (canApplyRemoteSessionConfig && !codexModelsState.error ? handleModelChange : undefined)
                                 : agentFlavor === 'cursor'
-                                    ? (props.session.active
-                                        && !controlledByUser
+                                    ? (canApplyRemoteSessionConfig
                                         && !cursorCatalogPending
                                         && !cursorModelsState.error
                                         && cursorPicker
@@ -1542,15 +1542,14 @@ function SessionChatInner(props: SessionChatProps) {
                                     : agentFlavor === 'pi'
                                         ? (props.session.active && !piModelsState.error ? handleModelChange : undefined)
                                         : agentFlavor === 'grok'
-                                            ? (props.session.active && !controlledByUser && !grokModelsState.error
+                                            ? (props.session.active && canApplyRemoteSessionConfig && !grokModelsState.error
                                                 ? handleModelChange
                                                 : undefined)
                                         : handleModelChange
                         }
                         onModelEffortChange={
                             agentFlavor === 'cursor'
-                                && props.session.active
-                                && !controlledByUser
+                                && canApplyRemoteSessionConfig
                                 && !cursorCatalogPending
                                 && !cursorModelsState.error
                                 ? handleCursorEffortChange
@@ -1558,15 +1557,14 @@ function SessionChatInner(props: SessionChatProps) {
                         }
                         onModelReasoningEffortChange={
                             (agentFlavor === 'codex' || agentFlavor === 'opencode')
-                                && props.session.active
-                                && !controlledByUser
+                                && canApplyRemoteSessionConfig
                                 && (agentFlavor !== 'opencode' || opencodeReasoningEffortState.options.length > 0)
                                 ? handleModelReasoningEffortChange
                                 : undefined
                         }
                         onEffortChange={
                             agentFlavor === 'grok'
-                                ? (props.session.active && !controlledByUser && grokEffortState.options.length > 0
+                                ? (props.session.active && canApplyRemoteSessionConfig && grokEffortState.options.length > 0
                                     ? handleEffortChange
                                     : undefined)
                                 : handleEffortChange
@@ -1574,8 +1572,7 @@ function SessionChatInner(props: SessionChatProps) {
                         serviceTier={effectiveCodexServiceTier}
                         onServiceTierChange={
                             agentFlavor === 'codex'
-                                && props.session.active
-                                && !controlledByUser
+                                && canApplyRemoteSessionConfig
                                 && !codexModelsState.error
                                 && codexModelAdvertisesFastTier(props.session.model, codexModelsState.models)
                                 ? handleServiceTierChange

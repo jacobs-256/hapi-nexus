@@ -65,7 +65,7 @@ export class MysqlMachineStore implements MachineStorePort {
     async getMachinesByNamespace(namespace: string): Promise<StoredMachine[]> { return await this.withSql(async (sql) => (await sql.unsafe<Row[]>('SELECT * FROM machines WHERE namespace = ? ORDER BY updated_at DESC', [namespace])).map(toStored)) }
 
     async deleteMachineByNamespace(id: string, namespace: string): Promise<DeleteMachineResult> {
-        return await this.withSql(async (sql) => await sql.begin(async (tx) => {
+        const result = await this.withSql(async (sql) => await sql.begin(async (tx): Promise<DeleteMachineResult> => {
             const existingRows = await tx.unsafe<Row[]>('SELECT * FROM machines WHERE id = ? AND namespace = ? LIMIT 1', [id, namespace])
             if (!existingRows[0]) return { machineDeleted: false, deletedSessionIds: [], deletedProjectCount: 0, deletedProjectWorkspaceCount: 0 }
             const projectRows = await tx.unsafe<Array<{ id: string }>>(`SELECT DISTINCT p.id FROM projects p INNER JOIN project_workspaces pw ON pw.project_id = p.id WHERE p.namespace = ? AND pw.machine_id = ? AND NOT EXISTS (SELECT 1 FROM project_workspaces other WHERE other.project_id = p.id AND other.machine_id <> ?)`, [namespace, id, id])
@@ -76,8 +76,14 @@ export class MysqlMachineStore implements MachineStorePort {
             if (deletedSessionIds.length > 0) await tx.unsafe(`DELETE FROM sessions WHERE namespace = ? AND id IN (${deletedSessionIds.map(() => '?').join(',')})`, [namespace, ...deletedSessionIds])
             if (projectIds.length > 0) await tx.unsafe(`DELETE FROM projects WHERE namespace = ? AND id IN (${projectIds.map(() => '?').join(',')})`, [namespace, ...projectIds])
             await tx.unsafe('DELETE FROM machines WHERE id = ? AND namespace = ?', [id, namespace])
-            await this.onSessionsDeleted?.(deletedSessionIds); this.onChange?.()
             return { machineDeleted: true, deletedSessionIds, deletedProjectCount: projectIds.length, deletedProjectWorkspaceCount: num(workspaceCount[0]?.count) ?? 0 }
         }))
+        if (result.deletedSessionIds.length > 0) {
+            void Promise.resolve(this.onSessionsDeleted?.(result.deletedSessionIds)).catch((error) => {
+                console.warn('[MysqlMachineStore] Failed to delete conversation messages for removed machine sessions:', error instanceof Error ? error.message : error)
+            })
+        }
+        if (result.machineDeleted) this.onChange?.()
+        return result
     }
 }

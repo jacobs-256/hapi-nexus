@@ -1,6 +1,30 @@
 import { useEffect } from 'react'
 import { isTelegramApp } from '@/hooks/useTelegram'
 
+export function isViewportHeightEditableTarget(element: Element | null): boolean {
+    if (!element) return false
+    if (element instanceof HTMLTextAreaElement) return true
+    if (element instanceof HTMLInputElement) {
+        const type = element.type.toLowerCase()
+        return !['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'].includes(type)
+    }
+    if (element instanceof HTMLElement && element.isContentEditable) return true
+    return false
+}
+
+export function shouldUseVisualViewportHeight(params: {
+    windowHeight: number
+    viewportHeight: number
+    activeElement: Element | null
+}): boolean {
+    // Only apply while an editable control is focused. On iOS Safari/PWA,
+    // `innerHeight - visualViewport.height` can be non-zero in the normal
+    // no-keyboard state (safe-area/browser chrome), which otherwise shortens
+    // the app shell and leaves a blank strip below the footer.
+    return params.windowHeight - params.viewportHeight > 1
+        && isViewportHeightEditableTarget(params.activeElement)
+}
+
 /**
  * Sets a CSS custom property `--app-viewport-height` on <html> that tracks the
  * visual viewport height. This is a fallback for browsers that do not support
@@ -29,8 +53,11 @@ export function useViewportHeight(): void {
             // Only apply when the visual viewport is meaningfully smaller than
             // the window (keyboard is open). A small threshold (1px) avoids
             // false positives from sub-pixel rounding.
-            const diff = window.innerHeight - viewport.height
-            if (diff > 1) {
+            if (shouldUseVisualViewportHeight({
+                windowHeight: window.innerHeight,
+                viewportHeight: viewport.height,
+                activeElement: document.activeElement
+            })) {
                 root.style.setProperty('--app-viewport-height', `${viewport.height}px`)
                 // On iOS PWA (black-translucent status bar + viewport-fit=cover),
                 // the browser scrolls the page upward when the keyboard opens to
