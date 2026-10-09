@@ -8,7 +8,7 @@ import SettingsAccountPage from './account'
 const apiMock = {
     getAccount: vi.fn(),
     regenerateOwnAccessToken: vi.fn(),
-    changeOwnUsername: vi.fn(),
+    changeOwnEmail: vi.fn(),
     changeOwnPassword: vi.fn()
 }
 const clearAuthMock = vi.fn()
@@ -17,9 +17,9 @@ function makeUser(): EnterpriseUser {
     return {
         id: 1,
         platform: 'local',
-        platformUserId: 'default:admin',
+        platformUserId: 'default:admin@hapi.local',
         namespace: 'default',
-        username: 'admin',
+        email: 'admin@hapi.local',
         displayName: 'Admin',
         role: 'admin',
         disabledAt: null,
@@ -52,7 +52,7 @@ describe('SettingsAccountPage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         apiMock.getAccount.mockResolvedValue({ user: makeUser() })
-        apiMock.changeOwnUsername.mockResolvedValue({ user: makeUser() })
+        apiMock.changeOwnEmail.mockResolvedValue({ user: makeUser() })
         apiMock.changeOwnPassword.mockResolvedValue({ user: makeUser() })
     })
 
@@ -69,15 +69,15 @@ describe('SettingsAccountPage', () => {
         expect(clearAuthMock).toHaveBeenCalledTimes(1)
     })
 
-    it('changes the current local username', async () => {
+    it('changes the current local email', async () => {
         renderPage()
 
         expect(await screen.findByDisplayValue('hapi_user_admin')).toBeInTheDocument()
-        const usernameInput = screen.getByLabelText('Username')
-        fireEvent.change(usernameInput, { target: { value: 'root' } })
-        fireEvent.click(screen.getByRole('button', { name: 'Change username' }))
+        const emailInput = screen.getByLabelText('Email')
+        fireEvent.change(emailInput, { target: { value: 'root@hapi.local' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Change email' }))
 
-        await waitFor(() => expect(apiMock.changeOwnUsername).toHaveBeenCalledWith('root'))
+        await waitFor(() => expect(apiMock.changeOwnEmail).toHaveBeenCalledWith('root@hapi.local'))
     })
 
     it('changes the current local password', async () => {

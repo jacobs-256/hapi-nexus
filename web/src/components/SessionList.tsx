@@ -116,7 +116,7 @@ function SessionsEmptyState(props: {
             <div className="max-w-sm text-sm text-[var(--app-hint)]">
                 {t('sessions.empty.hint')}
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
                 <button
                     type="button"
                     onClick={props.onNewSession}
@@ -276,14 +276,14 @@ function isExactWorkspacePath(candidate: string, root: string, caseInsensitive: 
     return normalizeComparablePath(candidate, caseInsensitive) === normalizeComparablePath(root, caseInsensitive)
 }
 
-function getUserLabel(user: Pick<EnterpriseUser, 'id' | 'username' | 'displayName'> | null | undefined): string {
+function getUserLabel(user: Pick<EnterpriseUser, 'id' | 'email' | 'displayName'> | null | undefined): string {
     if (!user) return ''
     const displayName = user.displayName?.trim()
-    const username = user.username?.trim()
-    if (displayName && username && displayName !== username) {
-        return `${displayName} (@${username})`
+    const email = user.email?.trim()
+    if (displayName && email && displayName !== email) {
+        return `${displayName} (${email})`
     }
-    return displayName || (username ? `@${username}` : `User ${user.id}`)
+    return displayName || email || `User ${user.id}`
 }
 
 function getProjectOwnerLabel(project: ProjectWithDetails | null): string {
@@ -1577,7 +1577,7 @@ function SessionItem(props: {
             <button
                 type="button"
                 {...longPressHandlers}
-                className={`session-list-item group/session-row flex w-full flex-col gap-1 rounded-lg py-1.5 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] select-none ${selected ? 'bg-[var(--primary)] text-white shadow-sm' : 'text-[var(--sidebar-foreground)] hover:bg-[var(--secondary)]'}`}
+                className={`session-list-item group/session-row flex w-full flex-col gap-1 rounded-lg py-2 pl-2.5 pr-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] select-none ${selected ? 'bg-[var(--app-subtle-bg)] text-[var(--app-fg)]' : 'text-[var(--session-list-fg)] hover:bg-[var(--secondary)]'}`}
                 style={{ WebkitTouchCallout: 'none' }}
                 aria-current={selected ? 'page' : undefined}
                 aria-describedby={describedBy}
@@ -2401,9 +2401,9 @@ export function SessionList(props: {
 
     return (
         <div className="flex min-h-0 w-full flex-1 flex-col">
-            <div className="session-list-scrollbar-offset mx-auto w-full max-w-content shrink-0">
+            <div className="session-list-scrollbar-offset w-full shrink-0 border-b border-[var(--app-divider)] bg-[var(--session-list-bg)]">
             {showHeaderRow ? (
-                <div className="flex items-center gap-1 px-2 py-1">
+                <div className="flex items-center gap-1 px-2 py-2">
                     {showSearch ? (
                         <SessionListSearch
                             value={searchQuery}
@@ -2477,7 +2477,7 @@ export function SessionList(props: {
                 </div>
             ) : null}
             <div ref={scrollContainerRef} className="app-scroll-y session-list-scrollbar-left min-h-0 flex-1">
-            <div className="mx-auto flex w-full max-w-content flex-col gap-1 pl-1.5 pr-2 pb-2">
+            <div className="flex w-full flex-col gap-3 pl-1.5 pr-2 py-3">
                 {props.sessions.length === 0 && !props.isLoading ? (
                     <SessionsEmptyState
                         onNewSession={props.onNewSession}
@@ -2545,11 +2545,7 @@ export function SessionList(props: {
                     return (
                         <div key={group.key}>
                             <div
-                                className={cn(
-                                    'group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg border border-transparent bg-[var(--sidebar)] py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]',
-                                    groupStatusCounts.pending > 0 && 'border-amber-500/20 bg-amber-500/5',
-                                    groupStatusCounts.pending === 0 && groupStatusCounts.active > 0 && 'border-[var(--app-link)]/15 bg-[var(--app-link)]/[0.04]'
-                                )}
+                                className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg border border-[var(--app-divider)] bg-[var(--app-bg)] py-2 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
                                 onClick={() => {
                                     if (activeGroupEdit) return
                                     toggleGroup(group.key, isCollapsed)
@@ -2691,7 +2687,7 @@ export function SessionList(props: {
                             {/* Sessions */}
                             <div className="collapsible-panel" data-open={!isCollapsed || undefined}>
                                 <div className="collapsible-inner">
-                                <div className="ml-5 flex flex-col gap-0.5 py-1">
+                                <div className="ml-2 flex flex-col gap-1 pt-1.5">
                                     {visibleGroupSessions.map((s) => (
                                         <SessionItem
                                             key={s.id}

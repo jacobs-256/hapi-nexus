@@ -1,5 +1,6 @@
 import type { Store, StoredUser } from '../store'
 import { DEFAULT_NAMESPACE } from '../utils/accessToken'
+import { LocalEmailSchema } from '@hapi/protocol'
 
 export type InitialAdminBootstrapResult =
     | { status: 'exists'; user: StoredUser }
@@ -7,25 +8,25 @@ export type InitialAdminBootstrapResult =
         status: 'created'
         user: StoredUser
         namespace: string
-        username: string
+        email: string
         passwordSource: 'environment' | 'default'
         password: string
     }
-    | { status: 'conflict'; namespace: string; username: string; existingUser: StoredUser }
-    | { status: 'invalid-password'; namespace: string; username: string }
+    | { status: 'conflict'; namespace: string; email: string; existingUser: StoredUser }
+    | { status: 'invalid-password'; namespace: string; email: string }
 
 export type InitialAdminBootstrapOptions = {
     namespace?: string
-    username?: string
+    email?: string
     password?: string
 }
 
-const DEFAULT_ADMIN_USERNAME = 'admin'
+const DEFAULT_ADMIN_EMAIL = 'admin@hapi.local'
 const DEFAULT_ADMIN_PASSWORD = 'admin'
 
-function resolveInitialAdminUsername(value: string | undefined): string {
+function resolveInitialAdminEmail(value: string | undefined): string {
     const trimmed = value?.trim()
-    return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_ADMIN_USERNAME
+    return LocalEmailSchema.parse(trimmed || DEFAULT_ADMIN_EMAIL)
 }
 
 function hasActiveLocalAdmin(user: StoredUser): boolean {
@@ -43,25 +44,25 @@ export async function ensureInitialLocalAdmin(
         return { status: 'exists', user: existingActiveAdmin }
     }
 
-    const username = resolveInitialAdminUsername(
-        options.username ?? process.env.HAPI_ADMIN_USERNAME
+    const email = resolveInitialAdminEmail(
+        options.email ?? process.env.HAPI_ADMIN_EMAIL
     )
-    const existingUser = await store.users.getLocalUserByUsername(namespace, username)
+    const existingUser = await store.users.getLocalUserByEmail(namespace, email)
     if (existingUser) {
-        return { status: 'conflict', namespace, username, existingUser }
+        return { status: 'conflict', namespace, email, existingUser }
     }
 
     const configuredPassword = options.password ?? process.env.HAPI_ADMIN_PASSWORD
     const passwordSource = configuredPassword ? 'environment' : 'default'
     const password = configuredPassword ?? DEFAULT_ADMIN_PASSWORD
     if (!password) {
-        return { status: 'invalid-password', namespace, username }
+        return { status: 'invalid-password', namespace, email }
     }
 
     const passwordHash = await Bun.password.hash(password, { algorithm: 'argon2id' })
     const user = await store.users.createLocalUser({
         namespace,
-        username,
+        email,
         passwordHash,
         displayName: 'Enterprise Admin',
         role: 'admin'
@@ -71,7 +72,7 @@ export async function ensureInitialLocalAdmin(
         status: 'created',
         user,
         namespace,
-        username,
+        email,
         passwordSource,
         password
     }

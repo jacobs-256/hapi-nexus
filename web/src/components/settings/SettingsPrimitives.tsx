@@ -29,25 +29,25 @@ export function CheckIcon(props: { className?: string }) {
 
 export function SettingsPageContent(props: { title?: string; description?: string; actions?: ReactNode; children: ReactNode }) {
     return (
-        <div className="w-full px-3 py-4 sm:px-5 lg:p-0">
+        <div className="settings-page-content mx-auto w-full max-w-[1120px] px-3 py-4 pb-8 sm:px-5 lg:px-0 lg:py-1 xl:max-w-[1180px]">
             {(props.title || props.description || props.actions) ? (
-                <div className="mb-6 flex min-w-0 flex-col gap-3 border-b border-[var(--app-divider)] pb-5 sm:flex-row sm:items-end sm:justify-between">
+                <div className="mb-5 flex min-w-0 flex-col gap-4 border-b border-[var(--app-divider)] pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                         {props.title ? (
-                            <h1 className="truncate text-2xl font-semibold tracking-normal text-[var(--app-fg)]">
+                            <h1 className="truncate text-[1.65rem] font-semibold leading-8 tracking-[-0.02em] text-[var(--app-fg)]">
                                 {props.title}
                             </h1>
                         ) : null}
                         {props.description ? (
-                            <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--app-hint)]">
+                            <p className="mt-1 max-w-2xl text-sm leading-5 text-[var(--app-hint)]">
                                 {props.description}
                             </p>
                         ) : null}
                     </div>
-                    {props.actions ? <div className="shrink-0">{props.actions}</div> : null}
+                    {props.actions ? <div className="flex shrink-0 items-center gap-2">{props.actions}</div> : null}
                 </div>
             ) : null}
-            <div className="space-y-6">
+            <div className="space-y-5">
                 {props.children}
             </div>
         </div>
@@ -56,14 +56,14 @@ export function SettingsPageContent(props: { title?: string; description?: strin
 
 export function SettingsSection(props: { title?: string; description?: string; children: ReactNode }) {
     return (
-        <section className="min-w-0">
+        <section className="settings-section min-w-0">
             {(props.title || props.description) ? (
-                <div className="mb-3 grid gap-1 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6">
-                    {props.title ? <h2 className="text-base font-semibold text-[var(--app-fg)]">{props.title}</h2> : <div />}
-                    {props.description ? <p className="text-sm leading-6 text-[var(--app-hint)]">{props.description}</p> : null}
+                <div className="mb-2.5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
+                    {props.title ? <h2 className="text-[0.95rem] font-semibold leading-5 text-[var(--app-fg)]">{props.title}</h2> : <div />}
+                    {props.description ? <p className="max-w-2xl text-xs leading-5 text-[var(--app-hint)] sm:text-right">{props.description}</p> : null}
                 </div>
             ) : null}
-            <div className="overflow-hidden rounded-lg border border-[var(--app-border)] bg-[var(--app-dialog-bg)] divide-y divide-[var(--app-divider)]">
+            <div className="settings-section-card overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)] shadow-[0_1px_2px_rgb(15_23_42/0.03)] divide-y divide-[var(--app-divider)]">
                 {props.children}
             </div>
         </section>
@@ -72,7 +72,7 @@ export function SettingsSection(props: { title?: string; description?: string; c
 
 export function SettingsRow(props: { label: string; description?: string; trailing?: ReactNode; children?: ReactNode }) {
     return (
-        <div className="grid min-h-14 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,auto)] sm:items-center sm:gap-6">
+        <div className="grid min-h-16 gap-3 px-5 py-3.5 sm:grid-cols-[minmax(0,1fr)_minmax(220px,auto)] sm:items-center sm:gap-8">
             <div className="min-w-0">
                 <div className="text-sm font-semibold text-[var(--app-fg)]">{props.label}</div>
                 {props.description ? <div className="mt-0.5 text-xs leading-snug text-[var(--app-hint)]">{props.description}</div> : null}
@@ -102,11 +102,11 @@ export function SettingsChoiceGroup<T extends string | number>(props: {
     value: T
     options: ReadonlyArray<{ value: T; label: string; description?: string }>
     onChange: (value: T) => void
-    columns?: 2 | 4 | 5
+    columns?: 2 | 3 | 4 | 5
 }) {
-    const columns = props.columns === 5 ? 'grid-cols-5' : props.columns === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'
+    const columns = props.columns === 5 ? 'grid-cols-5' : props.columns === 4 ? 'grid-cols-2 sm:grid-cols-4' : props.columns === 3 ? 'grid-cols-3' : 'grid-cols-2'
     return (
-        <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-6">
+        <div className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:gap-8">
             <SettingsFieldLabel hidden={props.hideLabel} description={props.description}>{props.label}</SettingsFieldLabel>
             <div role="radiogroup" aria-label={props.label} className={`grid ${columns} gap-2 ${props.hideLabel ? 'sm:col-span-2' : ''}`}>
                 {props.options.map((option) => {
@@ -118,7 +118,7 @@ export function SettingsChoiceGroup<T extends string | number>(props: {
                             role="radio"
                             aria-checked={selected}
                             onClick={() => props.onChange(option.value)}
-                            className={`min-w-0 rounded-md border px-2.5 py-2 text-center text-sm transition-colors ${selected
+                            className={`min-w-0 rounded-lg border px-3 py-2.5 text-center text-sm transition-colors ${selected
                                 ? 'border-[var(--app-link)] bg-[var(--app-subtle-bg)] text-[var(--app-link)]'
                                 : 'border-[var(--app-border)] text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]'}`}
                         >
@@ -134,7 +134,7 @@ export function SettingsChoiceGroup<T extends string | number>(props: {
 
 export function SettingsLinkRow(props: { label: string; value?: string; description?: string; onClick: () => void }) {
     return (
-        <button type="button" onClick={props.onClick} className="grid min-h-14 w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--app-subtle-bg)] sm:grid-cols-[minmax(0,1fr)_minmax(180px,auto)_auto] sm:items-center sm:gap-6">
+        <button type="button" onClick={props.onClick} className="grid min-h-16 w-full gap-3 px-5 py-3.5 text-left transition-colors hover:bg-[var(--app-subtle-bg)] sm:grid-cols-[minmax(0,1fr)_minmax(180px,auto)_auto] sm:items-center sm:gap-8">
             <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-[var(--app-fg)]">{props.label}</span>
                 {props.description ? <span className="mt-0.5 block text-xs text-[var(--app-hint)]">{props.description}</span> : null}

@@ -433,7 +433,7 @@ describe('GET/PUT /api/storage', () => {
         const { store, dbPath, directory, settingsFile } = await createRealApp()
         const user = store.users.createLocalUser({
             namespace: 'default',
-            username: 'viewer',
+            email: 'viewer@hapi.local',
             passwordHash: 'hash',
             role: 'user'
         })

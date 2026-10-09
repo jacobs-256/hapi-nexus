@@ -6,7 +6,7 @@ Projects are the sharing boundary inside one HAPI namespace. A namespace still i
 
 ## Concepts
 
-- **User** - A local username/password account created in the hub. Telegram users become separate users after binding.
+- **User** - A local email/password account created in the hub. Telegram users become separate users after binding.
 - **Project** - A named container for sessions, members, invites, and shared workspaces.
 - **Workspace** - A machine + root path attached to a project. Shared users can browse and spawn only inside attached workspaces.
 - **Machine owner** - The user who registered the runner machine. Only the owner can attach that machine's workspace roots to a project.
@@ -30,7 +30,7 @@ Remote users do not need the source code on their own computers. The runner mach
 ## Create and Share a Project
 
 1. Start the hub.
-   - First login defaults to `admin` / `admin`; change it in **Settings -> Account**.
+   - First login defaults to `admin@hapi.local` / `admin`; change it in **Settings -> Account**.
    - Admins can create more users in **Settings -> Users**.
 2. Start a runner on the machine that has the source code, using that runner owner's personal access token:
 

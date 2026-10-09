@@ -159,7 +159,7 @@ You can install HAPI on multiple devices:
 
 - All devices use the same server
 - Sessions sync across devices
-- Sign in on each device with your username and password
+- Sign in on each device with your email and password
 - Your personal access token is available in Account settings for companion/CLI-style flows
 
 ## Troubleshooting

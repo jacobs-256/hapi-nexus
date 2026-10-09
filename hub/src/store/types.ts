@@ -56,8 +56,8 @@ export type StoredUser = {
     platform: string
     platformUserId: string
     namespace: string
-    username: string | null
-    usernameNormalized: string | null
+    email: string | null
+    emailNormalized: string | null
     displayName: string | null
     passwordHash: string | null
     accessToken: string | null

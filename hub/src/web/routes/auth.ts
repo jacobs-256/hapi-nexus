@@ -30,6 +30,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
 
         let userId: number
         let username: string | undefined
+        let email: string | undefined
         let displayName: string | null | undefined
         let firstName: string | undefined
         let lastName: string | undefined
@@ -45,7 +46,6 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
             const parsedToken = parseAccessToken(rawAccessToken)
             if (parsedToken && constantTimeEquals(parsedToken.baseToken, configuration.cliApiToken)) {
                 userId = await getOrCreateOwnerId()
-                username = 'admin'
                 displayName = 'Hub Owner'
                 firstName = 'Web User'
                 platform = 'owner'
@@ -62,25 +62,28 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
                     return c.json({ error: 'Invalid access token' }, 401)
                 }
                 userId = storedUser.id
-                username = storedUser.username ?? undefined
+                email = storedUser.email ?? undefined
                 displayName = storedUser.displayName
                 platform = storedUser.platform
                 role = storedUser.role
                 userAccessToken = storedUser.accessToken
                 namespace = storedUser.namespace
             }
-        } else if ('username' in parsed.data) {
+        } else if ('email' in parsed.data || 'username' in parsed.data) {
             namespace = parsed.data.namespace?.trim() || DEFAULT_NAMESPACE
-            const storedUser = await store.users.getLocalUserByUsername(namespace, parsed.data.username)
+            const loginEmail = 'email' in parsed.data
+                ? parsed.data.email
+                : `${parsed.data.username}@hapi.local`
+            const storedUser = await store.users.getLocalUserByEmail(namespace, loginEmail)
             if (!storedUser || storedUser.disabledAt !== null) {
-                return c.json({ error: 'Invalid username or password' }, 401)
+                return c.json({ error: 'Invalid email or password' }, 401)
             }
             const passwordOk = await verifyPassword(parsed.data.password, storedUser.passwordHash)
             if (!passwordOk) {
-                return c.json({ error: 'Invalid username or password' }, 401)
+                return c.json({ error: 'Invalid email or password' }, 401)
             }
             userId = storedUser.id
-            username = storedUser.username ?? undefined
+            email = storedUser.email ?? undefined
             displayName = storedUser.displayName
             platform = storedUser.platform
             role = storedUser.role
@@ -107,7 +110,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
             }
 
             userId = storedUser.id
-            username = result.user.username ?? storedUser.username ?? undefined
+            username = result.user.username
             displayName = storedUser.displayName
             firstName = result.user.first_name
             lastName = result.user.last_name
@@ -127,6 +130,7 @@ export function createAuthRoutes(jwtSecret: Uint8Array, store: Store): Hono<WebA
             user: {
                 id: userId,
                 username,
+                email,
                 displayName,
                 firstName,
                 lastName,

@@ -182,7 +182,7 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
         console.log('  INITIAL ADMIN CREATED')
         console.log('')
         console.log(`  Namespace: ${initialAdmin.namespace}`)
-        console.log(`  Username:  ${initialAdmin.username}`)
+        console.log(`  Email:  ${initialAdmin.email}`)
         if (initialAdmin.passwordSource === 'environment') {
             console.log('  Password:  loaded from HAPI_ADMIN_PASSWORD')
         } else {
@@ -193,11 +193,11 @@ export async function startHub(options: StartHubOptions = {}): Promise<HubInstan
         console.log('')
     } else if (initialAdmin.status === 'conflict') {
         console.warn(
-            `[Hub] Initial admin not created: local user "${initialAdmin.username}" already exists in namespace "${initialAdmin.namespace}" but is not an active admin.`
+            `[Hub] Initial admin not created: local user "${initialAdmin.email}" already exists in namespace "${initialAdmin.namespace}" but is not an active admin.`
         )
     } else if (initialAdmin.status === 'invalid-password') {
         console.warn(
-            `[Hub] Initial admin not created: HAPI_ADMIN_PASSWORD for "${initialAdmin.username}" must not be empty.`
+            `[Hub] Initial admin not created: HAPI_ADMIN_PASSWORD for "${initialAdmin.email}" must not be empty.`
         )
     }
     const jwtSecret = await getOrCreateJwtSecret()

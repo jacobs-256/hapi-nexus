@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { migrateLegacySchemaIfNeeded } from './legacy'
+import { migrateFromV20ToV21 } from './v20ToV21'
 import {
     migrateFromV1ToV2,
     migrateFromV2ToV3,
@@ -47,5 +48,6 @@ export function buildStepMigrations(db: Database, legacy: boolean): Record<numbe
         17: () => migrateFromV17ToV18(db),
         18: () => migrateFromV18ToV19(db),
         19: () => migrateFromV19ToV20(db),
+        20: () => migrateFromV20ToV21(db),
     }
 }

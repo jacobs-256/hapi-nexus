@@ -10,28 +10,16 @@ import SettingsVoicePage from './voice'
 import SettingsVoiceVoicesPage from './voice-voices'
 import SettingsVoiceAdvancedPage from './voice-advanced'
 
-const { context, navigate, setAppearance, setColorTheme, setFontScale, setTerminalFontSize, setComposerEnterBehavior, setVoice, getGlobalComposerToolbarSettings, updateGlobalComposerToolbarSettings } = vi.hoisted(() => ({
+const { context, navigate, setAppearance, setFontScale, setTerminalFontSize, setComposerEnterBehavior, setVoice, getGlobalComposerToolbarSettings, updateGlobalComposerToolbarSettings } = vi.hoisted(() => ({
     context: { token: '', user: { role: 'admin' as 'admin' | 'user' } },
     navigate: vi.fn(),
     setAppearance: vi.fn(),
-    setColorTheme: vi.fn(),
     setFontScale: vi.fn(),
     setTerminalFontSize: vi.fn(),
     setComposerEnterBehavior: vi.fn(),
     setVoice: vi.fn(),
     getGlobalComposerToolbarSettings: vi.fn(),
     updateGlobalComposerToolbarSettings: vi.fn(),
-}))
-
-vi.mock('@/hooks/useColorTheme', () => ({
-    useColorTheme: () => ({ colorTheme: 'default', setColorTheme }),
-    getColorThemeOptions: () => [
-        { value: 'default', labelKey: 'settings.display.colorTheme.default' },
-        { value: 'nord', labelKey: 'settings.display.colorTheme.nord' },
-    ],
-    getColorThemePreview: (theme: string) => theme === 'nord'
-        ? { light: '#eceff4', dark: '#2e3440', accent: '#88c0d0' }
-        : { light: '#ffffff', dark: '#1c1c1e', accent: '#111827' },
 }))
 
 vi.mock('@tanstack/react-router', () => ({
@@ -44,9 +32,8 @@ vi.mock('@/hooks/useTheme', () => ({
     useAppearance: () => ({ appearance: 'system', setAppearance }),
     getAppearanceOptions: () => [
         { value: 'system', labelKey: 'settings.display.appearance.system' },
-        { value: 'dark', labelKey: 'settings.display.appearance.dark' },
-        { value: 'oled', labelKey: 'settings.display.appearance.oled' },
         { value: 'light', labelKey: 'settings.display.appearance.light' },
+        { value: 'dark', labelKey: 'settings.display.appearance.dark' },
     ],
 }))
 
@@ -220,9 +207,10 @@ describe('responsive settings pages', () => {
 
     it('renders compact display controls without dropdown popovers', () => {
         renderPage(<SettingsDisplayPage />)
-        expect(screen.getByRole('radio', { name: 'OLED Black' })).toBeInTheDocument()
-        fireEvent.click(screen.getByRole('radio', { name: 'Nord' }))
-        expect(setColorTheme).toHaveBeenCalledWith('nord')
+        expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument()
+        expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument()
+        expect(screen.queryByRole('radio', { name: 'Xthings Survey' })).not.toBeInTheDocument()
+        expect(screen.getAllByRole('radio')).toHaveLength(3 + 5 + 5 + 2)
         expect(screen.getByRole('radio', { name: '120%' })).toBeInTheDocument()
         expect(screen.getByRole('spinbutton', { name: 'Sessions Before Folding' })).toHaveValue(8)
         expect(screen.queryByRole('listbox')).not.toBeInTheDocument()

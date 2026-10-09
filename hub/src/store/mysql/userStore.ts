@@ -1,3 +1,4 @@
+import { LocalEmailSchema } from '@hapi/protocol'
 import type { StorageConfig } from '@hapi/protocol/storage'
 import type { UserStorePort } from '../ports/coreStores'
 import type { StoredUser } from '../types'
@@ -5,9 +6,9 @@ import {
     generateUserAccessToken,
     hashUserAccessToken,
     localPlatformUserId,
-    normalizeLocalUsername,
+    normalizeLocalEmail,
     type CreateLocalUserInput,
-    type UpdateLocalUsernameResult,
+    type UpdateLocalEmailResult,
     type UpdateUserInput
 } from '../users'
 import { withMysqlClient } from './client'
@@ -47,8 +48,9 @@ function toStoredUser(row: MysqlUserRow): StoredUser {
         platform: row.platform,
         platformUserId: row.platform_user_id,
         namespace: row.namespace,
-        username: row.username,
-        usernameNormalized: row.username_normalized,
+        // Persist emails in the historical SQL columns to keep snapshots compatible.
+        email: row.username,
+        emailNormalized: row.username_normalized,
         displayName: row.display_name,
         passwordHash: row.password_hash,
         accessToken: row.access_token,
@@ -84,8 +86,8 @@ export class MysqlUserStore implements UserStorePort {
         })
     }
 
-    async getLocalUserByUsername(namespace: string, username: string): Promise<StoredUser | null> {
-        const normalized = normalizeLocalUsername(username)
+    async getLocalUserByEmail(namespace: string, email: string): Promise<StoredUser | null> {
+        const normalized = normalizeLocalEmail(email)
         return await this.withSql(async (sql) => {
             const rows = await sql.unsafe<MysqlUserRow[]>(`
                 SELECT * FROM users
@@ -145,9 +147,8 @@ export class MysqlUserStore implements UserStorePort {
 
     async createLocalUser(input: CreateLocalUserInput): Promise<StoredUser> {
         const now = Date.now()
-        const username = input.username.trim()
-        const usernameNormalized = normalizeLocalUsername(username)
-        if (!usernameNormalized) throw new Error('Username is required')
+        const email = LocalEmailSchema.parse(input.email)
+        const emailNormalized = normalizeLocalEmail(email)
         const accessToken = input.accessToken ?? generateUserAccessToken()
         const accessTokenHash = hashUserAccessToken(accessToken)
         return await this.withSql(async (sql) => {
@@ -157,10 +158,10 @@ export class MysqlUserStore implements UserStorePort {
                     password_hash, access_token, access_token_hash, role, disabled_at, created_at, updated_at
                 ) VALUES ('local', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
             `, [
-                localPlatformUserId(input.namespace, username),
+                localPlatformUserId(input.namespace, email),
                 input.namespace,
-                username,
-                usernameNormalized,
+                email,
+                emailNormalized,
                 input.displayName ?? null,
                 input.passwordHash,
                 accessToken,
@@ -172,7 +173,7 @@ export class MysqlUserStore implements UserStorePort {
             this.onChange?.()
             const rows = await sql.unsafe<MysqlUserRow[]>(`
                 SELECT * FROM users WHERE platform = 'local' AND namespace = ? AND username_normalized = ? LIMIT 1
-            `, [input.namespace, usernameNormalized])
+            `, [input.namespace, emailNormalized])
             if (!rows[0]) throw new Error('Failed to create local user')
             return toStoredUser(rows[0])
         })
@@ -214,23 +215,22 @@ export class MysqlUserStore implements UserStorePort {
         })
     }
 
-    async updateLocalUsername(userId: number, namespace: string, usernameInput: string): Promise<UpdateLocalUsernameResult> {
-        const username = usernameInput.trim()
-        const usernameNormalized = normalizeLocalUsername(username)
-        if (!usernameNormalized) throw new Error('Username is required')
+    async updateLocalEmail(userId: number, namespace: string, emailInput: string): Promise<UpdateLocalEmailResult> {
+        const email = LocalEmailSchema.parse(emailInput)
+        const emailNormalized = normalizeLocalEmail(email)
         return await this.withSql(async (sql) => {
             const currentRows = await sql.unsafe<MysqlUserRow[]>('SELECT * FROM users WHERE id = ? AND namespace = ? LIMIT 1', [userId, namespace])
             const current = currentRows[0] ? toStoredUser(currentRows[0]) : null
             if (!current || current.platform !== 'local') return { status: 'not_found' }
             const duplicateRows = await sql.unsafe<MysqlUserRow[]>(`
                 SELECT * FROM users WHERE platform = 'local' AND namespace = ? AND username_normalized = ? LIMIT 1
-            `, [namespace, usernameNormalized])
+            `, [namespace, emailNormalized])
             const duplicate = duplicateRows[0] ? toStoredUser(duplicateRows[0]) : null
             if (duplicate && duplicate.id !== userId) return { status: 'duplicate', existingUser: duplicate }
             await sql.unsafe(`
                 UPDATE users SET platform_user_id = ?, username = ?, username_normalized = ?, updated_at = ?
                 WHERE id = ? AND namespace = ? AND platform = 'local'
-            `, [localPlatformUserId(namespace, username), username, usernameNormalized, Date.now(), userId, namespace])
+            `, [localPlatformUserId(namespace, email), email, emailNormalized, Date.now(), userId, namespace])
             this.onChange?.()
             const rows = await sql.unsafe<MysqlUserRow[]>('SELECT * FROM users WHERE id = ? AND namespace = ? LIMIT 1', [userId, namespace])
             return rows[0] ? { status: 'updated', user: toStoredUser(rows[0]) } : { status: 'not_found' }

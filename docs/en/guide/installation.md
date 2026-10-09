@@ -72,7 +72,7 @@ HAPI Nexus has three components:
 
 **Remote access**: `hapi-server hub --relay` -> `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects` -> control from Web/PWA
 
-Browser/PWA users sign in with local username/password accounts. The first-start administrator is `admin` / `admin`; change it after first login or set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first hub start.
+Browser/PWA users sign in with local email/password accounts. The first-start administrator is `admin@hapi.local` / `admin`; change it after first login or set `HAPI_ADMIN_EMAIL` and `HAPI_ADMIN_PASSWORD` before the first hub start.
 
 ## Install the client on macOS
 
@@ -218,9 +218,9 @@ On first run, HAPI Nexus:
 1. Creates `~/.hapi/`
 2. Generates a secure `CLI_API_TOKEN`
 3. Prints the token and saves it to `~/.hapi/settings.json`
-4. Creates a local Web administrator with username `admin` and password `admin`
+4. Creates a local Web administrator with email `admin@hapi.local` and password `admin`
 
-Use `admin` / `admin` only for first sign-in, then change it in **Settings -> Account**.
+Use `admin@hapi.local` / `admin` only for first sign-in, then change it in **Settings -> Account**.
 
 <details>
 <summary>Config files</summary>
@@ -262,7 +262,7 @@ To roll back after a failed upgrade, stop `hapi-server`, restore the previous `h
 | Variable | Default | settings.json | Description |
 |----------|---------|---------------|-------------|
 | `CLI_API_TOKEN` | Auto-generated | `cliApiToken` | Shared secret for authentication |
-| `HAPI_ADMIN_USERNAME` | `admin` | - | Username for the first local Web administrator |
+| `HAPI_ADMIN_EMAIL` | `admin@hapi.local` | - | Email for the first local Web administrator |
 | `HAPI_ADMIN_PASSWORD` | `admin` | - | Password for the first local Web administrator |
 | `HAPI_API_URL` | `http://localhost:3006` | `apiUrl` | Hub URL for CLI connections |
 | `HAPI_EXTRA_HEADERS_JSON` | - | `extraHeaders` | JSON object of extra outbound headers for CLI → hub HTTP/WebSocket requests |
@@ -436,7 +436,7 @@ hapi-server hub
 
 Then message your bot with `/start`, open the app, and enter your `CLI_API_TOKEN`.
 
-Normal browser/PWA login does not use `CLI_API_TOKEN`; use the local username/password account instead.
+Normal browser/PWA login does not use `CLI_API_TOKEN`; use the local email/password account instead.
 
 **Troubleshooting:**
 
@@ -699,7 +699,7 @@ See [Voice Assistant](./voice-assistant.md) for usage details.
 
 ### Security notes
 
-- Change the default `admin` / `admin` credentials immediately after first sign-in
+- Change the default `admin@hapi.local` / `admin` credentials immediately after first sign-in
 - Keep CLI and personal access tokens secret and rotate if needed
 - Use HTTPS for public access
 - Restrict CORS origins in production

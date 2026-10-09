@@ -6,7 +6,7 @@
 
 ## 概念
 
-- **用户** - 在 hub 中创建的本地用户名/密码账号。Telegram 用户绑定后会成为独立用户。
+- **用户** - 在 hub 中创建的本地邮箱/密码账号。Telegram 用户绑定后会成为独立用户。
 - **项目** - 会话、成员、邀请和共享 workspace 的命名容器。
 - **Workspace** - 挂载到项目的机器 + 根路径。共享用户只能浏览和启动挂载 workspace 内的内容。
 - **机器所有者** - 注册 runner 机器的用户。只有所有者可以把该机器的 workspace roots 挂载到项目。
@@ -30,7 +30,7 @@ hapi runner start \
 ## 创建并共享项目
 
 1. 启动 hub。
-   - 首次登录默认是 `admin` / `admin`；请在 **Settings -> Account** 中修改。
+   - 首次登录默认是 `admin@hapi.local` / `admin`；请在 **Settings -> Account** 中修改。
    - 管理员可以在 **Settings -> Users** 创建更多用户。
 2. 在有源码的机器上启动 runner，使用该 runner 所属用户的个人 access token：
 

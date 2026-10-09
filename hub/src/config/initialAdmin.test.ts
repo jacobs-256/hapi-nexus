@@ -4,21 +4,21 @@ import { Store } from '../store'
 import { ensureInitialLocalAdmin } from './initialAdmin'
 
 describe('initial local admin bootstrap', () => {
-    let originalAdminUsername: string | undefined
+    let originalAdminEmail: string | undefined
     let originalAdminPassword: string | undefined
 
     beforeEach(() => {
-        originalAdminUsername = process.env.HAPI_ADMIN_USERNAME
+        originalAdminEmail = process.env.HAPI_ADMIN_EMAIL
         originalAdminPassword = process.env.HAPI_ADMIN_PASSWORD
-        delete process.env.HAPI_ADMIN_USERNAME
+        delete process.env.HAPI_ADMIN_EMAIL
         delete process.env.HAPI_ADMIN_PASSWORD
     })
 
     afterEach(() => {
-        if (originalAdminUsername === undefined) {
-            delete process.env.HAPI_ADMIN_USERNAME
+        if (originalAdminEmail === undefined) {
+            delete process.env.HAPI_ADMIN_EMAIL
         } else {
-            process.env.HAPI_ADMIN_USERNAME = originalAdminUsername
+            process.env.HAPI_ADMIN_EMAIL = originalAdminEmail
         }
         if (originalAdminPassword === undefined) {
             delete process.env.HAPI_ADMIN_PASSWORD
@@ -27,14 +27,14 @@ describe('initial local admin bootstrap', () => {
         }
     })
 
-    it('creates admin/admin when no local admin exists', async () => {
+    it('creates admin@hapi.local/admin when no local admin exists', async () => {
         const store = new Store(':memory:')
         try {
             const result = await ensureInitialLocalAdmin(store)
 
             expect(result.status).toBe('created')
             if (result.status !== 'created') return
-            expect(result.username).toBe('admin')
+            expect(result.email).toBe('admin@hapi.local')
             expect(result.passwordSource).toBe('default')
             expect(result.password).toBe('admin')
             expect(result.user.role).toBe('admin')
@@ -48,13 +48,13 @@ describe('initial local admin bootstrap', () => {
         const store = new Store(':memory:')
         try {
             const result = await ensureInitialLocalAdmin(store, {
-                username: 'root',
+                email: 'root@hapi.local',
                 password: 'configured-secret'
             })
 
             expect(result.status).toBe('created')
             if (result.status !== 'created') return
-            expect(result.username).toBe('root')
+            expect(result.email).toBe('root@hapi.local')
             expect(result.passwordSource).toBe('environment')
             expect(result.password).toBe('configured-secret')
             expect(await Bun.password.verify('configured-secret', result.user.passwordHash ?? '')).toBe(true)
@@ -68,7 +68,7 @@ describe('initial local admin bootstrap', () => {
         try {
             const existing = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'ops',
+                email: 'ops@hapi.local',
                 passwordHash: 'hash',
                 role: 'admin'
             })

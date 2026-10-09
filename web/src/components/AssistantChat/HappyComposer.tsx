@@ -104,6 +104,7 @@ export function ModelEffortSettingsSection(props: {
             <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
                 {agentFlavor === 'cursor' ? t('misc.variant') : t('misc.effort')}
             </div>
+            <div className="flex flex-wrap gap-1 px-2">
             {options.map((option) => {
                 const isSelected = selectedValue === option.value
                 return (
@@ -111,7 +112,7 @@ export function ModelEffortSettingsSection(props: {
                         key={option.value}
                         type="button"
                         disabled={controlsDisabled}
-                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                        className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                             controlsDisabled
                                 ? 'cursor-not-allowed opacity-50'
                                 : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -136,6 +137,75 @@ export function ModelEffortSettingsSection(props: {
                     </button>
                 )
             })}
+            </div>
+        </div>
+    )
+}
+
+export function ReasoningEffortSlider(props: {
+    options: Array<{ value: string | null; label: string }>
+    selectedValue: string | null | undefined
+    controlsDisabled: boolean
+    onChange: (value: string | null) => void
+}) {
+    const { options, selectedValue, controlsDisabled, onChange } = props
+    // Keep the default option as the first stop so every existing value remains
+    // reachable from the slider.
+    const visualOptions = options
+    const selectedIndex = Math.max(
+        0,
+        visualOptions.findIndex((option) => option.value === (selectedValue ?? null))
+    )
+    const selectedOption = options.find((option) => option.value === (selectedValue ?? null))
+        ?? options.find((option) => option.value === null)
+        ?? visualOptions[selectedIndex]
+    const progress = visualOptions.length > 1
+        ? (selectedIndex / (visualOptions.length - 1)) * 100
+        : 0
+    if (!selectedOption || visualOptions.length === 0) return null
+
+    return (
+        <div className="px-3 pb-3 pt-2">
+            <div className="relative flex flex-col items-center">
+                <div className="flex w-full items-start justify-center">
+                    <div className="flex flex-col items-center leading-tight">
+                        <span className="text-sm font-semibold text-[var(--app-link)]">
+                            {selectedOption.label}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="relative mt-3 h-6 w-full">
+                    <input
+                        type="range"
+                        min={0}
+                        max={Math.max(0, visualOptions.length - 1)}
+                        step={1}
+                        value={selectedIndex}
+                        disabled={controlsDisabled}
+                        aria-label="Reasoning effort"
+                        aria-valuetext={selectedOption.label}
+                        onChange={(event) => {
+                            const option = visualOptions[Number(event.target.value)]
+                            onChange(option?.value ?? null)
+                        }}
+                        className="hapi-reasoning-slider relative z-10 block h-6 w-full"
+                        style={{
+                            background: `linear-gradient(to right, var(--app-link) ${progress}%, var(--app-secondary-bg) ${progress}%)`
+                        }}
+                    />
+                    <div className="pointer-events-none absolute inset-x-3 top-1/2 z-20 h-0">
+                        {visualOptions.map((option, index) => (
+                            <span
+                                key={option.value ?? `default-${index}`}
+                                aria-hidden="true"
+                                className="absolute top-0 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/50"
+                                style={{ left: `${visualOptions.length > 1 ? (index / (visualOptions.length - 1)) * 100 : 0}%` }}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
         </div>
     )
 }
@@ -328,6 +398,7 @@ export function HappyComposer(props: {
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const richInputRef = useRef<RichComposerInputHandle>(null)
+    const settingsOverlayRef = useRef<HTMLDivElement>(null)
     // Kill-switch only (?richMentions=0 / localStorage=0 / VITE=false). Mount-time
     // read — hard reload required, so no per-keystroke localStorage/URL parse.
     const [richMentionsEnabled] = useState(() => isRichComposerMentionsEnabled())
@@ -791,21 +862,18 @@ export function HappyComposer(props: {
     const handlePermissionChange = useCallback((mode: PermissionMode) => {
         if (!onPermissionModeChange || controlsDisabled) return
         onPermissionModeChange(mode)
-        setShowSettings(false)
         haptic('light')
     }, [onPermissionModeChange, controlsDisabled, haptic])
 
     const handleCollaborationChange = useCallback((mode: CodexCollaborationMode) => {
         if (!onCollaborationModeChange || controlsDisabled) return
         onCollaborationModeChange(mode)
-        setShowSettings(false)
         haptic('light')
     }, [onCollaborationModeChange, controlsDisabled, haptic])
 
     const handleModelChange = useCallback((nextModel: { provider: string; modelId: string } | string | null) => {
         if (!onModelChange || controlsDisabled) return
         onModelChange(nextModel)
-        setShowSettings(false)
         haptic('light')
     }, [onModelChange, controlsDisabled, haptic])
 
@@ -813,28 +881,24 @@ export function HappyComposer(props: {
         const handler = onModelEffortChange ?? onModelChange
         if (!handler || controlsDisabled) return
         handler(nextWireId)
-        setShowSettings(false)
         haptic('light')
     }, [onModelEffortChange, onModelChange, controlsDisabled, haptic])
 
     const handleModelReasoningEffortChange = useCallback((nextModelReasoningEffort: string | null) => {
         if (!onModelReasoningEffortChange || controlsDisabled) return
         onModelReasoningEffortChange(nextModelReasoningEffort)
-        setShowSettings(false)
         haptic('light')
     }, [onModelReasoningEffortChange, controlsDisabled, haptic])
 
     const handleEffortChange = useCallback((nextEffort: string | null) => {
         if (!onEffortChange || controlsDisabled) return
         onEffortChange(nextEffort)
-        setShowSettings(false)
         haptic('light')
     }, [onEffortChange, controlsDisabled, haptic])
 
     const handleServiceTierChange = useCallback((nextServiceTier: string | null) => {
         if (!onServiceTierChange || controlsDisabled) return
         onServiceTierChange(nextServiceTier)
-        setShowSettings(false)
         haptic('light')
     }, [onServiceTierChange, controlsDisabled, haptic])
 
@@ -881,6 +945,21 @@ export function HappyComposer(props: {
             setShowPiThinkingPanel(false)
         }
     }, [settingsToolEnabled, piModelToolEnabled, piThinkingToolEnabled])
+
+    useEffect(() => {
+        if (!showSettings) return
+
+        const handleOutsidePointerDown = (event: PointerEvent) => {
+            const target = event.target
+            if (!(target instanceof Node)) return
+            if (settingsOverlayRef.current?.contains(target)) return
+            if (target instanceof Element && target.closest('.settings-button')) return
+            setShowSettings(false)
+        }
+
+        document.addEventListener('pointerdown', handleOutsidePointerDown)
+        return () => document.removeEventListener('pointerdown', handleOutsidePointerDown)
+    }, [showSettings])
 
     const handleSend = useCallback(() => {
         flushAndSend()
@@ -981,19 +1060,23 @@ export function HappyComposer(props: {
         // Non-Pi flavors: original unified gear menu
         if (showSettings && (showCollaborationSettings || showPermissionSettings || showModelSettings || showModelEffortSettings || showModelReasoningEffortSettings || showEffortSettings || showFastModeSettings)) {
             return (
-                <div className="absolute bottom-[100%] mb-2 w-full">
-                    <FloatingOverlay maxHeight={320}>
+                <div
+                    ref={settingsOverlayRef}
+                    className="absolute bottom-[100%] mb-2 w-full sm:w-[min(34rem,calc(100vw-2rem))]"
+                >
+                    <FloatingOverlay maxHeight={520}>
                         {showCollaborationSettings ? (
                             <div className="py-2">
                                 <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
                                     {t('misc.collaborationMode')}
                                 </div>
+                                <div className="flex flex-wrap gap-1 px-2">
                                 {collaborationModeOptions.map((option) => (
                                     <button
                                         key={option.mode}
                                         type="button"
                                         disabled={controlsDisabled}
-                                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                        className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                             controlsDisabled
                                                 ? 'cursor-not-allowed opacity-50'
                                                 : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1017,6 +1100,7 @@ export function HappyComposer(props: {
                                         </span>
                                     </button>
                                 ))}
+                                </div>
                             </div>
                         ) : null}
 
@@ -1029,12 +1113,13 @@ export function HappyComposer(props: {
                                 <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
                                     {t('misc.permissionMode')}
                                 </div>
+                                <div className="flex flex-wrap gap-1 px-2">
                                 {permissionModeOptions.map((option) => (
                                     <button
                                         key={option.mode}
                                         type="button"
                                         disabled={controlsDisabled}
-                                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                        className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                             controlsDisabled
                                                 ? 'cursor-not-allowed opacity-50'
                                                 : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1058,6 +1143,7 @@ export function HappyComposer(props: {
                                         </span>
                                     </button>
                                 ))}
+                                </div>
                             </div>
                         ) : null}
 
@@ -1072,16 +1158,17 @@ export function HappyComposer(props: {
                                 </div>
                                 {piModelGroups ? (
                                     piModelGroups.map((group) => (
-                                        <div key={group.provider}>
+                                        <div key={group.provider} className="w-full">
                                             <div className="px-3 pt-2 pb-0.5 text-xs font-medium text-[var(--app-hint)]">
                                                 {group.label}
                                             </div>
+                                            <div className="flex flex-wrap gap-1 px-2">
                                             {group.models.map((piModel) => (
                                                 <button
                                                     key={piModel.modelId}
                                                     type="button"
                                                     disabled={controlsDisabled}
-                                                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                                    className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                                         controlsDisabled
                                                             ? 'cursor-not-allowed opacity-50'
                                                             : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1105,10 +1192,12 @@ export function HappyComposer(props: {
                                                     </span>
                                                 </button>
                                             ))}
+                                            </div>
                                         </div>
                                     ))
                                 ) : (
-                                    modelOptions.map((option) => {
+                                    <div className="flex flex-wrap gap-1 px-2">
+                                    {modelOptions.map((option) => {
                                         const isSelected = selectedModelBase !== undefined
                                             ? selectedModelBase === option.value
                                             : model === option.value
@@ -1117,7 +1206,7 @@ export function HappyComposer(props: {
                                             key={option.value ?? 'auto'}
                                             type="button"
                                             disabled={controlsDisabled}
-                                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                            className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                                 controlsDisabled
                                                     ? 'cursor-not-allowed opacity-50'
                                                     : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1142,6 +1231,8 @@ export function HappyComposer(props: {
                                         </button>
                                         )
                                     })
+                                    }
+                                    </div>
                                 )}
                             </div>
                         ) : null}
@@ -1169,40 +1260,12 @@ export function HappyComposer(props: {
                         ) : null}
 
                         {showModelReasoningEffortSettings ? (
-                            <div className="py-2">
-                                <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
-                                    {t('misc.reasoningEffort')}
-                                </div>
-                                {codexReasoningEffortOptions.map((option) => (
-                                    <button
-                                        key={option.value ?? 'default'}
-                                        type="button"
-                                        disabled={controlsDisabled}
-                                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                                            controlsDisabled
-                                                ? 'cursor-not-allowed opacity-50'
-                                                : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
-                                        }`}
-                                        onClick={() => handleModelReasoningEffortChange(option.value)}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                    >
-                                        <div
-                                            className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                                                modelReasoningEffort === option.value
-                                                    ? 'border-[var(--app-link)]'
-                                                    : 'border-[var(--app-hint)]'
-                                            }`}
-                                        >
-                                            {modelReasoningEffort === option.value && (
-                                                <div className="h-2 w-2 rounded-full bg-[var(--app-link)]" />
-                                            )}
-                                        </div>
-                                        <span className={modelReasoningEffort === option.value ? 'text-[var(--app-link)]' : ''}>
-                                            {option.label}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
+                            <ReasoningEffortSlider
+                                options={codexReasoningEffortOptions}
+                                selectedValue={modelReasoningEffort}
+                                controlsDisabled={controlsDisabled}
+                                onChange={handleModelReasoningEffortChange}
+                            />
                         ) : null}
 
                         {showModelReasoningEffortSettings && showEffortSettings ? (
@@ -1214,12 +1277,13 @@ export function HappyComposer(props: {
                                 <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
                                     {t('misc.effort')}
                                 </div>
+                                <div className="flex flex-wrap gap-1 px-2">
                                 {claudeEffortOptions.map((option) => (
                                     <button
                                         key={option.value ?? 'auto'}
                                         type="button"
                                         disabled={controlsDisabled}
-                                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                        className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                             controlsDisabled
                                                 ? 'cursor-not-allowed opacity-50'
                                                 : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1243,6 +1307,7 @@ export function HappyComposer(props: {
                                         </span>
                                     </button>
                                 ))}
+                                </div>
                             </div>
                         ) : null}
 
@@ -1255,12 +1320,13 @@ export function HappyComposer(props: {
                                 <div className="px-3 pb-1 text-xs font-semibold text-[var(--app-hint)]">
                                     {t('misc.fastMode')}
                                 </div>
+                                <div className="flex flex-wrap gap-1 px-2">
                                 {fastModeOptions.map((option) => (
                                     <button
                                         key={option.value ?? 'standard'}
                                         type="button"
                                         disabled={controlsDisabled}
-                                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                                        className={`flex min-w-0 max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors ${
                                             controlsDisabled
                                                 ? 'cursor-not-allowed opacity-50'
                                                 : 'cursor-pointer hover:bg-[var(--app-secondary-bg)]'
@@ -1284,6 +1350,7 @@ export function HappyComposer(props: {
                                         </span>
                                     </button>
                                 ))}
+                                </div>
                             </div>
                         ) : null}
                     </FloatingOverlay>

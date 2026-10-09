@@ -261,7 +261,7 @@ export function LoginPrompt(props: LoginPromptProps) {
     const { setAppearance } = useAppearance()
     const isBindMode = props.mode === 'bind'
     const isDark = colorScheme === 'dark' || colorScheme === 'oled'
-    const [username, setUsername] = useState('')
+    const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [accessToken, setAccessToken] = useState('')
     const [showSecret, setShowSecret] = useState(false)
@@ -297,14 +297,14 @@ export function LoginPrompt(props: LoginPromptProps) {
                 }
                 await props.onBind(trimmedToken)
             } else {
-                const trimmedUsername = username.trim()
-                if (!trimmedUsername || !password) {
+                const trimmedEmail = email.trim()
+                if (!trimmedEmail || !password) {
                     setError(t('login.error.enterCredentials'))
                     return
                 }
                 const client = new ApiClient('', { baseUrl: props.baseUrl })
                 const auth = await client.authenticate({
-                    username: trimmedUsername,
+                    email: trimmedEmail,
                     password
                 })
                 if (!props.onLogin) {
@@ -319,7 +319,7 @@ export function LoginPrompt(props: LoginPromptProps) {
         } finally {
             setIsLoading(false)
         }
-    }, [accessToken, password, props, t, isBindMode, remember, username])
+    }, [accessToken, password, props, t, isBindMode, remember, email])
 
     useEffect(() => {
         if (isServerDialogOpen) {
@@ -422,18 +422,21 @@ export function LoginPrompt(props: LoginPromptProps) {
                         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                             {!isBindMode ? (
                                 <div>
-                                    <FieldLabel htmlFor="login-username">{t('login.username')}</FieldLabel>
+                                    <FieldLabel htmlFor="login-email">{t('login.email')}</FieldLabel>
                                     <div className="relative">
                                         <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]">
                                             <IconUser />
                                         </span>
                                         <input
-                                            id="login-username"
+                                            id="login-email"
                                             type="text"
-                                            value={username}
-                                            onChange={(event) => setUsername(event.target.value)}
+                                            inputMode="email"
+                                            autoCapitalize="none"
+                                            spellCheck={false}
+                                            value={email}
+                                            onChange={(event) => setEmail(event.target.value)}
                                             autoComplete="username"
-                                            placeholder="admin"
+                                            placeholder="admin@hapi.local"
                                             disabled={isLoading}
                                             className={`${inputClassName} pl-8 pr-3 font-mono`}
                                         />

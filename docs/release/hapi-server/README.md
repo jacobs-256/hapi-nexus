@@ -35,11 +35,11 @@ $env:HAPI_PUBLIC_URL = "http://<server-ip-or-domain>:3006"
 Open `HAPI_PUBLIC_URL` in a browser. On first start, the default Web administrator is:
 
 ```text
-Username: admin
+Email: admin@hapi.local
 Password: admin
 ```
 
-Change this password immediately after the first login. You can also set `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` before the first start.
+Change this password immediately after the first login. You can also set `HAPI_ADMIN_EMAIL` and `HAPI_ADMIN_PASSWORD` before the first start.
 
 ## Production Layout
 
@@ -93,7 +93,7 @@ Common server variables:
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | Browser-facing URL |
 | `CORS_ORIGINS` | derived from `HAPI_PUBLIC_URL` | Comma-separated allowed origins |
 | `CLI_API_TOKEN` | generated | Hub system token for bootstrap/compatibility |
-| `HAPI_ADMIN_USERNAME` | `admin` | First local admin username |
+| `HAPI_ADMIN_EMAIL` | `admin@hapi.local` | First local admin email |
 | `HAPI_ADMIN_PASSWORD` | `admin` | First local admin password |
 | `TELEGRAM_BOT_TOKEN` | unset | Telegram bot token |
 | `SERVERCHAN_SENDKEY` | unset | ServerChan notification key |

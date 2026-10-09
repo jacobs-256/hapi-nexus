@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import {
     createSchemaMigrationsTable,
+    getSqliteUserVersion,
     setSqliteUserVersion
 } from './schema'
 
@@ -13,9 +14,28 @@ export function runSchemaMigrationStep(
 ): void {
     const startedAt = Date.now()
     try {
-        step()
-        setSqliteUserVersion(db, toVersion)
-        recordSchemaMigration(db, fromVersion, toVersion, startedAt, backupPath)
+        const apply = () => {
+            step()
+            setSqliteUserVersion(db, toVersion)
+            recordSchemaMigration(db, fromVersion, toVersion, startedAt, backupPath)
+        }
+        // New data migrations must commit their version/ledger with the data,
+        // otherwise a crash can apply a non-idempotent conversion twice.
+        // Older steps manage their own explicit BEGIN/COMMIT transactions.
+        if (fromVersion >= 20) {
+            db.transaction(() => {
+                // Another starter may have migrated since the initial version
+                // check. Recheck only after acquiring the database write lock.
+                const currentVersion = getSqliteUserVersion(db)
+                if (currentVersion >= toVersion) return
+                if (currentVersion !== fromVersion) {
+                    throw new Error(`Expected schema version ${fromVersion}, got ${currentVersion}`)
+                }
+                apply()
+            }).immediate()
+        } else {
+            apply()
+        }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         const backupHint = backupPath ? ` Backup created at: ${backupPath}.` : ''

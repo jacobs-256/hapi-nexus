@@ -29,6 +29,43 @@ function createApp(
 }
 
 describe('users routes', () => {
+    it('validates emails for creation and changes and rejects case-insensitive duplicates', async () => {
+        const store = new Store(':memory:')
+        try {
+            const admin = store.users.createLocalUser({
+                namespace: 'default', email: 'admin@example.com', passwordHash: 'hash', role: 'admin'
+            })
+            const app = createApp(store, admin.id)
+            for (const email of ['alice', 'alice@', 'a b@example.com', 'alice@example.com@hapi.local']) {
+                const create = await app.request('/api/users', {
+                    method: 'POST', headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ email, password: 'correct-password' })
+                })
+                expect(create.status).toBe(400)
+                const change = await app.request('/api/me/email', {
+                    method: 'PATCH', headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ email })
+                })
+                expect(change.status).toBe(400)
+            }
+            const create = await app.request('/api/users', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ email: ' Alice@Example.COM ', password: 'correct-password' })
+            })
+            expect(create.status).toBe(201)
+            expect(await create.json()).toMatchObject({ user: { email: 'Alice@Example.COM' } })
+            const duplicate = await app.request('/api/users', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ email: 'alice@example.com', password: 'correct-password' })
+            })
+            expect(duplicate.status).toBe(409)
+            expect(store.users.getUserById(admin.id, 'default')?.email).toBe('admin@example.com')
+            expect(store.users.listUsersByNamespace('default')).toHaveLength(2)
+        } finally {
+            store.close()
+        }
+    })
+
     it('lets the owner create local users without listing other users access tokens', async () => {
         const store = new Store(':memory:')
         try {
@@ -38,7 +75,7 @@ describe('users routes', () => {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
-                    username: 'alice',
+                    email: 'alice@hapi.local',
                     displayName: 'Alice',
                     password: 'correct-password',
                     role: 'admin'
@@ -52,11 +89,11 @@ describe('users routes', () => {
 
             const listResponse = await app.request('/api/users')
             expect(listResponse.status).toBe(200)
-            const body = await listResponse.json() as { users: Array<{ platform: string; username: string | null; accessToken?: string | null }> }
+            const body = await listResponse.json() as { users: Array<{ platform: string; email: string | null; accessToken?: string | null }> }
             const owner = body.users.find((user) => user.platform === 'owner')
-            const alice = body.users.find((user) => user.platform === 'local' && user.username === 'alice')
+            const alice = body.users.find((user) => user.platform === 'local' && user.email === 'alice@hapi.local')
             expect(owner).toEqual(expect.objectContaining({ platform: 'owner', accessToken: 'owner-token' }))
-            expect(alice).toEqual(expect.objectContaining({ platform: 'local', username: 'alice' }))
+            expect(alice).toEqual(expect.objectContaining({ platform: 'local', email: 'alice@hapi.local' }))
             expect(alice).not.toHaveProperty('accessToken')
         } finally {
             store.close()
@@ -68,14 +105,14 @@ describe('users routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 accessToken: 'hapi_user_admin',
                 role: 'admin'
             })
             store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 accessToken: 'hapi_user_dev',
                 role: 'user'
@@ -85,10 +122,10 @@ describe('users routes', () => {
             const response = await app.request('/api/users')
 
             expect(response.status).toBe(200)
-            const body = await response.json() as { users: Array<{ platform: string; username: string | null; accessToken?: string | null }> }
+            const body = await response.json() as { users: Array<{ platform: string; email: string | null; accessToken?: string | null }> }
             const owner = body.users.find((user) => user.platform === 'owner')
-            const self = body.users.find((user) => user.platform === 'local' && user.username === 'admin')
-            const dev = body.users.find((user) => user.platform === 'local' && user.username === 'dev')
+            const self = body.users.find((user) => user.platform === 'local' && user.email === 'admin@hapi.local')
+            const dev = body.users.find((user) => user.platform === 'local' && user.email === 'dev@hapi.local')
             expect(owner).not.toHaveProperty('accessToken')
             expect(self).toEqual(expect.objectContaining({ accessToken: 'hapi_user_admin' }))
             expect(dev).not.toHaveProperty('accessToken')
@@ -102,7 +139,7 @@ describe('users routes', () => {
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash',
                 accessToken: 'hapi_user_dev',
                 role: 'user'
@@ -122,7 +159,7 @@ describe('users routes', () => {
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash',
                 accessToken: 'hapi_user_dev',
                 role: 'user'
@@ -134,7 +171,7 @@ describe('users routes', () => {
             expect(await meResponse.json()).toEqual({
                 user: expect.objectContaining({
                     id: user.id,
-                    username: 'dev',
+                    email: 'dev@hapi.local',
                     accessToken: 'hapi_user_dev'
                 })
             })
@@ -155,14 +192,14 @@ describe('users routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 accessToken: 'hapi_user_admin',
                 role: 'admin'
             })
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 accessToken: 'hapi_user_dev',
                 role: 'user'
@@ -183,7 +220,7 @@ describe('users routes', () => {
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 accessToken: 'hapi_user_admin',
                 role: 'admin'
@@ -200,7 +237,7 @@ describe('users routes', () => {
                 user: expect.objectContaining({
                     id: user.id,
                     platform: 'local',
-                    username: 'admin',
+                    email: 'admin@hapi.local',
                     accessToken: 'hapi_user_admin'
                 })
             })
@@ -209,30 +246,30 @@ describe('users routes', () => {
         }
     })
 
-    it('lets a local user change their own username', async () => {
+    it('lets a local user change their own email', async () => {
         const store = new Store(':memory:')
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash',
                 accessToken: 'hapi_user_dev',
                 role: 'user'
             })
             const app = createApp(store, user.id)
 
-            const response = await app.request('/api/me/username', {
+            const response = await app.request('/api/me/email', {
                 method: 'PATCH',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ username: 'admin' })
+                body: JSON.stringify({ email: 'admin@hapi.local' })
             })
 
             expect(response.status).toBe(200)
             expect(await response.json()).toEqual({
                 user: expect.objectContaining({
                     id: user.id,
-                    username: 'admin',
-                    platformUserId: 'default:admin'
+                    email: 'admin@hapi.local',
+                    platformUserId: 'default:admin@hapi.local'
                 })
             })
         } finally {
@@ -240,31 +277,31 @@ describe('users routes', () => {
         }
     })
 
-    it('rejects duplicate username changes', async () => {
+    it('rejects duplicate email changes', async () => {
         const store = new Store(':memory:')
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 role: 'user'
             })
             store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 role: 'admin'
             })
             const app = createApp(store, user.id)
 
-            const response = await app.request('/api/me/username', {
+            const response = await app.request('/api/me/email', {
                 method: 'PATCH',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ username: 'ADMIN' })
+                body: JSON.stringify({ email: 'ADMIN@hapi.local' })
             })
 
             expect(response.status).toBe(409)
-            expect(store.users.getUserById(user.id, 'default')?.username).toBe('dev')
+            expect(store.users.getUserById(user.id, 'default')?.email).toBe('dev@hapi.local')
         } finally {
             store.close()
         }
@@ -275,13 +312,13 @@ describe('users routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 role: 'admin'
             })
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 accessToken: 'hapi_user_dev'
             })
@@ -303,7 +340,7 @@ describe('users routes', () => {
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 accessToken: 'hapi_user_dev'
             })
@@ -326,13 +363,13 @@ describe('users routes', () => {
         try {
             const actor = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'actor',
+                email: 'actor@hapi.local',
                 passwordHash: 'hash-actor',
                 role: 'user'
             })
             const target = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'target',
+                email: 'target@hapi.local',
                 passwordHash: 'hash-target'
             })
             const app = createApp(store, actor.id)
@@ -340,7 +377,7 @@ describe('users routes', () => {
             const response = await app.request(`/api/users/${target.id}`, { method: 'DELETE' })
 
             expect(response.status).toBe(403)
-            expect(store.users.getUserById(target.id, 'default')?.username).toBe('target')
+            expect(store.users.getUserById(target.id, 'default')?.email).toBe('target@hapi.local')
         } finally {
             store.close()
         }
@@ -351,7 +388,7 @@ describe('users routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 role: 'admin'
             })
@@ -360,7 +397,7 @@ describe('users routes', () => {
             const response = await app.request(`/api/users/${admin.id}`, { method: 'DELETE' })
 
             expect(response.status).toBe(400)
-            expect(store.users.getUserById(admin.id, 'default')?.username).toBe('admin')
+            expect(store.users.getUserById(admin.id, 'default')?.email).toBe('admin@hapi.local')
         } finally {
             store.close()
         }
@@ -384,7 +421,7 @@ describe('users routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 role: 'admin'
             })

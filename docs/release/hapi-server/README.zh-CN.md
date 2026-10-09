@@ -35,11 +35,11 @@ $env:HAPI_PUBLIC_URL = "http://<server-ip-or-domain>:3006"
 浏览器打开 `HAPI_PUBLIC_URL`。首次启动时默认 Web 管理员为：
 
 ```text
-用户名：admin
+邮箱：admin@hapi.local
 密码：admin
 ```
 
-首次登录后请立即修改密码。也可以在第一次启动前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
+首次登录后请立即修改密码。也可以在第一次启动前设置 `HAPI_ADMIN_EMAIL` 和 `HAPI_ADMIN_PASSWORD`。
 
 ## 生产目录建议
 
@@ -93,7 +93,7 @@ HAPI_PUBLIC_URL=https://hapi.example.com \
 | `HAPI_PUBLIC_URL` | `http://localhost:<port>` | 浏览器访问地址 |
 | `CORS_ORIGINS` | 从 `HAPI_PUBLIC_URL` 推导 | 允许的跨域来源，逗号分隔 |
 | `CLI_API_TOKEN` | 自动生成 | Hub 系统 token，用于引导/兼容 |
-| `HAPI_ADMIN_USERNAME` | `admin` | 首个本地管理员用户名 |
+| `HAPI_ADMIN_EMAIL` | `admin@hapi.local` | 首个本地管理员邮箱 |
 | `HAPI_ADMIN_PASSWORD` | `admin` | 首个本地管理员密码 |
 | `TELEGRAM_BOT_TOKEN` | 未设置 | Telegram bot token |
 | `SERVERCHAN_SENDKEY` | 未设置 | ServerChan 通知 key |

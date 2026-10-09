@@ -75,7 +75,7 @@ Hub 是连接所有组件的中心服务：
 - **Socket.IO** - 与 CLI 的实时双向通信
 - **SSE (Server-Sent Events)** - 向 Web 客户端推送实时更新
 - **可配置存储** - 默认 SQLite；对话历史可用 Elasticsearch；核心 Hub 数据可用 MySQL
-- **Local Accounts** - 用户名/密码浏览器登录、管理员用户管理和个人 access token
+- **Local Accounts** - 邮箱/密码浏览器登录、管理员用户管理和个人 access token
 - **Project ACLs** - 在暴露会话、机器、文件和事件前检查用户/项目/workspace 权限
 - **Telegram Bot** - 通知和 Mini App 集成
 

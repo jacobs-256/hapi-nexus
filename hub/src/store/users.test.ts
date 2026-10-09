@@ -3,12 +3,12 @@ import { describe, expect, it } from 'bun:test'
 import { Store } from './index'
 
 describe('UserStore local accounts', () => {
-    it('creates local users with namespace-scoped usernames and token lookup', () => {
+    it('creates local users with namespace-scoped emails and token lookup', () => {
         const store = new Store(':memory:')
         try {
             const alice = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'Alice',
+                email: 'Alice@hapi.local',
                 passwordHash: 'hash-1',
                 displayName: 'Alice A',
                 role: 'admin',
@@ -16,15 +16,15 @@ describe('UserStore local accounts', () => {
             })
             const otherAlice = store.users.createLocalUser({
                 namespace: 'tenant',
-                username: 'alice',
+                email: 'alice@hapi.local',
                 passwordHash: 'hash-2',
                 accessToken: 'hapi_user_tenant_alice'
             })
 
-            expect(alice.usernameNormalized).toBe('alice')
-            expect(alice.platformUserId).toBe('default:alice')
-            expect(otherAlice.platformUserId).toBe('tenant:alice')
-            expect(store.users.getLocalUserByUsername('default', 'ALICE')?.id).toBe(alice.id)
+            expect(alice.emailNormalized).toBe('alice@hapi.local')
+            expect(alice.platformUserId).toBe('default:alice@hapi.local')
+            expect(otherAlice.platformUserId).toBe('tenant:alice@hapi.local')
+            expect(store.users.getLocalUserByEmail('default', 'ALICE@hapi.local')?.id).toBe(alice.id)
             expect(store.users.getUserByAccessToken('hapi_user_alice')?.id).toBe(alice.id)
             expect(store.users.getUserByAccessToken(' hapi_user_tenant_alice ')?.id).toBe(otherAlice.id)
         } finally {
@@ -37,7 +37,7 @@ describe('UserStore local accounts', () => {
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'old-hash',
                 accessToken: 'hapi_user_old'
             })
@@ -64,30 +64,30 @@ describe('UserStore local accounts', () => {
         }
     })
 
-    it('updates local usernames while preserving namespace uniqueness', () => {
+    it('updates local emails while preserving namespace uniqueness', () => {
         const store = new Store(':memory:')
         try {
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev'
             })
             const other = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'ops',
+                email: 'ops@hapi.local',
                 passwordHash: 'hash-ops'
             })
 
-            const renamed = store.users.updateLocalUsername(user.id, 'default', 'Admin')
+            const renamed = store.users.updateLocalEmail(user.id, 'default', 'Admin@hapi.local')
             expect(renamed.status).toBe('updated')
             if (renamed.status !== 'updated') return
-            expect(renamed.user.username).toBe('Admin')
-            expect(renamed.user.usernameNormalized).toBe('admin')
-            expect(renamed.user.platformUserId).toBe('default:admin')
-            expect(store.users.getLocalUserByUsername('default', 'DEV')).toBeNull()
-            expect(store.users.getLocalUserByUsername('default', 'admin')?.id).toBe(user.id)
+            expect(renamed.user.email).toBe('Admin@hapi.local')
+            expect(renamed.user.emailNormalized).toBe('admin@hapi.local')
+            expect(renamed.user.platformUserId).toBe('default:admin@hapi.local')
+            expect(store.users.getLocalUserByEmail('default', 'DEV@hapi.local')).toBeNull()
+            expect(store.users.getLocalUserByEmail('default', 'admin@hapi.local')?.id).toBe(user.id)
 
-            const duplicate = store.users.updateLocalUsername(user.id, 'default', 'OPS')
+            const duplicate = store.users.updateLocalEmail(user.id, 'default', 'OPS@hapi.local')
             expect(duplicate.status).toBe('duplicate')
             if (duplicate.status !== 'duplicate') return
             expect(duplicate.existingUser.id).toBe(other.id)
@@ -101,13 +101,13 @@ describe('UserStore local accounts', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash-admin',
                 role: 'admin'
             })
             const user = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'dev',
+                email: 'dev@hapi.local',
                 passwordHash: 'hash-dev',
                 accessToken: 'hapi_user_dev'
             })

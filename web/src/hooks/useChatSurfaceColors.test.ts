@@ -77,7 +77,7 @@ describe('useChatSurfaceColors', () => {
     })
 
     it('returns a valid picker value for default, preset, and custom preferences', () => {
-        expect(getChatSurfaceColorPickerValue('default')).toBe('#f2f4f6')
+        expect(getChatSurfaceColorPickerValue('default')).toBe('#eef2f7')
         expect(getChatSurfaceColorPickerValue('preset:soft-blue')).toBe('#7db7ff')
         expect(getChatSurfaceColorPickerValue('custom:#88cc44')).toBe('#88cc44')
     })

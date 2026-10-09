@@ -4,7 +4,7 @@
 
 **受众：** 实现原生伴侣应用的开发者（Android 手机 + Wear OS、iOS 等），这些应用通过 FCM 与 hapi hub 配对。
 
-**认证：** 将配对 `code`、个人 access token 或 operator `CLI_API_TOKEN` 发送到 `POST /api/auth` 进行交换：`{ "accessToken": "<code-or-token>" }`。使用返回的 JWT 作为 `Authorization: Bearer <token>`，用于设备注册和会话操作。浏览器/PWA 用户使用用户名/密码登录；access-token exchange 用于原生伴侣、CLI 风格、owner 和 Telegram 绑定流程。
+**认证：** 将配对 `code`、个人 access token 或 operator `CLI_API_TOKEN` 发送到 `POST /api/auth` 进行交换：`{ "accessToken": "<code-or-token>" }`。使用返回的 JWT 作为 `Authorization: Bearer <token>`，用于设备注册和会话操作。浏览器/PWA 用户使用邮箱/密码登录；access-token exchange 用于原生伴侣、CLI 风格、owner 和 Telegram 绑定流程。
 
 `POST /api/bind` 仅用于 Telegram Mini App 绑定（需要 Telegram `initData`）。
 

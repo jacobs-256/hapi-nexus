@@ -89,7 +89,7 @@ hapi --version
 
 ## 连接到 Hub
 
-设置 Hub 地址，并使用当前用户的个人 access token 登录。该 token 可在 Web 使用用户名/密码登录后，从 Settings -> Account 中查看。
+设置 Hub 地址，并使用当前用户的个人 access token 登录。该 token 可在 Web 使用邮箱/密码登录后，从 Settings -> Account 中查看。
 
 ```bash
 export HAPI_API_URL="https://hapi.example.com"

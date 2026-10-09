@@ -27,14 +27,21 @@ export function initializeCoreSqliteSchema(db: Database, dbPath: string, schemaV
             // exist yet, and CREATE TABLE IF NOT EXISTS would not add the
             // missing column to the existing table.
             const legacySteps = buildStepMigrations(db, true)
-            for (let v = 1; v < schemaVersion; v++) {
+            for (let v = 1; v < Math.min(schemaVersion, 20); v++) {
                 legacySteps[v]?.()
             }
-            // Backfill any *missing* tables (sessions, machines, ...) that
-            // a partially-built legacy DB may not have yet.
-            createCoreSchema(db)
-            setSqliteUserVersion(db, schemaVersion)
-            recordSchemaMigration(db, 0, schemaVersion, Date.now(), backupPath)
+            // The newer data conversions and their final version must commit
+            // together, including when upgrading an unversioned legacy DB.
+            db.transaction(() => {
+                if (getSqliteUserVersion(db) >= schemaVersion) return
+                for (let v = 20; v < schemaVersion; v++) {
+                    legacySteps[v]?.()
+                }
+                // Backfill tables missing from partially-built legacy DBs.
+                createCoreSchema(db)
+                setSqliteUserVersion(db, schemaVersion)
+                recordSchemaMigration(db, 0, schemaVersion, Date.now(), backupPath)
+            }).immediate()
             return
         }
 
@@ -70,7 +77,7 @@ export function initializeConversationSqliteSchema(db: Database, dbPath: string,
         return
     }
     if (currentVersion >= 18 && currentVersion < schemaVersion) {
-        // V19/V20 only add core tables; conversation storage shape is unchanged,
+        // V19–V21 only change core data; conversation storage shape is unchanged,
         // but split SQLite conversation mirrors still need their user_version bumped
         // so normal startup can continue.
         setSqliteUserVersion(db, schemaVersion)

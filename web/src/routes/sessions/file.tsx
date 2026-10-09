@@ -21,6 +21,7 @@ import {
     type MarkdownPreviewMode,
 } from '@/lib/file-markdown-preview'
 import { downloadBase64File } from '@/lib/file-download'
+import { isBareSessionFileName, resolveSessionFilePath } from '@/lib/session-file-path'
 
 const MAX_COPYABLE_FILE_BYTES = 1_000_000
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
@@ -182,30 +183,45 @@ export default function FilePage() {
     const staged = search.staged
 
     const filePath = useMemo(() => decodePath(encodedPath), [encodedPath])
-    const fileName = filePath.split('/').pop() || filePath || t('file.page.fallbackName')
-    const imageMimeType = useMemo(() => resolveImageMimeType(filePath), [filePath])
-    const markdownFile = useMemo(() => isMarkdownFile(filePath), [filePath])
+    const pathResolutionQuery = useQuery({
+        queryKey: ['session-file-path', sessionId, filePath],
+        queryFn: async () => {
+            if (!api) {
+                throw new Error('Session unavailable')
+            }
+            return await resolveSessionFilePath(api, sessionId, filePath)
+        },
+        enabled: Boolean(api && sessionId && isBareSessionFileName(filePath)),
+        retry: false,
+    })
+    const resolvedFilePath = isBareSessionFileName(filePath)
+        ? pathResolutionQuery.data ?? ''
+        : filePath
+    const fileName = resolvedFilePath.split('/').pop() || resolvedFilePath || t('file.page.fallbackName')
+    const imageMimeType = useMemo(() => resolveImageMimeType(resolvedFilePath), [resolvedFilePath])
+    const markdownFile = useMemo(() => isMarkdownFile(resolvedFilePath), [resolvedFilePath])
+    const pathResolutionPending = isBareSessionFileName(filePath) && pathResolutionQuery.isLoading
 
     const diffQuery = useQuery({
-        queryKey: queryKeys.gitFileDiff(sessionId, filePath, staged),
+        queryKey: queryKeys.gitFileDiff(sessionId, resolvedFilePath, staged),
         queryFn: async () => {
-            if (!api || !sessionId || !filePath) {
+            if (!api || !sessionId || !resolvedFilePath) {
                 throw new Error('Missing session or path')
             }
-            return await api.getGitDiffFile(sessionId, filePath, staged)
+            return await api.getGitDiffFile(sessionId, resolvedFilePath, staged)
         },
-        enabled: Boolean(api && sessionId && filePath)
+        enabled: Boolean(api && sessionId && resolvedFilePath && !pathResolutionPending)
     })
 
     const fileQuery = useQuery({
-        queryKey: queryKeys.sessionFile(sessionId, filePath),
+        queryKey: queryKeys.sessionFile(sessionId, resolvedFilePath),
         queryFn: async () => {
-            if (!api || !sessionId || !filePath) {
+            if (!api || !sessionId || !resolvedFilePath) {
                 throw new Error('Missing session or path')
             }
-            return await api.readSessionFile(sessionId, filePath)
+            return await api.readSessionFile(sessionId, resolvedFilePath)
         },
-        enabled: Boolean(api && sessionId && filePath)
+        enabled: Boolean(api && sessionId && resolvedFilePath && !pathResolutionPending)
     })
 
     const diffContent = diffQuery.data?.success ? (diffQuery.data.stdout ?? '') : ''
@@ -225,7 +241,7 @@ export default function FilePage() {
         ? `data:${imageMimeType};base64,${fileContentResult.content}`
         : null
 
-    const language = useMemo(() => imageMimeType ? undefined : resolveLanguage(filePath), [filePath, imageMimeType])
+    const language = useMemo(() => imageMimeType ? undefined : resolveLanguage(resolvedFilePath), [resolvedFilePath, imageMimeType])
     const [markdownMode, setMarkdownMode] = useState<MarkdownPreviewMode>(getInitialMarkdownPreviewMode)
     const showMarkdownSource = !markdownFile || markdownMode === 'source'
     const highlighted = useShikiHighlighter(
@@ -264,7 +280,7 @@ export default function FilePage() {
         }
     }, [diffSuccess, diffFailed, diffContent, imageMimeType])
 
-    const loading = diffQuery.isLoading || fileQuery.isLoading
+    const loading = pathResolutionPending || diffQuery.isLoading || fileQuery.isLoading
     const fileError = fileContentResult && !fileContentResult.success
         ? (fileContentResult.error ?? 'Failed to read file')
         : null
@@ -285,7 +301,7 @@ export default function FilePage() {
                     </button>
                     <div className="min-w-0 flex-1">
                         <div className="truncate font-semibold">{fileName}</div>
-                        <div className="truncate text-xs text-[var(--app-hint)]">{filePath || t('file.page.unknownPath')}</div>
+                        <div className="truncate text-xs text-[var(--app-hint)]">{resolvedFilePath || filePath || t('file.page.unknownPath')}</div>
                     </div>
                 </div>
             </div>
@@ -293,10 +309,10 @@ export default function FilePage() {
             <div className="bg-[var(--app-bg)]">
                 <div className="mx-auto w-full max-w-content px-3 py-2 flex items-center gap-2 border-b border-[var(--app-divider)]">
                     <FileIcon fileName={fileName} size={20} />
-                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--app-hint)]">{filePath || t('file.page.unknownPath')}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-[var(--app-hint)]">{resolvedFilePath || filePath || t('file.page.unknownPath')}</span>
                     <button
                         type="button"
-                        onClick={() => copyPath(filePath)}
+                        onClick={() => copyPath(resolvedFilePath || filePath)}
                         className="shrink-0 rounded p-1 text-[var(--app-hint)] hover:bg-[var(--app-subtle-bg)] hover:text-[var(--app-fg)] transition-colors"
                         title={t('file.page.copyPath')}
                     >

@@ -45,7 +45,7 @@ HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_B
 首次运行时，HAPI Nexus 会创建：
 
 - 保存在 `~/.hapi/settings.json` 中的 CLI access token
-- 用户名为 `admin`、密码为 `admin` 的本地 Web 管理员
+- 邮箱为 `admin@hapi.local`、密码为 `admin` 的本地 Web 管理员
 
 `server` 子命令仍然作为 `hub` 的别名保留。
 
@@ -81,7 +81,7 @@ runner 在线后，在 Web UI 创建 Codex 会话，选择设备和工作目录�
 
 打开终端中显示的 URL，或用手机扫描二维码。
 
-使用 `admin` / `admin` 登录，然后进入 **Settings -> Account** 修改默认用户名和密码。
+使用 `admin@hapi.local` / `admin` 登录，然后进入 **Settings -> Account** 修改默认邮箱和密码。
 
 ## 下一步
 

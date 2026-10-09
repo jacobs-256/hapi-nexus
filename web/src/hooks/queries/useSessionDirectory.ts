@@ -26,10 +26,12 @@ export function useSessionDirectory(
 
             const response = await api.listSessionDirectory(sessionId, path)
             if (!response.success) {
-                return { entries: [], error: response.error ?? 'Failed to list directory' }
+                // RPC handlers may be unavailable briefly while the CLI reconnects.
+                // Keep failures in query error state so retries and remounts can recover.
+                throw new Error(response.error ?? 'Failed to list directory')
             }
 
-            return { entries: response.entries ?? [], error: null }
+            return response.entries ?? []
         },
         enabled,
     })
@@ -41,8 +43,8 @@ export function useSessionDirectory(
             : null
 
     return {
-        entries: query.data?.entries ?? [],
-        error: queryError ?? query.data?.error ?? null,
+        entries: query.data ?? [],
+        error: queryError,
         isLoading: query.isLoading,
         refetch: query.refetch
     }

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import path from 'node:path';
+import path, { delimiter as pathDelimiter, resolve as resolvePath } from 'node:path';
 
 const windowsPath = path.win32;
 
@@ -67,9 +67,45 @@ function resolveWindowsCodexCommand(): CodexCommand {
     return { command: 'codex', args: [] };
 }
 
+function findUnixCodexPath(): string | null {
+    // A runner started by launchd/systemd can have a smaller PATH than the
+    // interactive shell that installed Codex. Resolve an absolute executable
+    // path here so later child-process spawns do not depend on that PATH.
+    const pathCandidates = (process.env.PATH ?? '')
+        .split(pathDelimiter)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => resolvePath(entry, 'codex'));
+
+    const home = homedir();
+    const knownCandidates = [
+        path.join(home, '.local', 'bin', 'codex'),
+        path.join(home, '.npm-global', 'bin', 'codex'),
+        path.join(home, '.codex', 'bin', 'codex'),
+        path.join(home, '.codex', 'packages', 'standalone', 'current', 'bin', 'codex'),
+        path.join(home, '.codex', 'plugins', '.plugin-appserver', 'codex')
+    ];
+
+    for (const candidate of [...pathCandidates, ...knownCandidates]) {
+        if (existsSync(candidate)) {
+            return candidate;
+        }
+    }
+
+    return null;
+}
+
 export function resolveCodexCommand(): CodexCommand {
+    const configuredPath = process.env.HAPI_CODEX_PATH?.trim();
+    if (configuredPath) {
+        return { command: configuredPath, args: [] };
+    }
+
     if (process.platform !== 'win32') {
-        return { command: 'codex', args: [] };
+        return {
+            command: findUnixCodexPath() ?? 'codex',
+            args: []
+        };
     }
 
     return resolveWindowsCodexCommand();

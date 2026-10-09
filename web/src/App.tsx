@@ -5,7 +5,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { getTelegramWebApp, isTelegramApp } from '@/hooks/useTelegram'
 import { initializeChatSurfaceColors } from '@/hooks/useChatSurfaceColors'
 import { initializeTheme } from '@/hooks/useTheme'
-import { initializeThemeColors } from '@/hooks/useThemeColors'
 import { useAuth } from '@/hooks/useAuth'
 import { useAuthSource } from '@/hooks/useAuthSource'
 import { useServerUrl } from '@/hooks/useServerUrl'
@@ -171,7 +170,7 @@ function TrafficLights() {
 
 function getUserLabel(user: AuthResponse['user'], fallback: string): string {
     const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim()
-    return user.displayName?.trim() || fullName || user.username?.trim() || fallback
+    return user.displayName?.trim() || fullName || user.email?.trim() || user.username?.trim() || fallback
 }
 
 function AppTitleBar() {
@@ -205,8 +204,8 @@ function AppTitleBar() {
 
                 <div className="flex min-w-0 items-center gap-1.5">
                     <div
-                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-white"
-                        style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md text-[var(--primary-foreground)]"
+                        style={{ background: 'var(--primary)' }}
                     >
                         <IconCode />
                     </div>
@@ -234,8 +233,8 @@ function AppTitleBar() {
                         <Popover.Trigger asChild>
                             <button
                                 type="button"
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--toolbar)]"
-                                style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[var(--primary-foreground)] outline-none transition-transform hover:scale-[1.03] focus-visible:ring-2 focus-visible:ring-[var(--primary)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--toolbar)]"
+                                style={{ background: 'var(--primary)' }}
                                 title={userLabel}
                                 aria-label={t('app.user.menu')}
                             >
@@ -252,8 +251,8 @@ function AppTitleBar() {
                             >
                                 <div className="flex min-w-0 items-center gap-3 px-2.5 py-2.5">
                                     <div
-                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
-                                        style={{ background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)' }}
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-[var(--primary-foreground)]"
+                                        style={{ background: 'var(--primary)' }}
                                         aria-hidden="true"
                                     >
                                         {userInitial}
@@ -359,7 +358,6 @@ function AppInner() {
         tg?.ready()
         tg?.expand()
         initializeTheme()
-        initializeThemeColors()
         initializeChatSurfaceColors()
     }, [])
 

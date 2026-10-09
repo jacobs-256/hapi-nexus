@@ -12,7 +12,7 @@ For collaboration inside one namespace, use [Projects and Sharing](./projects.md
 
 - The hub uses a single base `CLI_API_TOKEN`.
 - CLI, runner, API, and Telegram-binding clients append `:<namespace>` to the token for isolation.
-- Local username/password users are unique inside their namespace; normal browser login targets the default namespace.
+- Local email/password users are unique inside their namespace; normal browser login targets the default namespace.
 - Project invites are valid only inside the namespace where they were created.
 
 ## Setup

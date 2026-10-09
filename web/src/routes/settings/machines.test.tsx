@@ -13,7 +13,7 @@ const projectsMock = vi.fn()
 vi.mock('@/lib/app-context', () => ({
     useAppContext: () => ({
         api: { renameMachine: renameMachineMock, deleteMachine: deleteMachineMock },
-        user: { id: 1, username: 'admin', role: 'admin' }
+        user: { id: 1, email: 'admin@hapi.local', role: 'admin' }
     }),
 }))
 
@@ -75,7 +75,7 @@ function makeProject(overrides?: Partial<ProjectWithDetails>): ProjectWithDetail
             platform: 'local',
             platformUserId: '2',
             namespace: 'default',
-            username: 'jacobs',
+            email: 'jacobs@hapi.local',
             displayName: 'Jacobs',
             role: 'user',
             disabledAt: null,
@@ -261,7 +261,7 @@ describe('SettingsMachinesPage', () => {
         projectsMock.mockReturnValue([makeProject()])
         renderPage()
 
-        expect(screen.getByText('Shared by Jacobs (@jacobs)')).toBeTruthy()
+        expect(screen.getByText('Shared by Jacobs (jacobs@hapi.local)')).toBeTruthy()
         expect(screen.queryByRole('button', { name: 'Rename workstation.local' })).toBeNull()
         expect(screen.queryByRole('button', { name: 'Delete workstation.local' })).toBeNull()
     })

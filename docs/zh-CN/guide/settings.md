@@ -14,26 +14,26 @@ Web 设置区域面向私有部署的管理控制台设计。它把个人偏好�
 
 打开 **Settings -> Account** 管理当前登录用户：
 
-- 查看资料、用户名、角色、命名空间和个人 access token
+- 查看资料、邮箱、角色、命名空间和个人 access token
 - 复制或重新生成个人 access token
-- 修改用户名
+- 修改邮箱
 - 修改密码
 - 退出登录
 
-只有本地用户名/密码用户可以修改自己的用户名和密码。用户名在命名空间内必须唯一。
+只有本地邮箱/密码用户可以修改自己的邮箱和密码。邮箱在命名空间内必须唯一。
 
 ## 用户
 
 管理员打开 **Settings -> Users** 管理本地账号：
 
-- 创建用户名/密码用户
+- 创建邮箱/密码用户
 - 设置显示名称
 - 分配 `user` 或 `admin` 角色
 - 禁用或重新启用账号
 - 重置密码
 - 重新生成个人 access token
 
-第一次启动 hub 时会创建本地管理员，默认用户名为 `admin`、密码为 `admin`，除非在初始化前设置了 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。请立即在 **Settings -> Account** 中修改默认凭据。
+第一次启动 hub 时会创建本地管理员，默认邮箱为 `admin@hapi.local`、密码为 `admin`，除非在初始化前设置了 `HAPI_ADMIN_EMAIL` 和 `HAPI_ADMIN_PASSWORD`。请立即在 **Settings -> Account** 中修改默认凭据。
 
 ## 项目
 

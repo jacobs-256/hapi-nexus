@@ -46,12 +46,12 @@ export default function SettingsLayout() {
             </header>
 
             <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--app-bg)]">
-                <aside className="absolute bottom-4 left-4 top-4 z-20 hidden w-72 lg:block xl:bottom-5 xl:left-6 xl:top-5">
+                <aside className="absolute bottom-3 left-3 top-3 z-20 hidden w-64 lg:block xl:bottom-4 xl:left-4 xl:top-4">
                     <div className="app-scroll-y h-full rounded-2xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)]/95 shadow-xl shadow-black/10 backdrop-blur">
                         <SettingsNav activeId={category?.id ?? 'display'} />
                     </div>
                 </aside>
-                <main className="app-scroll-y h-full min-w-0 bg-[var(--app-bg)] lg:py-4 lg:pl-[20rem] lg:pr-4 lg:[scrollbar-gutter:stable_both-edges] xl:py-5 xl:pl-[21rem] xl:pr-6">
+                <main className="app-scroll-y h-full min-w-0 bg-[var(--app-bg)] lg:py-3 lg:pl-[18rem] lg:pr-3 lg:[scrollbar-gutter:stable_both-edges] xl:py-4 xl:pl-[19rem] xl:pr-4">
                     <Outlet />
                 </main>
             </div>

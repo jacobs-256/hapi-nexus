@@ -5,24 +5,26 @@
 @config "../tailwind.config.ts";
 
 :root {
-    --background: #f5f5f4;
-    --foreground: #1c1c1e;
+    --background: #f6f8fc;
+    --foreground: #172033;
     --card: #ffffff;
-    --card-foreground: #1c1c1e;
-    --primary: #0a84ff;
+    --card-foreground: #172033;
+    --primary: #1769ff;
     --primary-foreground: #ffffff;
-    --secondary: #e5e5ea;
-    --secondary-foreground: #3a3a3c;
-    --muted: #f2f2f7;
-    --muted-foreground: #8e8e93;
-    --accent: #30d158;
+    --secondary: #eef2f7;
+    --secondary-foreground: #172033;
+    --muted: #eef2f7;
+    --muted-foreground: #738096;
+    --accent: #1ca979;
     --accent-foreground: #ffffff;
-    --border: rgba(0, 0, 0, 0.08);
-    --ring: rgba(10, 132, 255, 0.4);
+    --border: rgba(23, 32, 51, 0.10);
+    --ring: rgba(23, 105, 255, 0.25);
     --radius: 8px;
-    --sidebar: #ebebeb;
-    --sidebar-foreground: #1c1c1e;
-    --toolbar: #f0f0f0;
+    --sidebar: #101827;
+    --sidebar-foreground: #ffffff;
+    --session-list-bg: var(--app-dialog-bg);
+    --session-list-fg: var(--app-fg);
+    --toolbar: #f8faff;
     --terminal-bg: #1e1e1e;
     --terminal-fg: #d4d4d4;
     --diff-add: rgba(48, 209, 88, 0.12);
@@ -44,29 +46,29 @@
     --app-chat-user-bg: var(--muted);
     --app-chat-user-surface-bg: var(--app-chat-user-bg);
     --app-chat-user-fg: var(--foreground);
-    --app-chat-user-chip-bg: #DBEAFE;
-    --app-chat-user-chip-fg: #1447E6;
+    --app-chat-user-chip-bg: #edf3ff;
+    --app-chat-user-chip-fg: #1769ff;
     --app-tool-card-bg: var(--muted);
     --app-tool-group-bg: var(--app-tool-card-bg);
-    --app-tool-card-hover-bg: #e9edf2;
-    --app-tool-card-accent: #7b8491;
-    --app-tool-card-muted-action-fg: #aeb4bd;
-    --app-tool-card-subtitle: #6b7280;
-    --app-code-header-bg: #eceff2;
-    --app-code-header-fg: #717784;
+    --app-tool-card-hover-bg: #f8faff;
+    --app-tool-card-accent: #738096;
+    --app-tool-card-muted-action-fg: #8b96a8;
+    --app-tool-card-subtitle: #738096;
+    --app-code-header-bg: #f8faff;
+    --app-code-header-fg: #738096;
     --app-code-copy-hover-bg: rgba(17, 24, 39, 0.06);
     --app-inline-code-border: transparent;
-    --app-inline-code-fg: #2d333b;
-    --app-md-quote-bg: #f1f3f5;
-    --app-md-quote-border: #c9d0d8;
-    --app-md-quote-fg: #525965;
-    --app-md-table-bg: #f5f6f7;
-    --app-md-table-head-bg: #eceff2;
-    --app-reasoning-bg: #f2f4f6;
-    --app-mermaid-node-fill: #f8fbff;
-    --app-mermaid-node-border: #b8cdfd;
-    --app-mermaid-cluster-fill: #eef4ff;
-    --app-mermaid-text: #2d333b;
+    --app-inline-code-fg: #172033;
+    --app-md-quote-bg: #ffffff;
+    --app-md-quote-border: #b8c8e5;
+    --app-md-quote-fg: #526074;
+    --app-md-table-bg: #ffffff;
+    --app-md-table-head-bg: #f8faff;
+    --app-reasoning-bg: #ffffff;
+    --app-mermaid-node-fill: #ffffff;
+    --app-mermaid-node-border: #b8c8e5;
+    --app-mermaid-cluster-fill: #edf3ff;
+    --app-mermaid-text: #172033;
     --app-link-muted: rgba(17, 24, 39, 0.18);
     --app-scrollbar-thumb: rgba(107, 114, 128, 0.34);
     --app-scrollbar-thumb-hover: rgba(107, 114, 128, 0.5);
@@ -113,23 +115,25 @@
 }
 
 [data-theme="dark"] {
-    --background: #1c1c1e;
-    --foreground: #f5f5f7;
-    --card: #2c2c2e;
-    --card-foreground: #f5f5f7;
-    --primary: #0a84ff;
-    --primary-foreground: #ffffff;
-    --secondary: #3a3a3c;
-    --secondary-foreground: #ebebf5;
-    --muted: #2c2c2e;
-    --muted-foreground: #8e8e93;
-    --accent: #30d158;
-    --accent-foreground: #ffffff;
-    --border: rgba(255, 255, 255, 0.08);
-    --ring: rgba(10, 132, 255, 0.5);
-    --sidebar: #111113;
-    --sidebar-foreground: #f5f5f7;
-    --toolbar: #252527;
+    --background: #101827;
+    --foreground: #eef4ff;
+    --card: #18263d;
+    --card-foreground: #eef4ff;
+    --primary: #73a5ff;
+    --primary-foreground: #101827;
+    --secondary: #18263d;
+    --secondary-foreground: #eef4ff;
+    --muted: #1e2b40;
+    --muted-foreground: #a7b0c1;
+    --accent: #1ca979;
+    --accent-foreground: #101827;
+    --border: rgba(230, 234, 241, 0.16);
+    --ring: rgba(115, 165, 255, 0.4);
+    --sidebar: #0b1220;
+    --sidebar-foreground: #eef4ff;
+    --session-list-bg: var(--app-dialog-bg);
+    --session-list-fg: var(--app-fg);
+    --toolbar: #18263d;
     --terminal-bg: #0d0d0f;
     --terminal-fg: #cccccc;
     --diff-add: rgba(48, 209, 88, 0.15);
@@ -148,30 +152,30 @@
     --app-dialog-bg: var(--card);
     --app-chat-user-bg: var(--muted);
     --app-chat-user-surface-bg: var(--app-chat-user-bg);
-    --app-chat-user-fg: #f5f7fa;
-    --app-chat-user-chip-bg: rgba(37, 99, 235, 0.22);
-    --app-chat-user-chip-fg: #93c5fd;
-    --app-tool-card-bg: #2b2f34;
+    --app-chat-user-fg: #eef4ff;
+    --app-chat-user-chip-bg: rgba(115, 165, 255, 0.24);
+    --app-chat-user-chip-fg: #73a5ff;
+    --app-tool-card-bg: #1e2b40;
     --app-tool-group-bg: var(--app-tool-card-bg);
-    --app-tool-card-hover-bg: #343a41;
-    --app-tool-card-accent: #b8c0cb;
-    --app-tool-card-muted-action-fg: #7f8792;
-    --app-tool-card-subtitle: #b3bac5;
-    --app-code-header-bg: #353b43;
-    --app-code-header-fg: #c4cbd6;
+    --app-tool-card-hover-bg: #263957;
+    --app-tool-card-accent: #a7b0c1;
+    --app-tool-card-muted-action-fg: #8f9aaf;
+    --app-tool-card-subtitle: #a7b0c1;
+    --app-code-header-bg: #263957;
+    --app-code-header-fg: #a7b0c1;
     --app-code-copy-hover-bg: rgba(255, 255, 255, 0.08);
     --app-inline-code-border: transparent;
-    --app-inline-code-fg: #f5f7fa;
-    --app-md-quote-bg: #31363d;
-    --app-md-quote-border: #6b7481;
-    --app-md-quote-fg: #d7dde6;
-    --app-md-table-bg: #2a2f35;
-    --app-md-table-head-bg: #353b43;
-    --app-reasoning-bg: #2b3036;
-    --app-mermaid-node-fill: #323843;
-    --app-mermaid-node-border: #7aa2ff;
-    --app-mermaid-cluster-fill: #2d3440;
-    --app-mermaid-text: #edf1f5;
+    --app-inline-code-fg: #eef4ff;
+    --app-md-quote-bg: #1e2b40;
+    --app-md-quote-border: #4a638e;
+    --app-md-quote-fg: #d8e4fa;
+    --app-md-table-bg: #1e2b40;
+    --app-md-table-head-bg: #263957;
+    --app-reasoning-bg: #1e2b40;
+    --app-mermaid-node-fill: #1e2b40;
+    --app-mermaid-node-border: #73a5ff;
+    --app-mermaid-cluster-fill: #18263d;
+    --app-mermaid-text: #eef4ff;
     --app-link-muted: rgba(255, 255, 255, 0.2);
     --app-scrollbar-thumb: rgba(196, 203, 214, 0.28);
     --app-scrollbar-thumb-hover: rgba(196, 203, 214, 0.42);
@@ -229,6 +233,8 @@
     --ring: rgba(10, 132, 255, 0.5);
     --sidebar: #000000;
     --sidebar-foreground: #f5f5f7;
+    --session-list-bg: var(--app-dialog-bg);
+    --session-list-fg: var(--app-fg);
     --toolbar: #0c0c0e;
     --terminal-bg: #000000;
     --terminal-fg: #cccccc;
@@ -398,15 +404,19 @@ body {
     touch-action: pan-y;
 }
 
+.session-list-item[aria-current="page"] {
+    background-color: var(--app-subtle-bg);
+    box-shadow: inset 3px 0 0 var(--app-link);
+}
+
 @media (hover: hover) and (pointer: fine) {
     .session-list-item:not([aria-current="page"]):hover,
     .session-list-new-button:hover {
         background-color: var(--app-subtle-bg);
     }
 
-    .session-list-item[aria-current="page"],
     .session-list-item[aria-current="page"]:hover {
-        background-color: var(--primary);
+        background-color: var(--app-subtle-bg);
     }
 }
 
@@ -453,32 +463,113 @@ body {
     padding-left: 8px;
 }
 
+/* Mobile navigation: the chat slides over the retreating session list.
+   Only this workspace is captured; app bars stay in place. */
+@media (max-width: 919px) and (prefers-reduced-motion: no-preference) {
+    .sessions-workspace {
+        view-transition-name: sessions-workspace;
+    }
+
+    :root:active-view-transition-type(session-open),
+    :root:active-view-transition-type(session-close) {
+        &::view-transition-group(sessions-workspace) {
+            overflow: clip;
+            animation-duration: 280ms;
+        }
+
+        &::view-transition-old(sessions-workspace),
+        &::view-transition-new(sessions-workspace) {
+            height: 100%;
+            mix-blend-mode: normal;
+            animation-duration: 280ms;
+            animation-timing-function: cubic-bezier(0.22, 0.68, 0, 1);
+            animation-fill-mode: both;
+        }
+
+        &::view-transition-old(root) {
+            animation: none;
+            opacity: 0;
+        }
+
+        &::view-transition-new(root) {
+            animation: none;
+        }
+    }
+
+    :root:active-view-transition-type(session-open)::view-transition-old(sessions-workspace) {
+        animation-name: session-list-retreat;
+    }
+
+    :root:active-view-transition-type(session-open)::view-transition-new(sessions-workspace) {
+        animation-name: session-drawer-enter;
+        box-shadow: -12px 0 28px rgb(0 0 0 / 0.1);
+    }
+
+    :root:active-view-transition-type(session-close)::view-transition-old(sessions-workspace) {
+        z-index: 1;
+        animation-name: session-drawer-exit;
+        box-shadow: -12px 0 28px rgb(0 0 0 / 0.1);
+    }
+
+    :root:active-view-transition-type(session-close)::view-transition-new(sessions-workspace) {
+        animation-name: session-list-return;
+    }
+}
+
+@keyframes session-drawer-enter {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+}
+
+@keyframes session-list-retreat {
+    from { transform: translateX(0); }
+    to { transform: translateX(-25%); }
+}
+
+@keyframes session-drawer-exit {
+    from { transform: translateX(0); }
+    to { transform: translateX(100%); }
+}
+
+@keyframes session-list-return {
+    from { transform: translateX(-25%); }
+    to { transform: translateX(0); }
+}
+
 /* Desktop sidebar: use custom width from CSS variable.
    Kept in sync with the Tailwind `split` breakpoint (see tailwind.config.ts)
    so the sidebar width/resize applies as soon as the split view appears on
    compact tablets. */
 @media (min-width: 920px) {
-    /* Apply resizable width to sidebar.
-       Cap it against the viewport so a wide persisted width (up to 600px, from
-       resizing on desktop) can't crush the detail pane on a compact split.
-       424px = 420px min detail pane + 4px resize handle, which preserves the
-       previous 1024px worst case (1024 - 600 - 4 = 420) down to 920px. The cap
-       is a no-op on desktop where 100vw - 424px exceeds the stored width. */
-    div[style*="--sidebar-w"] {
-        width: min(var(--sidebar-w), calc(100vw - 424px)) !important;
+    /* Reserve 420px for the detail pane plus the 8px resize gutter.
+       Parent-relative sizing also accounts for the workspace's outer padding. */
+    .sessions-sidebar {
+        width: min(var(--sidebar-w), calc(100% - 428px));
     }
 }
 
 /* Sidebar resize handle */
 .sidebar-resize-handle {
-    width: 4px;
+    position: relative;
+    width: 8px;
     cursor: col-resize;
-    background: var(--app-divider);
+    touch-action: none;
+}
+
+.sidebar-resize-handle::after {
+    content: '';
+    position: absolute;
+    top: calc(50% - 24px);
+    left: 3px;
+    width: 2px;
+    height: 48px;
+    border-radius: 2px;
+    background: var(--app-border);
     transition: background-color 0.15s;
 }
 
-.sidebar-resize-handle:hover,
-.sidebar-resize-handle[data-dragging] {
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle[data-dragging]::after {
     background: var(--app-link);
 }
 
@@ -726,4 +817,37 @@ html[data-theme="oled"] .shiki span:not([data-line-number]) {
 .tsqd-open-btn-container {
   bottom: 50% !important;
   transform: translateY(50%);
+}
+
+/* Compact reasoning-effort control used in the composer settings popover. */
+.hapi-reasoning-slider {
+    appearance: none;
+    display: block;
+    height: 24px;
+    border-radius: 9999px;
+    cursor: pointer;
+}
+
+.hapi-reasoning-slider:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.hapi-reasoning-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 9999px;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
+}
+
+.hapi-reasoning-slider::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 9999px;
+    background: #ffffff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
 }

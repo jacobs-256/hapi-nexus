@@ -57,11 +57,11 @@ http://<your-computer-ip>:3006
 
 它会在 hub 首次启动时自动生成，并保存到 `~/.hapi/settings.json`。
 
-普通浏览器/PWA 登录改用本地用户名/密码账号。第一个本地管理员是 `admin` / `admin`；首次登录后请在 **Settings -> Account** 中修改。
+普通浏览器/PWA 登录改用本地邮箱/密码账号。第一个本地管理员是 `admin@hapi.local` / `admin`；首次登录后请在 **Settings -> Account** 中修改。
 
 ### 支持多个账号吗？
 
-支持。管理员可以在 **Settings -> Users** 创建本地用户名/密码用户。每个用户有独立密码，并可在 **Settings -> Account** 查看自己的个人 access token。使用项目在同一命名空间内共享会话和 runner workspace；使用命名空间在同一个 hub 上隔离不同团队。见[账号与访问](./accounts.md)、[项目与共享](./projects.md)和[命名空间（高级）](./namespace.md)。
+支持。管理员可以在 **Settings -> Users** 创建本地邮箱/密码用户。每个用户有独立密码，并可在 **Settings -> Account** 查看自己的个人 access token。使用项目在同一命名空间内共享会话和 runner workspace；使用命名空间在同一个 hub 上隔离不同团队。见[账号与访问](./accounts.md)、[项目与共享](./projects.md)和[命名空间（高级）](./namespace.md)。
 
 ### 可以不使用 Telegram 吗？
 
@@ -125,13 +125,13 @@ Linux 和 macOS 主机使用 Bun 的 POSIX PTY 支持。Windows 主机使用 Bun
 
 ### 认证安全吗？
 
-浏览器登录使用本地用户名/密码账号。密码在存储前会被哈希。自动生成的 `CLI_API_TOKEN` 是 256-bit 并且具备密码学安全性。外部访问时，请始终通过隧道或反向代理使用 HTTPS。
+浏览器登录使用本地邮箱/密码账号。密码在存储前会被哈希。自动生成的 `CLI_API_TOKEN` 是 256-bit 并且具备密码学安全性。外部访问时，请始终通过隧道或反向代理使用 HTTPS。
 
 ### 其他人能访问我的 HAPI 实例吗？
 
 只有在拥有有效浏览器凭据、有效 Web session 或用于 CLI/伴侣客户端/Telegram 流程的有效 access token 时才可以。进一步加固：
 
-- 立即修改默认 `admin` / `admin` 密码
+- 立即修改默认 `admin@hapi.local` / `admin` 密码
 - 使用强且唯一的用户密码
 - 保管好 CLI 和个人 access token
 - 外部访问始终使用 HTTPS
@@ -169,10 +169,10 @@ http://<your-computer-ip>:3006
 
 同时确认操作系统防火墙允许 `3006` 端口入站连接。
 
-### "Invalid username or password" 错误
+### "Invalid email or password" 错误
 
-- 检查用户名和密码
-- 如果这是新 hub，尝试首次启动默认值 `admin` / `admin`
+- 检查邮箱和密码
+- 如果这是新 hub，尝试首次启动默认值 `admin@hapi.local` / `admin`
 - 如果你已作为管理员登录，可在 **Settings -> Users** 重置该用户密码
 
 ### "Invalid token" 错误

@@ -1,3 +1,4 @@
+import { LocalEmailSchema } from '@hapi/protocol'
 import type { Database } from 'bun:sqlite'
 import { createHash, randomBytes } from 'node:crypto'
 
@@ -24,7 +25,7 @@ type UserRole = StoredUser['role']
 
 export type CreateLocalUserInput = {
     namespace: string
-    username: string
+    email: string
     passwordHash: string
     displayName?: string | null
     role?: UserRole
@@ -37,7 +38,7 @@ export type UpdateUserInput = {
     disabledAt?: number | null
 }
 
-export type UpdateLocalUsernameResult =
+export type UpdateLocalEmailResult =
     | { status: 'updated'; user: StoredUser }
     | { status: 'not_found' }
     | { status: 'duplicate'; existingUser: StoredUser }
@@ -48,8 +49,9 @@ function toStoredUser(row: DbUserRow): StoredUser {
         platform: row.platform,
         platformUserId: row.platform_user_id,
         namespace: row.namespace,
-        username: row.username,
-        usernameNormalized: row.username_normalized,
+        // Persist emails in the historical SQL columns to keep snapshots compatible.
+        email: row.username,
+        emailNormalized: row.username_normalized,
         displayName: row.display_name,
         passwordHash: row.password_hash,
         accessToken: row.access_token,
@@ -65,12 +67,12 @@ function normalizeUserRole(value: string | null): UserRole {
     return value === 'admin' ? 'admin' : 'user'
 }
 
-export function normalizeLocalUsername(username: string): string {
-    return username.trim().toLowerCase()
+export function normalizeLocalEmail(email: string): string {
+    return email.trim().toLowerCase()
 }
 
-export function localPlatformUserId(namespace: string, username: string): string {
-    return `${namespace}:${normalizeLocalUsername(username)}`
+export function localPlatformUserId(namespace: string, email: string): string {
+    return `${namespace}:${normalizeLocalEmail(email)}`
 }
 
 export function generateUserAccessToken(): string {
@@ -95,8 +97,8 @@ export function getUserById(db: Database, userId: number, namespace: string): St
     return row ? toStoredUser(row) : null
 }
 
-export function getLocalUserByUsername(db: Database, namespace: string, username: string): StoredUser | null {
-    const normalized = normalizeLocalUsername(username)
+export function getLocalUserByEmail(db: Database, namespace: string, email: string): StoredUser | null {
+    const normalized = normalizeLocalEmail(email)
     const row = db.prepare(`
         SELECT * FROM users
         WHERE platform = 'local'
@@ -174,11 +176,8 @@ export function addUser(
 
 export function createLocalUser(db: Database, input: CreateLocalUserInput): StoredUser {
     const now = Date.now()
-    const username = input.username.trim()
-    const usernameNormalized = normalizeLocalUsername(username)
-    if (!usernameNormalized) {
-        throw new Error('Username is required')
-    }
+    const email = LocalEmailSchema.parse(input.email)
+    const emailNormalized = normalizeLocalEmail(email)
     const accessToken = input.accessToken ?? generateUserAccessToken()
     const accessTokenHash = hashUserAccessToken(accessToken)
 
@@ -213,10 +212,10 @@ export function createLocalUser(db: Database, input: CreateLocalUserInput): Stor
             @updated_at
         )
     `).run({
-        platform_user_id: localPlatformUserId(input.namespace, username),
+        platform_user_id: localPlatformUserId(input.namespace, email),
         namespace: input.namespace,
-        username,
-        username_normalized: usernameNormalized,
+        username: email,
+        username_normalized: emailNormalized,
         display_name: input.displayName ?? null,
         password_hash: input.passwordHash,
         access_token: accessToken,
@@ -226,7 +225,7 @@ export function createLocalUser(db: Database, input: CreateLocalUserInput): Stor
         updated_at: now
     })
 
-    const user = getLocalUserByUsername(db, input.namespace, username)
+    const user = getLocalUserByEmail(db, input.namespace, email)
     if (!user) {
         throw new Error('Failed to create local user')
     }
@@ -265,24 +264,21 @@ export function updateUserPassword(db: Database, userId: number, namespace: stri
     return getUserById(db, userId, namespace)
 }
 
-export function updateLocalUsername(
+export function updateLocalEmail(
     db: Database,
     userId: number,
     namespace: string,
-    usernameInput: string
-): UpdateLocalUsernameResult {
+    emailInput: string
+): UpdateLocalEmailResult {
     const current = getUserById(db, userId, namespace)
     if (!current || current.platform !== 'local') {
         return { status: 'not_found' }
     }
 
-    const username = usernameInput.trim()
-    const usernameNormalized = normalizeLocalUsername(username)
-    if (!usernameNormalized) {
-        throw new Error('Username is required')
-    }
+    const email = LocalEmailSchema.parse(emailInput)
+    const emailNormalized = normalizeLocalEmail(email)
 
-    const duplicate = getLocalUserByUsername(db, namespace, username)
+    const duplicate = getLocalUserByEmail(db, namespace, email)
     if (duplicate && duplicate.id !== userId) {
         return { status: 'duplicate', existingUser: duplicate }
     }
@@ -296,9 +292,9 @@ export function updateLocalUsername(
             updated_at = ?
         WHERE id = ? AND namespace = ? AND platform = 'local'
     `).run(
-        localPlatformUserId(namespace, username),
-        username,
-        usernameNormalized,
+        localPlatformUserId(namespace, email),
+        email,
+        emailNormalized,
         Date.now(),
         userId,
         namespace

@@ -45,7 +45,7 @@ HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_B
 On first run, HAPI Nexus creates:
 
 - a CLI access token in `~/.hapi/settings.json`
-- a local Web administrator with username `admin` and password `admin`
+- a local Web administrator with email `admin@hapi.local` and password `admin`
 
 The `server` subcommand remains supported as an alias for `hub`.
 
@@ -81,7 +81,7 @@ This starts Claude Code wrapped with HAPI Nexus. The session appears in the web 
 
 Open the URL shown in the terminal, or scan the QR code with your phone.
 
-Sign in with `admin` / `admin`, then go to **Settings -> Account** and change the default username and password.
+Sign in with `admin@hapi.local` / `admin`, then go to **Settings -> Account** and change the default email and password.
 
 ## Next steps
 

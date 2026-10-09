@@ -12,6 +12,14 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { queryKeys } from '@/lib/query-keys'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
 import { WorkspaceBrowser } from '@/components/WorkspaceBrowser'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger
+} from '@/components/ui/dialog'
 
 const MEMBER_ROLES: ProjectRole[] = ['viewer', 'editor', 'admin', 'owner']
 const INVITE_ROLES: ProjectRole[] = ['editor', 'viewer', 'admin']
@@ -64,16 +72,16 @@ function fuzzyMatch(value: string, query: string): boolean {
 
 function getUserLabel(user: EnterpriseUser): string {
     const displayName = user.displayName?.trim()
-    const username = user.username?.trim()
-    if (displayName && username && displayName !== username) {
-        return `${displayName} (@${username})`
+    const email = user.email?.trim()
+    if (displayName && email && displayName !== email) {
+        return `${displayName} (${email})`
     }
-    return displayName || (username ? `@${username}` : `User ${user.id}`)
+    return displayName || email || `User ${user.id}`
 }
 
 function getUserSearchText(user: EnterpriseUser): string {
     return normalizeSearch([
-        user.username,
+        user.email,
         user.displayName
     ].filter(Boolean).join(' '))
 }
@@ -247,7 +255,7 @@ function MemberUserSelect(props: {
                                 filteredUsers.map((user) => {
                                     const checked = props.selectedUserIds.includes(user.id)
                                     const label = getUserLabel(user)
-                                    const username = user.username?.trim()
+                                    const email = user.email?.trim()
                                     return (
                                         <label
                                             key={user.id}
@@ -262,7 +270,7 @@ function MemberUserSelect(props: {
                                             <span className="min-w-0 flex-1">
                                                 <span className="block truncate font-medium text-[var(--app-fg)]">{label}</span>
                                                 <span className="block truncate text-xs text-[var(--app-hint)]">
-                                                    {[username ? `@${username}` : null, `ID ${user.id}`].filter(Boolean).join(' · ')}
+                                                    {[email || null, `ID ${user.id}`].filter(Boolean).join(' · ')}
                                                 </span>
                                             </span>
                                         </label>
@@ -371,7 +379,7 @@ function MemberList(props: {
             {props.project.members.map((member) => {
                 const user = props.usersById.get(member.userId)
                 const label = user ? getUserLabel(user) : t('settings.projects.userId', { id: member.userId })
-                const username = user?.username?.trim()
+                const email = user?.email?.trim()
                 const onlyOwner = member.role === 'owner' && ownerCount <= 1
                 const canChangeOwner = actorIsOwner || member.role !== 'owner'
                 const canChange = props.canManage && canChangeOwner && !onlyOwner
@@ -387,7 +395,7 @@ function MemberList(props: {
                             <span className="block truncate text-xs font-semibold text-[var(--app-fg)]">{label}</span>
                             {user ? (
                                 <span className="block truncate text-xs text-[var(--app-hint)]">
-                                    {[username ? `@${username}` : null, `ID ${member.userId}`].filter(Boolean).join(' · ')}
+                                    {[email || null, `ID ${member.userId}`].filter(Boolean).join(' · ')}
                                 </span>
                             ) : null}
                         </span>
@@ -426,9 +434,10 @@ function MemberList(props: {
     )
 }
 
-function CreateProjectForm(props: { api: ApiClient; machines: Machine[] }) {
+function CreateProjectDialog(props: { api: ApiClient; machines: Machine[] }) {
     const { t } = useTranslation()
     const queryClient = useQueryClient()
+    const [open, setOpen] = useState(false)
     const [name, setName] = useState('')
     const [machineId, setMachineId] = useState('')
     const [rootPath, setRootPath] = useState('')
@@ -444,6 +453,11 @@ function CreateProjectForm(props: { api: ApiClient; machines: Machine[] }) {
         [machineId, props.machines]
     )
 
+    function resetForm() {
+        setName('')
+        setRootPath('')
+    }
+
     const createMutation = useMutation({
         mutationFn: async () => {
             const trimmedName = name.trim()
@@ -457,79 +471,115 @@ function CreateProjectForm(props: { api: ApiClient; machines: Machine[] }) {
             })
         },
         onSuccess: () => {
-            setName('')
-            setRootPath('')
+            resetForm()
+            setOpen(false)
             void queryClient.invalidateQueries({ queryKey: queryKeys.projects })
         }
     })
 
+    function handleOpenChange(nextOpen: boolean) {
+        if (createMutation.isPending) return
+        setOpen(nextOpen)
+        createMutation.reset()
+        if (!nextOpen) {
+            resetForm()
+        }
+    }
+
     return (
-        <form
-            className="space-y-3 px-3 py-3"
-            onSubmit={(event) => {
-                event.preventDefault()
-                createMutation.mutate()
-            }}
-        >
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
-                <label className="min-w-0">
-                    <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.name')}</span>
-                    <input
-                        value={name}
-                        onChange={(event) => setName(event.target.value)}
-                        disabled={createMutation.isPending}
-                        placeholder={t('settings.projects.create.namePlaceholder')}
-                        className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                    />
-                </label>
-                <label className="min-w-0">
-                    <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.machine')}</span>
-                    <select
-                        value={machineId}
-                        onChange={(event) => setMachineId(event.target.value)}
-                        disabled={createMutation.isPending || props.machines.length === 0}
-                        className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                    >
-                        {props.machines.length === 0 ? (
-                            <option value="">{t('settings.projects.noMachines')}</option>
-                        ) : null}
-                        {props.machines.map((machine) => (
-                            <MachineOption key={machine.id} machine={machine} />
-                        ))}
-                    </select>
-                </label>
-            </div>
-            <label className="block min-w-0">
-                <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.rootPath')}</span>
-                <div className="flex gap-2">
-                    <input
-                        value={rootPath}
-                        onChange={(event) => setRootPath(event.target.value)}
-                        disabled={createMutation.isPending || props.machines.length === 0}
-                        placeholder={t('settings.projects.create.rootPathPlaceholder')}
-                        className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                    />
-                    <ProjectDirectoryPicker
-                        api={props.api}
-                        machine={selectedMachine}
-                        disabled={createMutation.isPending || props.machines.length === 0}
-                        onChange={setRootPath}
-                    />
-                </div>
-            </label>
-            {createMutation.error ? (
-                <div className="text-xs text-red-600">
-                    {createMutation.error instanceof Error ? createMutation.error.message : t('settings.projects.create.error')}
-                </div>
-            ) : null}
-            <button
-                type="submit"
-                disabled={createMutation.isPending || !name.trim()}
-                className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-            >
-                {createMutation.isPending ? t('settings.projects.create.creating') : t('settings.projects.create.submit')}
-            </button>
-        </form>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+                <button
+                    type="button"
+                    className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                >
+                    {t('settings.projects.create.submit')}
+                </button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[min(92dvh,calc(var(--app-viewport-height,100dvh)-24px))] max-w-xl overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>{t('settings.projects.create.section')}</DialogTitle>
+                    <DialogDescription>{t('settings.projects.description')}</DialogDescription>
+                </DialogHeader>
+                <form
+                    className="mt-4 space-y-3"
+                    onSubmit={(event) => {
+                        event.preventDefault()
+                        createMutation.mutate()
+                    }}
+                >
+                    <div className="grid gap-2 sm:grid-cols-[1fr_1fr]">
+                        <label className="min-w-0">
+                            <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.name')}</span>
+                            <input
+                                autoFocus
+                                value={name}
+                                onChange={(event) => setName(event.target.value)}
+                                disabled={createMutation.isPending}
+                                placeholder={t('settings.projects.create.namePlaceholder')}
+                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                            />
+                        </label>
+                        <label className="min-w-0">
+                            <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.machine')}</span>
+                            <select
+                                value={machineId}
+                                onChange={(event) => setMachineId(event.target.value)}
+                                disabled={createMutation.isPending || props.machines.length === 0}
+                                className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                            >
+                                {props.machines.length === 0 ? (
+                                    <option value="">{t('settings.projects.noMachines')}</option>
+                                ) : null}
+                                {props.machines.map((machine) => (
+                                    <MachineOption key={machine.id} machine={machine} />
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+                    <label className="block min-w-0">
+                        <span className="mb-1 block text-xs font-medium text-[var(--app-hint)]">{t('settings.projects.create.rootPath')}</span>
+                        <div className="flex gap-2">
+                            <input
+                                value={rootPath}
+                                onChange={(event) => setRootPath(event.target.value)}
+                                disabled={createMutation.isPending || props.machines.length === 0}
+                                placeholder={t('settings.projects.create.rootPathPlaceholder')}
+                                className="min-w-0 flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                            />
+                            <ProjectDirectoryPicker
+                                api={props.api}
+                                machine={selectedMachine}
+                                disabled={createMutation.isPending || props.machines.length === 0}
+                                onChange={setRootPath}
+                            />
+                        </div>
+                    </label>
+                    {createMutation.error ? (
+                        <div className="text-xs text-red-600">
+                            {createMutation.error instanceof Error ? createMutation.error.message : t('settings.projects.create.error')}
+                        </div>
+                    ) : null}
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => handleOpenChange(false)}
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                        >
+                            {t('button.cancel')}
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={createMutation.isPending || !name.trim()}
+                            className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                        >
+                            {createMutation.isPending ? t('settings.projects.create.creating') : t('settings.projects.create.submit')}
+                        </button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -1096,11 +1146,11 @@ export default function SettingsProjectsPage() {
     )
 
     return (
-        <SettingsPageContent title={t('settings.projects.title')} description={t('settings.projects.description')}>
-            <SettingsSection title={t('settings.projects.create.section')}>
-                <CreateProjectForm api={api} machines={machines} />
-            </SettingsSection>
-
+        <SettingsPageContent
+            title={t('settings.projects.title')}
+            description={t('settings.projects.description')}
+            actions={<CreateProjectDialog api={api} machines={machines} />}
+        >
             <SettingsSection title={t('settings.projects.list.section')}>
                 {error ? (
                     <div className="px-3 py-3 text-sm text-red-600">{error}</div>

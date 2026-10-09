@@ -7,99 +7,152 @@ import { queryKeys } from '@/lib/query-keys'
 import { useTranslation } from '@/lib/use-translation'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger
+} from '@/components/ui/dialog'
 
 const USER_ROLES: UserRole[] = ['user', 'admin']
 const USER_GRID_TEMPLATE = 'minmax(150px,1.2fr) minmax(150px,1fr) minmax(96px,0.65fr) minmax(105px,0.65fr) minmax(220px,1.45fr) minmax(150px,0.9fr)'
 
 
-function CreateUserForm(props: { api: ApiClient }) {
+function CreateUserDialog(props: { api: ApiClient }) {
     const { t } = useTranslation()
     const queryClient = useQueryClient()
-    const [username, setUsername] = useState('')
+    const [open, setOpen] = useState(false)
+    const [email, setEmail] = useState('')
     const [displayName, setDisplayName] = useState('')
     const [password, setPassword] = useState('')
     const [role, setRole] = useState<UserRole>('user')
 
+    function resetForm() {
+        setEmail('')
+        setDisplayName('')
+        setPassword('')
+        setRole('user')
+    }
+
     const createMutation = useMutation({
         mutationFn: async () => {
-            const trimmedUsername = username.trim()
-            if (!trimmedUsername || password.length < 8) {
+            const trimmedEmail = email.trim()
+            if (!trimmedEmail || password.length < 8) {
                 throw new Error(t('settings.users.create.required'))
             }
             return await props.api.createUser({
-                username: trimmedUsername,
+                email: trimmedEmail,
                 password,
                 displayName: displayName.trim() || null,
                 role
             })
         },
         onSuccess: () => {
-            setUsername('')
-            setDisplayName('')
-            setPassword('')
-            setRole('user')
+            resetForm()
+            setOpen(false)
             void queryClient.invalidateQueries({ queryKey: queryKeys.users })
         }
     })
 
+    function handleOpenChange(nextOpen: boolean) {
+        if (createMutation.isPending) return
+        setOpen(nextOpen)
+        createMutation.reset()
+        if (!nextOpen) {
+            resetForm()
+        }
+    }
+
     return (
-        <form
-            className="space-y-3 px-3 py-3"
-            onSubmit={(event: FormEvent) => {
-                event.preventDefault()
-                createMutation.mutate()
-            }}
-        >
-            <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    placeholder={t('settings.users.username')}
-                    autoComplete="off"
-                    disabled={createMutation.isPending}
-                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                />
-                <input
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    placeholder={t('settings.users.displayName')}
-                    autoComplete="off"
-                    disabled={createMutation.isPending}
-                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                />
-                <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder={t('settings.users.password')}
-                    autoComplete="new-password"
-                    disabled={createMutation.isPending}
-                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
-                />
-                <select
-                    value={role}
-                    onChange={(event) => setRole(event.target.value as UserRole)}
-                    disabled={createMutation.isPending}
-                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+                <button
+                    type="button"
+                    className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
                 >
-                    {USER_ROLES.map((value) => (
-                        <option key={value} value={value}>{t(`settings.users.role.${value}`)}</option>
-                    ))}
-                </select>
-            </div>
-            {createMutation.error ? (
-                <div className="text-xs text-red-600">
-                    {createMutation.error instanceof Error ? createMutation.error.message : t('settings.users.create.error')}
-                </div>
-            ) : null}
-            <button
-                type="submit"
-                disabled={createMutation.isPending || !username.trim() || password.length < 8}
-                className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-            >
-                {createMutation.isPending ? t('settings.users.create.creating') : t('settings.users.create.submit')}
-            </button>
-        </form>
+                    {t('settings.users.create.submit')}
+                </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{t('settings.users.create.section')}</DialogTitle>
+                    <DialogDescription>{t('settings.users.description')}</DialogDescription>
+                </DialogHeader>
+                <form
+                    className="mt-4 space-y-3"
+                    onSubmit={(event: FormEvent) => {
+                        event.preventDefault()
+                        createMutation.mutate()
+                    }}
+                >
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        <input
+                            autoFocus
+                            type="email"
+                            required
+                            maxLength={254}
+                            value={email}
+                            onChange={(event) => setEmail(event.target.value)}
+                            placeholder={t('settings.users.email')}
+                            autoComplete="off"
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                        />
+                        <input
+                            value={displayName}
+                            onChange={(event) => setDisplayName(event.target.value)}
+                            placeholder={t('settings.users.displayName')}
+                            autoComplete="off"
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                        />
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(event) => setPassword(event.target.value)}
+                            placeholder={t('settings.users.password')}
+                            autoComplete="new-password"
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                        />
+                        <select
+                            value={role}
+                            onChange={(event) => setRole(event.target.value as UserRole)}
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
+                        >
+                            {USER_ROLES.map((value) => (
+                                <option key={value} value={value}>{t(`settings.users.role.${value}`)}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {createMutation.error ? (
+                        <div className="text-xs text-red-600">
+                            {createMutation.error instanceof Error ? createMutation.error.message : t('settings.users.create.error')}
+                        </div>
+                    ) : null}
+                    <div className="flex justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={() => handleOpenChange(false)}
+                            disabled={createMutation.isPending}
+                            className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] transition-colors hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
+                        >
+                            {t('button.cancel')}
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={createMutation.isPending || !email.trim() || password.length < 8}
+                            className="rounded-md bg-[var(--app-link)] px-3 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                        >
+                            {createMutation.isPending ? t('settings.users.create.creating') : t('settings.users.create.submit')}
+                        </button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -120,7 +173,7 @@ function UserRow(props: {
         : props.user.id === props.currentUserId
     const canManageLocalSecret = props.user.platform === 'local'
     const showDeleteUser = canManageLocalSecret && !isOwner
-    const userLabel = props.user.displayName || props.user.username || props.user.platformUserId
+    const userLabel = props.user.displayName || props.user.email || props.user.platformUserId
 
     function invalidateUsers() {
         void queryClient.invalidateQueries({ queryKey: queryKeys.users })
@@ -156,8 +209,13 @@ function UserRow(props: {
             <div className="grid items-center gap-2 px-3 py-3" style={{ gridTemplateColumns: USER_GRID_TEMPLATE }}>
                 <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-[var(--app-fg)]">
-                        {props.user.displayName || props.user.username || props.user.platformUserId}
+                        {props.user.displayName || props.user.email || props.user.platformUserId}
                     </div>
+                    {props.user.email && props.user.displayName ? (
+                        <div className="truncate text-xs text-[var(--app-hint)]" title={props.user.email}>
+                            {props.user.email}
+                        </div>
+                    ) : null}
                     <div className="truncate text-xs text-[var(--app-hint)]">
                         #{props.user.id} · {props.user.platform} · {props.user.namespace}
                     </div>
@@ -321,11 +379,11 @@ export default function SettingsUsersPage() {
     const users = usersQuery.data?.users ?? []
 
     return (
-        <SettingsPageContent title={t('settings.users.title')} description={t('settings.users.description')}>
-            <SettingsSection title={t('settings.users.create.section')}>
-                <CreateUserForm api={api} />
-            </SettingsSection>
-
+        <SettingsPageContent
+            title={t('settings.users.title')}
+            description={t('settings.users.description')}
+            actions={<CreateUserDialog api={api} />}
+        >
             <SettingsSection title={t('settings.users.list.section')}>
                 {usersQuery.error ? (
                     <div className="px-3 py-3 text-sm text-red-600">

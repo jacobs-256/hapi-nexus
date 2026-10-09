@@ -8,6 +8,7 @@ import FilesPage from './files'
 const mocks = vi.hoisted(() => ({
     navigate: vi.fn(),
     fileSearch: vi.fn(),
+    sessionActive: true,
     search: {
         tab: 'directories' as const,
         query: '感',
@@ -32,6 +33,7 @@ vi.mock('@/hooks/queries/useSession', () => ({
     useSession: () => ({
         session: {
             id: 'session-1',
+            active: mocks.sessionActive,
             metadata: { path: '/workspace/project' },
         },
     }),
@@ -68,7 +70,7 @@ vi.mock('@/components/SessionHeader', () => ({
 }))
 
 vi.mock('@/components/SessionFiles/DirectoryTree', () => ({
-    DirectoryTree: () => null,
+    DirectoryTree: () => <div data-testid="directory-tree" />,
 }))
 
 function renderFilesPage() {
@@ -78,20 +80,39 @@ function renderFilesPage() {
         },
     })
 
-    return render(
+    const page = () => (
         <QueryClientProvider client={queryClient}>
             <I18nProvider>
                 <FilesPage />
             </I18nProvider>
         </QueryClientProvider>
     )
+    const view = render(page())
+    return { ...view, rerenderPage: () => view.rerender(page()) }
 }
 
 describe('FilesPage search navigation', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        mocks.sessionActive = true
+        mocks.search.query = '感'
         window.localStorage.clear()
         window.sessionStorage.clear()
+    })
+
+    it('waits for an inactive session to reopen before mounting directory queries', () => {
+        mocks.sessionActive = false
+        mocks.search.query = ''
+        const view = renderFilesPage()
+
+        expect(screen.queryByTestId('directory-tree')).not.toBeInTheDocument()
+        expect(screen.getByText('This session is inactive. Reopen it to browse files.')).toBeInTheDocument()
+
+        mocks.sessionActive = true
+        view.rerenderPage()
+
+        expect(screen.getByTestId('directory-tree')).toBeInTheDocument()
+        expect(screen.queryByText('This session is inactive. Reopen it to browse files.')).not.toBeInTheDocument()
     })
 
     it('restores the route query and carries it through file navigation', () => {

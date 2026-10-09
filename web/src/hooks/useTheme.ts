@@ -6,8 +6,8 @@ export type AppearancePreference = 'system' | 'dark' | 'light' | 'oled'
 
 const APPEARANCE_KEY = 'hapi-appearance'
 const THEME_COLORS: Record<ColorScheme, string> = {
-    light: '#ffffff',
-    dark: '#1c1c1e',
+    light: '#f6f8fc',
+    dark: '#101827',
     oled: '#000000',
 }
 
@@ -43,7 +43,7 @@ function safeRemoveItem(key: string): void {
 }
 
 function parseAppearance(raw: string | null): AppearancePreference {
-    if (raw === 'dark' || raw === 'light' || raw === 'oled') return raw
+    if (raw === 'dark' || raw === 'light') return raw
     return 'system'
 }
 
@@ -54,15 +54,14 @@ function getStoredAppearance(): AppearancePreference {
 export function getAppearanceOptions(): ReadonlyArray<{ value: AppearancePreference; labelKey: string }> {
     return [
         { value: 'system', labelKey: 'settings.display.appearance.system' },
-        { value: 'dark', labelKey: 'settings.display.appearance.dark' },
-        { value: 'oled', labelKey: 'settings.display.appearance.oled' },
         { value: 'light', labelKey: 'settings.display.appearance.light' },
+        { value: 'dark', labelKey: 'settings.display.appearance.dark' },
     ]
 }
 
 function getColorScheme(): ColorScheme {
     const pref = getStoredAppearance()
-    if (pref === 'dark' || pref === 'light' || pref === 'oled') return pref
+    if (pref === 'dark' || pref === 'light') return pref
 
     // 'system': use Telegram → system preference → light (never auto-selects OLED)
     const tg = getTelegramWebApp()
@@ -166,12 +165,15 @@ export function useAppearance(): { appearance: AppearancePreference; setAppearan
     }, [])
 
     const setAppearance = useCallback((pref: AppearancePreference) => {
-        setAppearanceState(pref)
+        // OLED was removed from the display settings; old callers fall back
+        // to the system preference instead of reactivating the old mode.
+        const next = pref === 'oled' ? 'system' : pref
+        setAppearanceState(next)
 
-        if (pref === 'system') {
+        if (next === 'system') {
             safeRemoveItem(APPEARANCE_KEY)
         } else {
-            safeSetItem(APPEARANCE_KEY, pref)
+            safeSetItem(APPEARANCE_KEY, next)
         }
 
         updateScheme()

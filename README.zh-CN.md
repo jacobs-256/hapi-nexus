@@ -4,7 +4,7 @@
 
 面向企业私有部署的本地优先平台：在本地运行官方 Claude Code / Codex / Cursor Agent / Grok Build / OpenCode 会话，并通过 Web / PWA / Telegram Mini App 远程控制。
 
-HAPI Nexus 是基于 HAPI 的独立二次开发版本。它保留 local-first agent 工作流，并增加面向团队的私有 Hub 能力：本地用户名/密码账号、管理员用户管理、每用户 access token、受限 runner 工作区、项目共享，以及企业控制台风格的 Web 界面。
+HAPI Nexus 是基于 HAPI 的独立二次开发版本。它保留 local-first agent 工作流，并增加面向团队的私有 Hub 能力：本地邮箱/密码账号、管理员用户管理、每用户 access token、受限 runner 工作区、项目共享，以及企业控制台风格的 Web 界面。
 
 为了兼容现有代码，CLI 命令仍然是 `hapi`。
 
@@ -30,7 +30,7 @@ hapi --version
 - **工作区浏览器** - 通过一个或多个 `hapi runner start --workspace-root <path>` 参数按需启用：在 Web 端浏览受限范围内的文件树，并在允许的子目录中启动会话。
 - **Codex 目录历史同步** - 将某个工作目录下的全部 Codex CLI transcript 导入 HAPI Nexus，并可从最新导入会话继续 Web 或 `hapi resume` 工作流。
 - **项目共享** - 创建项目、绑定 runner 工作区、邀请用户并共享会话，无需把源码复制到每台设备。
-- **私有 Hub 账号** - 浏览器用户使用本地用户名/密码登录。管理员可以创建用户、分配角色、重置密码，并为每个用户签发 companion/CLI 使用的 access token。
+- **私有 Hub 账号** - 浏览器用户使用本地邮箱/密码登录。管理员可以创建用户、分配角色、重置密码，并为每个用户签发 companion/CLI 使用的 access token。
 - **可配置存储** - 对话历史支持 SQLite 或 Elasticsearch；其他 Hub 数据支持 SQLite 或 MySQL，可在设置中的存储页面选择，并支持切换时迁移数据。
 
 ## 快速开始
@@ -77,7 +77,7 @@ HAPI_LISTEN_HOST=0.0.0.0 HAPI_PUBLIC_URL=http://<server-ip>:3006 "$HAPI_SERVER_B
 CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-root /path/to/projects
 ```
 
-在浏览器打开 Hub URL。默认浏览器登录账号是 `admin` / `admin`；首次登录后请在 **Settings -> Account** 中修改。
+在浏览器打开 Hub URL。默认浏览器登录账号是 `admin@hapi.local` / `admin`；首次登录后请在 **Settings -> Account** 中修改。
 
 部署方式见 [安装指南](docs/zh-CN/guide/installation.md)。
 

@@ -5,7 +5,7 @@ import type { StoredUser } from './types'
 import {
     addUser,
     createLocalUser,
-    getLocalUserByUsername,
+    getLocalUserByEmail,
     getUser,
     getUserByAccessToken,
     getUserById,
@@ -16,10 +16,10 @@ import {
     removeLocalUserById,
     removeUser,
     updateUser,
-    updateLocalUsername,
+    updateLocalEmail,
     updateUserPassword,
     type CreateLocalUserInput,
-    type UpdateLocalUsernameResult,
+    type UpdateLocalEmailResult,
     type UpdateUserInput
 } from './users'
 
@@ -38,8 +38,8 @@ export class UserStore implements UserStorePort {
         return getUserById(this.db, userId, namespace)
     }
 
-    getLocalUserByUsername(namespace: string, username: string): StoredUser | null {
-        return getLocalUserByUsername(this.db, namespace, username)
+    getLocalUserByEmail(namespace: string, email: string): StoredUser | null {
+        return getLocalUserByEmail(this.db, namespace, email)
     }
 
     getUserByAccessToken(accessToken: string): StoredUser | null {
@@ -82,8 +82,8 @@ export class UserStore implements UserStorePort {
         return result
     }
 
-    updateLocalUsername(userId: number, namespace: string, username: string): UpdateLocalUsernameResult {
-        const result = updateLocalUsername(this.db, userId, namespace, username)
+    updateLocalEmail(userId: number, namespace: string, email: string): UpdateLocalEmailResult {
+        const result = updateLocalEmail(this.db, userId, namespace, email)
         if (result.status === 'updated') this.onChange?.()
         return result
     }

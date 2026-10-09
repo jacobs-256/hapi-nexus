@@ -20,8 +20,8 @@ const h = vi.hoisted(() => {
             authCount += 1
             return { token: `token-${authCount}`, user: { id: 'u1' } }
         }
-        async getAccount(): Promise<{ user: { id: string; username: string } }> {
-            return { user: { id: 'u1', username: 'admin' } }
+        async getAccount(): Promise<{ user: { id: string; email: string } }> {
+            return { user: { id: 'u1', email: 'admin@hapi.local' } }
         }
     }
     class MockApiError extends Error {
@@ -109,7 +109,7 @@ describe('useAuth — api identity stability across token refresh (issue #927)',
 
         await waitFor(() => expect(result.current.api).not.toBeNull())
 
-        expect(result.current.user).toEqual({ id: 'u1', username: 'admin' })
+        expect(result.current.user).toEqual({ id: 'u1', email: 'admin@hapi.local' })
         expect(result.current.token).toBe(authSource.token)
     })
 })

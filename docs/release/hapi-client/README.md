@@ -89,7 +89,7 @@ hapi --version
 
 ## Connect to a Hub
 
-Set the Hub URL and sign in with the current user's personal access token. The token is visible in Web Settings -> Account after username/password login.
+Set the Hub URL and sign in with the current user's personal access token. The token is visible in Web Settings -> Account after email/password login.
 
 ```bash
 export HAPI_API_URL="https://hapi.example.com"

@@ -18,7 +18,7 @@ Run Claude Code, Codex, Cursor Agent, Grok Build, or OpenCode sessions from your
 1. Start the hub and set env vars (see ../hub/README.md).
 2. Set this user's personal access token as `CLI_API_TOKEN` on this machine or run `hapi auth login`.
 3. Run `hapi` to start a session.
-4. Sign in to the web app with a local username/password account to monitor and control.
+4. Sign in to the web app with a local email/password account to monitor and control.
 
 ## Commands
 

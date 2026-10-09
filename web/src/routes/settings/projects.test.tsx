@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/lib/i18n-context'
@@ -98,7 +98,7 @@ function makeUser(overrides: Partial<EnterpriseUser> & { id: number }): Enterpri
         platform: overrides.platform ?? 'local',
         platformUserId: overrides.platformUserId ?? String(overrides.id),
         namespace: overrides.namespace ?? 'default',
-        username: overrides.username ?? `user-${overrides.id}`,
+        email: overrides.email ?? `user-${overrides.id}@hapi.local`,
         displayName: overrides.displayName ?? null,
         role: overrides.role ?? 'user',
         disabledAt: overrides.disabledAt ?? null,
@@ -124,10 +124,10 @@ describe('SettingsProjectsPage', () => {
         vi.clearAllMocks()
         apiMock.getProjectMemberCandidates.mockResolvedValue({
             users: [
-                makeUser({ id: 1, username: 'owner', displayName: 'Owner User', role: 'admin' }),
-                makeUser({ id: 2, username: 'existing', displayName: 'Existing Member' }),
-                makeUser({ id: 3, username: 'alice', displayName: 'Alice Morgan' }),
-                makeUser({ id: 4, username: 'bruno', displayName: 'Bruno Lee' })
+                makeUser({ id: 1, email: 'owner@hapi.local', displayName: 'Owner User', role: 'admin' }),
+                makeUser({ id: 2, email: 'existing@hapi.local', displayName: 'Existing Member' }),
+                makeUser({ id: 3, email: 'alice@hapi.local', displayName: 'Alice Morgan' }),
+                makeUser({ id: 4, email: 'bruno@hapi.local', displayName: 'Bruno Lee' })
             ]
         })
         apiMock.createProject.mockResolvedValue({ project: makeProject() })
@@ -172,6 +172,24 @@ describe('SettingsProjectsPage', () => {
         cleanup()
     })
 
+    it('creates a project from a dialog', async () => {
+        renderPage()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Create project' }))
+        const dialog = screen.getByRole('dialog')
+        expect(within(dialog).getByRole('heading', { name: 'Create project' })).toBeInTheDocument()
+
+        fireEvent.change(within(dialog).getByPlaceholderText('Project name'), { target: { value: 'New Project' } })
+        fireEvent.change(within(dialog).getByPlaceholderText('/path/to/project'), { target: { value: '/srv/projects/new-app' } })
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Create project' }))
+
+        await waitFor(() => expect(apiMock.createProject).toHaveBeenCalledWith({
+            name: 'New Project',
+            machineId: 'machine-1',
+            rootPath: '/srv/projects/new-app'
+        }))
+    })
+
     it('renames a project', async () => {
         renderPage()
 
@@ -205,15 +223,15 @@ describe('SettingsProjectsPage', () => {
 
         fireEvent.click(screen.getByRole('button', { name: 'Add member to Shared Project' }))
         fireEvent.click(screen.getByRole('button', { name: 'Select users' }))
-        const search = await screen.findByPlaceholderText('Search username or display name')
+        const search = await screen.findByPlaceholderText('Search email or display name')
 
         fireEvent.change(search, { target: { value: 'morg' } })
-        expect(await screen.findByText('Alice Morgan (@alice)')).toBeTruthy()
-        expect(screen.queryByText('Bruno Lee (@bruno)')).toBeNull()
+        expect(await screen.findByText('Alice Morgan (alice@hapi.local)')).toBeTruthy()
+        expect(screen.queryByText('Bruno Lee (bruno@hapi.local)')).toBeNull()
 
-        fireEvent.click(screen.getByText('Alice Morgan (@alice)'))
+        fireEvent.click(screen.getByText('Alice Morgan (alice@hapi.local)'))
         fireEvent.change(search, { target: { value: 'bruno' } })
-        fireEvent.click(await screen.findByText('Bruno Lee (@bruno)'))
+        fireEvent.click(await screen.findByText('Bruno Lee (bruno@hapi.local)'))
         fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
 
         await waitFor(() => expect(apiMock.addProjectMember).toHaveBeenCalledWith('project-1', {

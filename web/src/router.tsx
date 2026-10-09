@@ -13,6 +13,7 @@ import {
     useSearch,
 } from '@tanstack/react-router'
 import { getScrollRestorationKey } from '@/lib/scrollRestorationKey'
+import { getSessionViewTransition } from '@/lib/sessionViewTransition'
 import { App } from '@/App'
 import { SessionChat } from '@/components/SessionChat'
 import { SessionList } from '@/components/SessionList'
@@ -22,7 +23,7 @@ import { LoadingState } from '@/components/LoadingState'
 import { useAppContext } from '@/lib/app-context'
 import { useAppGoBack } from '@/hooks/useAppGoBack'
 import { isTelegramApp } from '@/hooks/useTelegram'
-import { useSidebarResize } from '@/hooks/useSidebarResize'
+import { SessionsWorkspace, SessionWelcome } from '@/components/SessionsWorkspace'
 import { useMessages } from '@/hooks/queries/useMessages'
 import { useMachines } from '@/hooks/queries/useMachines'
 import { useMachineLabels } from '@/hooks/useMachineLabels'
@@ -89,26 +90,6 @@ function BackIcon(props: { className?: string }) {
     )
 }
 
-function PlusIcon(props: { className?: string }) {
-    return (
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={props.className}
-        >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-    )
-}
-
 function SessionsPage() {
     const { api, user } = useAppContext()
     const navigate = useNavigate()
@@ -154,7 +135,6 @@ function SessionsPage() {
         markSessionSeen(selectedSessionId, selectedSession.updatedAt)
     }, [selectedSessionId, selectedSession?.updatedAt])
     const isSessionsIndex = pathname === '/sessions' || pathname === '/sessions/'
-    const sidebar = useSidebarResize()
     const handleNewSessionInDirectory = useCallback((args: { machineId: string | null; directory: string }) => {
         navigate({
             to: '/sessions/new',
@@ -165,13 +145,11 @@ function SessionsPage() {
     }, [navigate])
 
     return (
-        <>
-            <div className="flex h-full min-h-0">
-            <div
-                className={`${isSessionsIndex ? 'flex' : 'hidden split:flex'} w-full shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] text-[var(--sidebar-foreground)]`}
-                style={{ '--sidebar-w': `${sidebar.width}px` } as React.CSSProperties}
-            >
-                <div className="flex min-h-0 flex-1 flex-col pt-[var(--app-page-safe-area-top)]">
+        <SessionsWorkspace
+            isIndex={isSessionsIndex}
+            onNewSession={() => navigate({ to: '/sessions/new' })}
+            sidebar={(
+                <>
                     {error ? (
                         <div className="mx-auto w-full max-w-content px-3 py-2">
                             <div className="text-sm text-red-600">{error}</div>
@@ -190,45 +168,27 @@ function SessionsPage() {
                         onRefresh={handleRefresh}
                         isLoading={isLoading}
                         renderHeader={false}
-                        headerActions={(
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => navigate({ to: '/sessions/new' })}
-                                    className="session-list-new-button flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--primary)] transition-colors"
-                                    title={t('sessions.new')}
-                                >
-                                    <PlusIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        )}
                         api={api}
                         currentUser={user}
                         machineLabelsById={machineLabelsById}
                         machinesById={machinesById}
                     />
-                </div>
-            </div>
-
-            {/* Resize handle - desktop only */}
-            <div
-                className="sidebar-resize-handle hidden split:block shrink-0"
-                data-dragging={sidebar.isDragging || undefined}
-                onPointerDown={sidebar.onPointerDown}
-            />
-
-            <div className={`${isSessionsIndex ? 'hidden split:flex' : 'flex'} min-w-0 flex-1 flex-col bg-[var(--background)]`}>
-                <div className="flex-1 min-h-0">
-                    <Outlet />
-                </div>
-            </div>
-            </div>
-        </>
+                </>
+            )}
+        >
+            <Outlet />
+        </SessionsWorkspace>
     )
 }
 
 function SessionsIndexPage() {
-    return null
+    const navigate = useNavigate()
+    return (
+        <SessionWelcome
+            onNewSession={() => navigate({ to: '/sessions/new' })}
+            onBrowse={() => navigate({ to: '/browse' })}
+        />
+    )
 }
 
 /**
@@ -1130,6 +1090,7 @@ export function createAppRouter(history?: RouterHistory) {
         history,
         scrollRestoration: true,
         getScrollRestorationKey,
+        defaultViewTransition: getSessionViewTransition(),
     })
 }
 

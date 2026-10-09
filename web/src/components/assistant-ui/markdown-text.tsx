@@ -1,6 +1,7 @@
 import '@assistant-ui/react-markdown/styles/dot.css'
 
 import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from 'react'
+import type { ApiClient } from '@/api/client'
 import { useState, useCallback, useEffect, useMemo, createContext, useContext } from 'react'
 import {
     MarkdownTextPrimitive,
@@ -26,6 +27,7 @@ import { CopyIcon, CheckIcon, WrapIcon } from '@/components/icons'
 import { useTranslation } from '@/lib/use-translation'
 import { useOptionalHappyChatContext } from '@/components/AssistantChat/context'
 import { decodeFilePathHref, remarkFilePathLinks } from '@/lib/remark-file-path-links'
+import { resolveSessionFilePath } from '@/lib/session-file-path'
 import { remarkSessionPathLinks } from '@/lib/remark-session-path-links'
 import { buildSessionReferencePath, parseSessionPathHref } from '@/lib/sessionReference'
 import { UriConfirmDialog } from '@/components/UriConfirmDialog'
@@ -493,7 +495,11 @@ function Code(props: ComponentPropsWithoutRef<'code'>) {
     )
 }
 
-function FilePathAnchor(props: ComponentPropsWithoutRef<'a'> & { filePath: string; sessionId: string }) {
+function FilePathAnchor(props: ComponentPropsWithoutRef<'a'> & {
+    filePath: string
+    sessionId: string
+    api: ApiClient
+}) {
     const navigate = useNavigate()
     const rel = props.target === '_blank' ? (props.rel ?? 'noreferrer') : props.rel
     const search = new URLSearchParams({ path: encodeBase64(props.filePath) }).toString()
@@ -505,10 +511,12 @@ function FilePathAnchor(props: ComponentPropsWithoutRef<'a'> & { filePath: strin
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
 
         event.preventDefault()
-        void navigate({
-            to: '/sessions/$sessionId/file',
-            params: { sessionId: props.sessionId },
-            search: { path: encodeBase64(props.filePath) }
+        void resolveSessionFilePath(props.api, props.sessionId, props.filePath).then((filePath) => {
+            return navigate({
+                to: '/sessions/$sessionId/file',
+                params: { sessionId: props.sessionId },
+                search: { path: encodeBase64(filePath) }
+            })
         })
     }
 
@@ -590,7 +598,7 @@ function A(props: ComponentPropsWithoutRef<'a'>) {
         if (!chat) {
             return <>{props.children}</>
         }
-        return <FilePathAnchor {...props} filePath={filePath} sessionId={chat.sessionId} />
+        return <FilePathAnchor {...props} api={chat.api} filePath={filePath} sessionId={chat.sessionId} />
     }
 
     if (targetSessionId) {

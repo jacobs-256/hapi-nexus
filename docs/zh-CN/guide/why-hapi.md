@@ -56,7 +56,7 @@ Happy 的中心化设计需要：
 
 ### HAPI：去中心化
 
-每个部署运行自己的 hub。这个 hub 可以托管本地用户名/密码用户、管理员和共享项目，同时数据仍留在你控制的基础设施中。HAPI 提供两种远程访问方式：
+每个部署运行自己的 hub。这个 hub 可以托管本地邮箱/密码用户、管理员和共享项目，同时数据仍留在你控制的基础设施中。HAPI 提供两种远程访问方式：
 
 - **自托管**（自己的服务器 / Cloudflare Tunnel / Tailscale）- 你控制完整网络路径，不需要额外 E2EE
 - **公共 relay**（`hapi-server hub --relay`）- 通过 tunwg（WireGuard + TLS）端到端加密；relay 只转发不透明数据包

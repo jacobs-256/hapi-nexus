@@ -12,7 +12,7 @@ const TOOL_GROUP_BG_STORAGE_KEY = 'hapi-tool-group-bg'
 const USER_MESSAGE_BG_STORAGE_KEY = 'hapi-user-message-bg'
 const TOOL_GROUP_BG_CSS_VAR = '--app-tool-group-bg'
 const USER_MESSAGE_BG_CSS_VAR = '--app-chat-user-surface-bg'
-const DEFAULT_PICKER_COLOR = '#f2f4f6'
+const DEFAULT_PICKER_COLOR = '#eef2f7'
 
 const PRESET_ACCENTS: Record<Exclude<ChatSurfaceColorPreset, 'default'>, string> = {
     'soft-blue': '#7db7ff',
@@ -22,12 +22,12 @@ const PRESET_ACCENTS: Record<Exclude<ChatSurfaceColorPreset, 'default'>, string>
 
 const THEME_BASES: Record<ThemeMode, Record<SurfaceKey, string>> = {
     light: {
-        'tool-group': '#f2f4f6',
-        'user-message': '#f2f4f6',
+        'tool-group': '#eef2f7',
+        'user-message': '#eef2f7',
     },
     dark: {
-        'tool-group': '#2b2f34',
-        'user-message': '#2b2f34',
+        'tool-group': '#1e2b40',
+        'user-message': '#1e2b40',
     },
     oled: {
         'tool-group': '#0e0e10',

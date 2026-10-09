@@ -50,7 +50,7 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
         if (!hasToken) {
             console.log('')
             console.log(chalk.yellow('  Token not configured. To get your token:'))
-            console.log(chalk.gray('    1. Sign in to the Web UI with your username/password'))
+            console.log(chalk.gray('    1. Sign in to the Web UI with your email/password'))
             console.log(chalk.gray('    2. Open Settings -> Account'))
             console.log(chalk.gray('    3. Copy your personal access token'))
             console.log('')

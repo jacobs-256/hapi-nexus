@@ -663,8 +663,22 @@ function SessionChatInner(props: SessionChatProps) {
                 label: codexModel.displayName
             })
         }
+        // Keep the model control visible while the CLI model catalog is
+        // unavailable. The current value is still a valid selectable target;
+        // once the catalog returns, the full list replaces this fallback.
+        if (options.length === 0) {
+            const currentModel = props.session.model?.trim()
+            options.push({
+                value: currentModel && currentModel !== 'default' && currentModel !== 'auto'
+                    ? currentModel
+                    : null,
+                label: currentModel && currentModel !== 'default' && currentModel !== 'auto'
+                    ? currentModel
+                    : 'Default'
+            })
+        }
         return options
-    }, [agentFlavor, codexModelsState.models])
+    }, [agentFlavor, codexModelsState.models, props.session.model])
     const codexSupportedReasoningEfforts = useMemo(
         () => agentFlavor === 'codex'
             ? getCodexModelReasoningEfforts(codexModelsState.models, props.session.model)
@@ -1530,7 +1544,7 @@ function SessionChatInner(props: SessionChatProps) {
                         }
                         onModelChange={
                             agentFlavor === 'codex'
-                                ? (canApplyRemoteSessionConfig && !codexModelsState.error ? handleModelChange : undefined)
+                                ? (canApplyRemoteSessionConfig ? handleModelChange : undefined)
                                 : agentFlavor === 'cursor'
                                     ? (canApplyRemoteSessionConfig
                                         && !cursorCatalogPending

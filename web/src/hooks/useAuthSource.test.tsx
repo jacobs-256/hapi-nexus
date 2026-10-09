@@ -9,7 +9,7 @@ describe('useAuthSource', () => {
         window.history.replaceState({}, '', '/')
     })
 
-    it('stores and clears username/password Web sessions', async () => {
+    it('stores and clears email/password Web sessions', async () => {
         window.history.replaceState({}, '', '/sessions?token=from-url&view=list#top')
 
         const { result } = renderHook(() => useAuthSource('https://hub.example'))
@@ -20,7 +20,7 @@ describe('useAuthSource', () => {
             token: 'jwt-token',
             user: {
                 id: 1,
-                username: 'admin',
+                email: 'admin@hapi.local',
                 accessToken: 'hapi_user_admin'
             }
         }, true))

@@ -36,14 +36,14 @@ function MachineStatusBadge(props: { active: boolean }) {
     )
 }
 
-function getUserLabel(user: Pick<EnterpriseUser, 'id' | 'username' | 'displayName'> | null | undefined): string {
+function getUserLabel(user: Pick<EnterpriseUser, 'id' | 'email' | 'displayName'> | null | undefined): string {
     if (!user) return ''
     const displayName = user.displayName?.trim()
-    const username = user.username?.trim()
-    if (displayName && username && displayName !== username) {
-        return `${displayName} (@${username})`
+    const email = user.email?.trim()
+    if (displayName && email && displayName !== email) {
+        return `${displayName} (${email})`
     }
-    return displayName || (username ? `@${username}` : `User ${user.id}`)
+    return displayName || email || `User ${user.id}`
 }
 
 function getProjectOwnerLabel(project: ProjectWithDetails): string {

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const STORAGE_KEY = 'hapi-sidebar-width'
 const MIN_WIDTH = 240
 const MAX_WIDTH = 600
-const DEFAULT_WIDTH = 240
+const DEFAULT_WIDTH = 288
 
 function clamp(value: number): number {
     return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, value))

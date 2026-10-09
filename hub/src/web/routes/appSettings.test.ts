@@ -37,7 +37,7 @@ describe('global composer toolbar settings routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash',
                 role: 'admin'
             })
@@ -64,7 +64,7 @@ describe('global composer toolbar settings routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash',
                 role: 'admin'
             })
@@ -102,7 +102,7 @@ describe('global composer toolbar settings routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'tenant',
-                username: 'admin',
+                email: 'admin@hapi.local',
                 passwordHash: 'hash',
                 role: 'admin'
             })

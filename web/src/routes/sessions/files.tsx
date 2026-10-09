@@ -601,14 +601,20 @@ export default function FilesPage() {
                             </div>
                         )
                     ) : activeTab === 'directories' ? (
-                        <DirectoryTree
-                            key={sessionId}
-                            api={api}
-                            sessionId={sessionId}
-                            rootLabel={rootLabel}
-                            onOpenFile={(path) => handleOpenFile(path)}
-                            sort={directorySort}
-                        />
+                        session.active ? (
+                            <DirectoryTree
+                                key={sessionId}
+                                api={api}
+                                sessionId={sessionId}
+                                rootLabel={rootLabel}
+                                onOpenFile={(path) => handleOpenFile(path)}
+                                sort={directorySort}
+                            />
+                        ) : (
+                            <div className="p-6 text-sm text-[var(--app-hint)]">
+                                {t('files.directories.inactive')}
+                            </div>
+                        )
                     ) : gitLoading ? (
                         <FileListSkeleton label={t('loading.git')} />
                     ) : (

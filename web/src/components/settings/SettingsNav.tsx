@@ -61,7 +61,7 @@ export function SettingsNav(props: { activeId?: string; mobile?: boolean }) {
     const visibleById = new Map(visibleCategories.map((category) => [category.id, category]))
 
     return (
-        <nav aria-label={t('settings.title')} className={props.mobile ? 'space-y-5 px-3 py-3' : 'space-y-5 p-4'}>
+        <nav aria-label={t('settings.title')} className={props.mobile ? 'space-y-4 px-3 py-3' : 'space-y-4 p-3'}>
             {settingsCategoryGroups.map((group) => {
                 const items = group.categoryIds
                     .map((id) => visibleById.get(id))

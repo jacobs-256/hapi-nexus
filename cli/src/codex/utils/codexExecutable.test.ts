@@ -32,6 +32,7 @@ vi.mock('node:os', async () => {
 });
 
 const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+const originalEnv = process.env;
 const homeDir = win32.join('home', 'junes');
 const nodeRoot = win32.join('toolchains', 'nodejs');
 
@@ -80,6 +81,8 @@ describe('resolveCodexCommand', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.resetModules();
+        process.env = { ...originalEnv };
+        delete process.env.HAPI_CODEX_PATH;
         homedirMock.mockReturnValue(homeDir);
         execFileSyncMock.mockImplementation(() => {
             throw new Error('not found');
@@ -88,6 +91,7 @@ describe('resolveCodexCommand', () => {
     });
 
     afterAll(() => {
+        process.env = originalEnv;
         if (originalPlatformDescriptor) {
             Object.defineProperty(process, 'platform', originalPlatformDescriptor);
         }
@@ -180,5 +184,44 @@ describe('resolveCodexCommand', () => {
             command: 'codex',
             args: []
         });
+    });
+
+    it('resolves an absolute Codex path from PATH outside Windows', async () => {
+        setPlatform('darwin');
+        const codexPath = '/Users/junes/.local/bin/codex';
+        process.env.PATH = `/usr/bin:/Users/junes/.local/bin`;
+        existsSyncMock.mockImplementation((candidate: string) => candidate === codexPath);
+        const { resolveCodexCommand } = await import('./codexExecutable');
+
+        expect(resolveCodexCommand()).toEqual({
+            command: codexPath,
+            args: []
+        });
+    });
+
+    it('falls back to the standard user install location when PATH is incomplete', async () => {
+        setPlatform('linux');
+        process.env.PATH = '/usr/bin';
+        homedirMock.mockReturnValue('/Users/junes');
+        const codexPath = '/Users/junes/.local/bin/codex';
+        existsSyncMock.mockImplementation((candidate: string) => candidate === codexPath);
+        const { resolveCodexCommand } = await import('./codexExecutable');
+
+        expect(resolveCodexCommand()).toEqual({
+            command: codexPath,
+            args: []
+        });
+    });
+
+    it('uses HAPI_CODEX_PATH before PATH discovery', async () => {
+        setPlatform('darwin');
+        process.env.HAPI_CODEX_PATH = '/opt/codex/bin/codex';
+        const { resolveCodexCommand } = await import('./codexExecutable');
+
+        expect(resolveCodexCommand()).toEqual({
+            command: '/opt/codex/bin/codex',
+            args: []
+        });
+        expect(existsSyncMock).not.toHaveBeenCalled();
     });
 });

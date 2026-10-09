@@ -17,8 +17,8 @@ React Mini App / PWA for monitoring and controlling HAPI Nexus sessions.
 ## Runtime behavior
 
 - When opened inside Telegram, auth uses Telegram WebApp init data.
-- When opened in a normal browser, login uses local username/password accounts only.
-- First-start default browser credentials are `admin` / `admin`; change them from `/settings/account`.
+- When opened in a normal browser, login uses local email/password accounts only.
+- First-start default browser credentials are `admin@hapi.local` / `admin`; change them from `/settings/account`.
 - The login screen includes a top-right hub picker; if unset, the app uses the same origin it was loaded from.
 - Live updates come from the hub via SSE.
 
@@ -41,7 +41,7 @@ See `src/router.tsx` for route definitions.
 - `/settings/voice/voices` - Full-page voice picker.
 - `/settings/voice/advanced` - Voice persona, tuning, and diagnostics.
 - `/settings/account` - Current user profile, namespace, role, and personal access token.
-- `/settings/users` - Admin user management for local username/password accounts.
+- `/settings/users` - Admin user management for local email/password accounts.
 - `/settings/projects` - Project sharing, members, invites, and workspaces.
 - `/settings/machines` - Machine display names.
 - `/settings/storage` - Storage configuration, migration status, and usage.
@@ -120,7 +120,7 @@ Modular session creation:
 See `src/hooks/useAuth.ts` and `src/hooks/useAuthSource.ts`.
 
 - Telegram Mini App: Uses initData from WebApp SDK.
-- Browser: Uses local username/password, then stores the returned Web session JWT under `hapi_web_session::<baseUrl>`.
+- Browser: Uses local email/password, then stores the returned Web session JWT under `hapi_web_session::<baseUrl>`.
 - Browser login intentionally ignores URL `?token=` parameters and old `hapi_access_token::<baseUrl>` values.
 - Personal access tokens are shown in Account settings for companion/CLI-style flows, but are not browser login credentials.
 - JWT tokens are short-lived and validated through `/api/me` when restored.

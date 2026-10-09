@@ -7,7 +7,7 @@
 **Auth:** Exchange a pairing `code`, personal access token, or operator `CLI_API_TOKEN`
 with `POST /api/auth`: `{ "accessToken": "<code-or-token>" }`. Use the returned
 JWT as `Authorization: Bearer <token>` for device registration and session actions.
-Browser/PWA users sign in with username/password; access-token exchange is for
+Browser/PWA users sign in with email/password; access-token exchange is for
 native companion, CLI-style, owner, and Telegram-binding flows.
 
 `POST /api/bind` is only for Telegram Mini App binding (requires Telegram `initData`).

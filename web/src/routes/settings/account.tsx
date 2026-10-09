@@ -24,8 +24,8 @@ export default function SettingsAccountPage() {
     const [newPassword, setNewPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
     const [passwordSaved, setPasswordSaved] = useState(false)
-    const [usernameInput, setUsernameInput] = useState('')
-    const [usernameSaved, setUsernameSaved] = useState(false)
+    const [emailInput, setEmailInput] = useState('')
+    const [emailSaved, setEmailSaved] = useState(false)
     const accountQuery = useQuery({
         queryKey: queryKeys.account,
         queryFn: async () => await api.getAccount()
@@ -65,36 +65,36 @@ export default function SettingsAccountPage() {
     const accessToken = user?.accessToken ?? ''
     const canRegenerate = user?.platform === 'local'
     const canChangePassword = user?.platform === 'local'
-    const canChangeUsername = user?.platform === 'local'
+    const canChangeEmail = user?.platform === 'local'
     const handleLogout = () => {
         queryClient.clear()
         clearAuth()
     }
 
-    const changeUsernameMutation = useMutation({
+    const changeEmailMutation = useMutation({
         mutationFn: async () => {
-            const username = usernameInput.trim()
-            if (!username) {
-                throw new Error(t('settings.account.username.required'))
+            const email = emailInput.trim()
+            if (!email) {
+                throw new Error(t('settings.account.email.required'))
             }
-            return await api.changeOwnUsername(username)
+            return await api.changeOwnEmail(email)
         },
         onMutate: () => {
-            setUsernameSaved(false)
+            setEmailSaved(false)
         },
         onSuccess: (response) => {
-            setUsernameInput(response.user.username ?? '')
-            setUsernameSaved(true)
+            setEmailInput(response.user.email ?? '')
+            setEmailSaved(true)
             queryClient.setQueryData(queryKeys.account, { user: response.user })
         }
     })
 
     useEffect(() => {
         if (user?.platform === 'local') {
-            setUsernameInput(user.username ?? '')
-            setUsernameSaved(false)
+            setEmailInput(user.email ?? '')
+            setEmailSaved(false)
         }
-    }, [user?.id, user?.platform, user?.username])
+    }, [user?.id, user?.platform, user?.email])
 
     return (
         <SettingsPageContent title={t('settings.account.title')} description={t('settings.account.description')}>
@@ -108,10 +108,10 @@ export default function SettingsAccountPage() {
                 ) : (
                     <>
                         <SettingsRow label={t('settings.account.name')} trailing={
-                            <span className="text-sm text-[var(--app-hint)]">{user.displayName || user.username || user.platformUserId}</span>
+                            <span className="text-sm text-[var(--app-hint)]">{user.displayName || user.email || user.platformUserId}</span>
                         } />
-                        <SettingsRow label={t('settings.account.username')} trailing={
-                            <span className="text-sm text-[var(--app-hint)]">{user.username || '-'}</span>
+                        <SettingsRow label={t('settings.account.email')} trailing={
+                            <span className="text-sm text-[var(--app-hint)]">{user.email || '-'}</span>
                         } />
                         <SettingsRow label={t('settings.account.role')} trailing={
                             <span className="rounded-full bg-[var(--app-subtle-bg)] px-2 py-0.5 text-xs font-medium text-[var(--app-hint)]">
@@ -125,46 +125,48 @@ export default function SettingsAccountPage() {
                 )}
             </SettingsSection>
 
-            <SettingsSection title={t('settings.account.username.section')}>
-                {canChangeUsername ? (
+            <SettingsSection title={t('settings.account.email.section')}>
+                {canChangeEmail ? (
                     <form
                         className="space-y-3 px-3 py-3"
                         onSubmit={(event: FormEvent) => {
                             event.preventDefault()
-                            changeUsernameMutation.mutate()
+                            changeEmailMutation.mutate()
                         }}
                     >
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <input
-                                type="text"
-                                value={usernameInput}
-                                onChange={(event) => setUsernameInput(event.target.value)}
-                                placeholder={t('settings.account.username.placeholder')}
-                                aria-label={t('settings.account.username')}
-                                autoComplete="username"
-                                disabled={changeUsernameMutation.isPending}
+                                type="email"
+                                required
+                                maxLength={254}
+                                value={emailInput}
+                                onChange={(event) => setEmailInput(event.target.value)}
+                                placeholder={t('settings.account.email.placeholder')}
+                                aria-label={t('settings.account.email')}
+                                autoComplete="email"
+                                disabled={changeEmailMutation.isPending}
                                 className="min-w-[220px] flex-1 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--app-link)] disabled:opacity-50"
                             />
                             <button
                                 type="submit"
-                                disabled={changeUsernameMutation.isPending || !usernameInput.trim()}
+                                disabled={changeEmailMutation.isPending || !emailInput.trim()}
                                 className="rounded-md border border-[var(--app-border)] px-3 py-2 text-sm font-medium text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)] disabled:opacity-50"
                             >
-                                {changeUsernameMutation.isPending ? t('settings.account.username.saving') : t('settings.account.username.save')}
+                                {changeEmailMutation.isPending ? t('settings.account.email.saving') : t('settings.account.email.save')}
                             </button>
-                            {usernameSaved ? (
-                                <span className="text-xs text-emerald-600">{t('settings.account.username.saved')}</span>
+                            {emailSaved ? (
+                                <span className="text-xs text-emerald-600">{t('settings.account.email.saved')}</span>
                             ) : null}
                         </div>
-                        {changeUsernameMutation.error ? (
+                        {changeEmailMutation.error ? (
                             <div className="text-xs text-red-600">
-                                {changeUsernameMutation.error instanceof Error ? changeUsernameMutation.error.message : t('settings.account.username.error')}
+                                {changeEmailMutation.error instanceof Error ? changeEmailMutation.error.message : t('settings.account.email.error')}
                             </div>
                         ) : null}
                     </form>
                 ) : (
                     <div className="px-3 py-3 text-sm text-[var(--app-hint)]">
-                        {t('settings.account.username.ownerHint')}
+                        {t('settings.account.email.ownerHint')}
                     </div>
                 )}
             </SettingsSection>

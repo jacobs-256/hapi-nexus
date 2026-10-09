@@ -5,6 +5,10 @@ import type { SlashCommand } from '@/types/api'
 import type { Suggestion } from '@/hooks/useActiveSuggestions'
 import { queryKeys } from '@/lib/query-keys'
 import { getBuiltinSlashCommands, mergeSlashCommands } from '@/lib/codexSlashCommands'
+import { useTranslation } from '@/lib/use-translation'
+
+type Translate = (key: string, params?: Record<string, string | number>) => string
+const LOCALIZED_BUILTIN_SLASH_COMMAND_AGENTS = new Set(['claude', 'codex', 'gemini', 'grok', 'opencode', 'cursor'])
 
 function levenshteinDistance(a: string, b: string): number {
     if (a.length === 0) return b.length
@@ -22,6 +26,44 @@ function levenshteinDistance(a: string, b: string): number {
     return matrix[b.length][a.length]
 }
 
+export function getLocalizedSlashCommandDescription(
+    command: Pick<SlashCommand, 'name' | 'description' | 'source' | 'pluginName'>,
+    agentType: string,
+    t: Translate
+): string | undefined {
+    if (command.source === 'builtin') {
+        const normalizedAgent = agentType.toLowerCase()
+        const agentKey = LOCALIZED_BUILTIN_SLASH_COMMAND_AGENTS.has(normalizedAgent)
+            ? normalizedAgent
+            : 'claude'
+        const key = `slashCommands.${agentKey}.${command.name.toLowerCase()}.description`
+        const localizedDescription = t(key)
+        if (localizedDescription !== key) {
+            return localizedDescription
+        }
+
+        return command.description
+    }
+
+    const generatedPluginDescription = command.source === 'plugin' && command.pluginName
+        ? `${command.pluginName} command`
+        : null
+
+    if (
+        command.description
+        && command.description !== 'Custom command'
+        && command.description !== generatedPluginDescription
+    ) {
+        return command.description
+    }
+
+    if (command.source === 'plugin' && command.pluginName) {
+        return t('slashCommands.plugin.description', { pluginName: command.pluginName })
+    }
+
+    return t('slashCommands.custom.description')
+}
+
 export function useSlashCommands(
     api: ApiClient | null,
     sessionId: string | null,
@@ -32,6 +74,7 @@ export function useSlashCommands(
     error: string | null
     getSuggestions: (query: string) => Promise<Suggestion[]>
 } {
+    const { t } = useTranslation()
     const resolvedSessionId = sessionId ?? 'unknown'
 
     // Fetch user-defined commands from the CLI (requires active session)
@@ -54,14 +97,17 @@ export function useSlashCommands(
     // keep local built-ins as an offline fallback, then append/override from RPC.
     const commands = useMemo(() => {
         const builtin = getBuiltinSlashCommands(agentType)
+        const mergedCommands = query.data?.success && query.data.commands
+            ? mergeSlashCommands([...builtin, ...query.data.commands])
+            : builtin
 
-        if (query.data?.success && query.data.commands) {
-            return mergeSlashCommands([...builtin, ...query.data.commands])
-        }
-
-        // Fallback to built-in commands only
-        return builtin
-    }, [agentType, query.data])
+        return mergedCommands.map(command => {
+            const description = getLocalizedSlashCommandDescription(command, agentType, t)
+            return description === command.description
+                ? command
+                : { ...command, description }
+        })
+    }, [agentType, query.data, t])
 
     const getSuggestions = useCallback(async (queryText: string): Promise<Suggestion[]> => {
         const searchTerm = queryText.startsWith('/')
@@ -73,7 +119,7 @@ export function useSlashCommands(
                 key: `/${cmd.name}`,
                 text: `/${cmd.name}`,
                 label: `/${cmd.name}`,
-                description: cmd.description ?? (cmd.source === 'builtin' ? undefined : 'Custom command'),
+                description: cmd.description,
                 content: cmd.content,
                 source: cmd.source
             }))
@@ -99,7 +145,7 @@ export function useSlashCommands(
                 key: `/${cmd.name}`,
                 text: `/${cmd.name}`,
                 label: `/${cmd.name}`,
-                description: cmd.description ?? (cmd.source === 'builtin' ? undefined : 'Custom command'),
+                description: cmd.description,
                 content: cmd.content,
                 source: cmd.source
             }))

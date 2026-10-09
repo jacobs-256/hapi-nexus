@@ -135,15 +135,15 @@ export function SessionRowSummary(props: {
         : undefined
     const isArchived = s.metadata?.lifecycleState === 'archived'
     const titleClassName = selected
-        ? 'text-white'
+        ? 'text-[var(--app-fg)]'
         : isArchived
             ? 'text-[var(--app-hint)]'
             : 'text-[var(--app-fg)]'
-    const secondaryClassName = selected ? 'text-white/70' : 'text-[var(--app-hint)]'
+    const secondaryClassName = 'text-[var(--app-hint)]'
 
     return (
         <div className={`flex w-full min-w-0 flex-col gap-1 ${className ?? ''}`}>
-            <div className={`grid grid-cols-[minmax(9rem,1fr)_minmax(0,max-content)] items-center gap-2 ${isArchived ? 'opacity-60' : ''}`}>
+            <div className={`grid grid-cols-[minmax(0,1fr)_fit-content(35%)] items-center gap-2 ${isArchived ? 'opacity-60' : ''}`}>
                 <div className="flex min-w-0 items-center gap-2">
                     <AgentFlavorIcon flavor={s.metadata?.flavor} className="h-4 w-4 shrink-0 -translate-y-px" />
                     <div
@@ -153,7 +153,7 @@ export function SessionRowSummary(props: {
                         {sessionName}
                     </div>
                     {s.active && s.thinking ? (
-                        <LoaderIcon className={`h-4 w-4 shrink-0 animate-spin-slow ${selected ? 'text-white drop-shadow-sm' : 'text-[var(--app-link)]'}`} />
+                        <LoaderIcon className="h-4 w-4 shrink-0 animate-spin-slow text-[var(--app-link)]" />
                     ) : attention && nestedTooltips && attentionId ? (
                         <SessionAttentionIndicator
                             attention={attention}

@@ -21,7 +21,7 @@ import { recordMessagesConsumedActivity } from './messageConsumptionRecorder'
 import { buildStoreRuntime } from './storeRuntimeBuilder'
 import { externalStorageSyncStatus, sqliteMirrorStorageConfig, sqliteSchemaVersion } from './storeIntrospection'
 
-export const SCHEMA_VERSION: number = 20
+export const SCHEMA_VERSION: number = 21
 export class Store {
     private db!: Database
     private conversationDb!: Database

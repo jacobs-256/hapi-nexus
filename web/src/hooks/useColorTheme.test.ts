@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
     applyColorTheme,
+    getColorThemeOptions,
     getColorThemeStorageKey,
     getStoredColorTheme,
     parseColorTheme,
@@ -18,58 +19,41 @@ describe('useColorTheme', () => {
         for (const name of THEME_VARS) document.documentElement.style.removeProperty(name)
     })
 
-    it('parses invalid or missing stored values as default', () => {
-        expect(parseColorTheme(null)).toBe('default')
-        expect(parseColorTheme('unknown')).toBe('default')
-        expect(parseColorTheme('notion')).toBe('notion')
+    it('exposes only the Xthings Survey palette', () => {
+        expect(getColorThemeOptions()).toHaveLength(1)
+        expect(getColorThemeOptions()[0]?.value).toBe('xthings')
+        expect(parseColorTheme(null)).toBe('xthings')
+        expect(parseColorTheme('nord')).toBe('xthings')
     })
 
-    it('reads the stored color theme preference', () => {
+    it('ignores legacy stored color theme selections', () => {
         localStorage.setItem(getColorThemeStorageKey(), 'rose-pine')
-        expect(getStoredColorTheme()).toBe('rose-pine')
-    })
-
-    it('applies a preset palette to the document css variables', () => {
-        applyColorTheme('one', 'light')
-        expect(document.documentElement).toHaveAttribute('data-color-theme', 'one')
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#fbfbff')
-        expect(document.documentElement.style.getPropertyValue('--app-link')).toBe('#526fff')
-    })
-
-    it('removes palette css variables when reset to default', () => {
-        applyColorTheme('one', 'dark')
-        applyColorTheme('default', 'dark')
-
-        expect(document.documentElement).toHaveAttribute('data-color-theme', 'default')
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('')
-        expect(document.documentElement.style.getPropertyValue('--app-link')).toBe('')
-    })
-
-    it('persists non-default selections and removes the key for default', () => {
-        const { result } = renderHook(() => useColorTheme())
-
-        act(() => result.current.setColorTheme('night-owl'))
-        expect(localStorage.getItem(getColorThemeStorageKey())).toBe('night-owl')
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#fbfdff')
-
-        act(() => result.current.setColorTheme('default'))
+        expect(getStoredColorTheme()).toBe('xthings')
         expect(localStorage.getItem(getColorThemeStorageKey())).toBeNull()
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('')
     })
 
-    it('uses the current dark scheme when applying from the hook', () => {
-        document.documentElement.setAttribute('data-theme', 'dark')
+    it('applies the Xthings light palette to the document css variables', () => {
+        applyColorTheme('xthings', 'light')
+        expect(document.documentElement).toHaveAttribute('data-color-theme', 'xthings')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#f6f8fc')
+        expect(document.documentElement.style.getPropertyValue('--app-fg')).toBe('#172033')
+        expect(document.documentElement.style.getPropertyValue('--app-link')).toBe('#1769ff')
+    })
+
+    it('applies the navy Xthings palette in dark mode', () => {
+        applyColorTheme('xthings', 'dark')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#101827')
+        expect(document.documentElement.style.getPropertyValue('--app-fg')).toBe('#eef4ff')
+        expect(document.documentElement.style.getPropertyValue('--app-link')).toBe('#73a5ff')
+    })
+
+    it('keeps the palette fixed when the hook is asked to change it', () => {
         const { result } = renderHook(() => useColorTheme())
 
-        act(() => result.current.setColorTheme('notion'))
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#191919')
-        expect(document.documentElement.style.getPropertyValue('--app-fg')).toBe('#d9d9d8')
-    })
+        act(() => result.current.setColorTheme('xthings'))
 
-    it('uses dark palette contrast values for OLED', () => {
-        applyColorTheme('one', 'oled')
-
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#1f2433')
-        expect(document.documentElement.style.getPropertyValue('--app-chat-user-chip-bg')).toBe('rgba(123, 140, 255, 0.24)')
+        expect(result.current.colorTheme).toBe('xthings')
+        expect(localStorage.getItem(getColorThemeStorageKey())).toBeNull()
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#f6f8fc')
     })
 })

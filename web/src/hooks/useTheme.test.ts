@@ -18,79 +18,60 @@ describe('useTheme', () => {
         expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe(getThemeColor('dark'))
     })
 
-    it('creates a browser theme color meta tag when the page does not provide one', () => {
+    it('creates a browser theme color meta tag with the Xthings background', () => {
         initializeTheme()
 
         const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
         expect(meta?.content).toBe(getThemeColor('light'))
+        expect(meta?.content).toBe('#f6f8fc')
         expect(meta?.hasAttribute('media')).toBe(false)
     })
 
-
-
-
-
     it('clears the boot-time inline html background when runtime theme initializes', () => {
         document.documentElement.style.backgroundColor = '#fbfbff'
-        localStorage.setItem('hapi-color-theme', 'one')
 
         initializeTheme()
 
         expect(document.documentElement.style.backgroundColor).toBe('')
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#fbfbff')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#f6f8fc')
     })
 
-    it('updates browser theme color after a cross-tab color theme change', () => {
+    it('keeps the fixed palette after legacy color theme storage events', () => {
         localStorage.setItem('hapi-color-theme', 'one')
         initializeTheme()
-        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#fbfbff')
+        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#f6f8fc')
 
         localStorage.setItem('hapi-color-theme', 'notion')
         act(() => {
             window.dispatchEvent(new StorageEvent('storage', { key: 'hapi-color-theme', newValue: 'notion' }))
         })
 
-        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#fafafa')
+        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#f6f8fc')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#f6f8fc')
     })
 
-    it('updates the browser theme color when appearance changes', () => {
+    it('updates browser theme color when appearance changes', () => {
         const { result } = renderHook(() => useAppearance())
 
-        act(() => {
-            result.current.setAppearance('dark')
-        })
-
+        act(() => result.current.setAppearance('dark'))
         expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
-        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe(getThemeColor('dark'))
+        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#101827')
 
-        act(() => {
-            result.current.setAppearance('light')
-        })
-
+        act(() => result.current.setAppearance('light'))
         expect(document.documentElement).toHaveAttribute('data-theme', 'light')
-        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe(getThemeColor('light'))
+        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#f6f8fc')
     })
 
-    it('exposes OLED Black as a selectable appearance option', () => {
-        expect(getAppearanceOptions().some((opt) => opt.value === 'oled')).toBe(true)
+    it('exposes only system, light, and dark appearance options', () => {
+        expect(getAppearanceOptions().map((option) => option.value)).toEqual(['system', 'light', 'dark'])
     })
 
-    it('applies the OLED appearance with a pure-black browser theme color', () => {
+    it('maps a legacy OLED preference to the system appearance', () => {
         localStorage.setItem('hapi-appearance', 'oled')
 
         initializeTheme()
 
-        expect(document.documentElement).toHaveAttribute('data-theme', 'oled')
-        expect(getThemeColor('oled')).toBe('#000000')
-        expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.content).toBe('#000000')
-    })
-
-    it('does not auto-select OLED for the system appearance', () => {
-        // No stored appearance => system; system must resolve to light/dark, never OLED.
-        initializeTheme()
-
-        const theme = document.documentElement.getAttribute('data-theme')
-        expect(theme === 'light' || theme === 'dark').toBe(true)
-        expect(theme).not.toBe('oled')
+        expect(document.documentElement.getAttribute('data-theme')).not.toBe('oled')
+        expect(['light', 'dark']).toContain(document.documentElement.getAttribute('data-theme'))
     })
 })

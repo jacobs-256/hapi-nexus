@@ -56,7 +56,7 @@ The server stores encrypted data — it never sees plaintext, but it does hold y
 
 ### HAPI: Decentralized
 
-Each deployment runs its own hub. That hub can host local username/password users, admins, and shared projects, while the data remains on infrastructure you control. HAPI offers two modes of remote access:
+Each deployment runs its own hub. That hub can host local email/password users, admins, and shared projects, while the data remains on infrastructure you control. HAPI offers two modes of remote access:
 
 - **Self-hosted** (own server / Cloudflare Tunnel / Tailscale) — You control the full network path, no E2EE needed
 - **Public relay** (`hapi-server hub --relay`) — E2E encrypted via tunwg (WireGuard + TLS); the relay only forwards opaque packets

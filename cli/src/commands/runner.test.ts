@@ -98,7 +98,7 @@ describe('runnerCommand start', () => {
             pid: 123,
             httpPort: 456,
             startTime: 'now',
-            startedWithCliVersion: '2.0.3',
+            startedWithCliVersion: '2.0.4',
             machineRegisteredAt: 'now'
         })
 
@@ -132,7 +132,7 @@ describe('runnerCommand start', () => {
             pid: 123,
             httpPort: 456,
             startTime: 'now',
-            startedWithCliVersion: '2.0.3',
+            startedWithCliVersion: '2.0.4',
             machineRegisteredAt: 'now'
         })
 
@@ -160,7 +160,7 @@ describe('runnerCommand start', () => {
             pid: 123,
             httpPort: 456,
             startTime: 'now',
-            startedWithCliVersion: '2.0.3',
+            startedWithCliVersion: '2.0.4',
             lastMachineRegistrationError: 'ECONNREFUSED',
             runnerLogPath: '/tmp/runner.log'
         })

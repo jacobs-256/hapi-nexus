@@ -59,7 +59,7 @@ describe('useThemeColors', () => {
         // A dark-only override must not leak into the light appearance.
         act(() => setScheme('light'))
         applyThemeColors()
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#f6f8fc')
 
         // Switching back restores it.
         act(() => setScheme('dark'))
@@ -74,55 +74,51 @@ describe('useThemeColors', () => {
         act(() => result.current.setColor('background', '#123456'))
         act(() => result.current.resetColor('background'))
 
-        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('')
+        expect(document.documentElement.style.getPropertyValue('--app-bg')).toBe('#101827')
         expect(localStorage.getItem('hapi-theme-colors')).toBeNull()
     })
 
 
 
     it('preserves color theme preset variables when no custom colors are stored', () => {
-        localStorage.setItem('hapi-color-theme', 'one')
         setScheme('light')
 
         applyThemeColors()
 
-        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#fbfbff')
-        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#526fff')
+        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#f6f8fc')
+        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#1769ff')
     })
 
     it('layers custom colors over color theme presets', () => {
-        localStorage.setItem('hapi-color-theme', 'one')
         localStorage.setItem('hapi-theme-colors', JSON.stringify({ light: { background: '#123456' } }))
         setScheme('light')
 
         applyThemeColors()
 
         expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#123456')
-        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#526fff')
+        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#1769ff')
     })
 
     it('uses the active color theme as the custom color picker baseline', () => {
-        localStorage.setItem('hapi-color-theme', 'one')
         setScheme('light')
         const { result } = renderHook(() => useThemeColors())
 
-        expect(result.current.getPickerValue('background')).toBe('#fbfbff')
-        expect(result.current.getPickerValue('accent')).toBe('#526fff')
+        expect(result.current.getPickerValue('background')).toBe('#f6f8fc')
+        expect(result.current.getPickerValue('accent')).toBe('#1769ff')
     })
 
 
 
     it('reapplies color theme preset changes from cross-tab storage events without Settings mounted', () => {
-        localStorage.setItem('hapi-color-theme', 'one')
         setScheme('light')
         initializeThemeColors()
-        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#fbfbff')
+        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#f6f8fc')
 
         localStorage.setItem('hapi-color-theme', 'notion')
         window.dispatchEvent(new StorageEvent('storage', { key: 'hapi-color-theme', newValue: 'notion' }))
 
-        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#fafafa')
-        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#3183d8')
+        expect(document.documentElement.style.getPropertyValue('--app-bg').trim()).toBe('#f6f8fc')
+        expect(document.documentElement.style.getPropertyValue('--app-link').trim()).toBe('#1769ff')
     })
 
     it('reapplies stored colors for the active appearance during initialization', () => {

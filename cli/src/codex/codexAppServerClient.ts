@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { logger } from '@/ui/logger';
 import { JsonLineParser } from '@/utils/jsonLineParser';
 import { killProcessByChildProcess } from '@/utils/process';
+import { resolveCodexCommand, type CodexCommand } from './utils/codexExecutable';
 import type {
     CollaborationModeListResponse,
     InitializeParams,
@@ -76,7 +77,7 @@ function createAbortError(): Error {
 }
 
 type CodexCommandCandidate = {
-    command: string;
+    command: CodexCommand;
     source: 'desktop' | 'path';
     version: number[] | null;
 };
@@ -87,9 +88,9 @@ function parseCodexVersion(output: string): number[] | null {
     return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-function getCodexVersion(command: string): number[] | null {
+function getCodexVersion(command: CodexCommand): number[] | null {
     try {
-        const output = execFileSync(command, ['--version'], {
+        const output = execFileSync(command.command, [...command.args, '--version'], {
             encoding: 'utf8',
             timeout: 3_000,
             stdio: ['ignore', 'pipe', 'ignore']
@@ -111,24 +112,28 @@ function compareVersion(a: number[] | null, b: number[] | null): number {
     return 0;
 }
 
-function resolveCodexAppServerCommand(): string {
+function resolveCodexAppServerCommand(): CodexCommand {
     if (process.env.HAPI_CODEX_APP_SERVER_BIN) {
-        return process.env.HAPI_CODEX_APP_SERVER_BIN;
+        return {
+            command: process.env.HAPI_CODEX_APP_SERVER_BIN,
+            args: []
+        };
     }
 
+    const pathCommand = resolveCodexCommand();
     const candidates: CodexCommandCandidate[] = [{
-        command: 'codex',
+        command: pathCommand,
         source: 'path',
-        version: getCodexVersion('codex')
+        version: getCodexVersion(pathCommand)
     }];
 
     if (process.platform === 'darwin') {
         const desktopCodex = '/Applications/Codex.app/Contents/Resources/codex';
         if (existsSync(desktopCodex)) {
             candidates.push({
-                command: desktopCodex,
+                command: { command: desktopCodex, args: [] },
                 source: 'desktop',
-                version: getCodexVersion(desktopCodex)
+                version: getCodexVersion({ command: desktopCodex, args: [] })
             });
         }
     }
@@ -143,9 +148,11 @@ function resolveCodexAppServerCommand(): string {
     })[0];
 
     logger.debug('[CodexAppServer] Resolved codex command', {
-        selected: best.command,
+        selected: best.command.command,
+        args: best.command.args,
         candidates: candidates.map((candidate) => ({
-            command: candidate.command,
+            command: candidate.command.command,
+            args: candidate.command.args,
             source: candidate.source,
             version: candidate.version?.join('.') ?? null
         }))
@@ -175,8 +182,8 @@ export class CodexAppServerClient extends JsonLineParser {
         }
 
         const codexCommand = resolveCodexAppServerCommand();
-        logger.debug(`[CodexAppServer] Starting ${codexCommand} app-server`);
-        this.process = spawn(codexCommand, ['app-server'], {
+        logger.debug(`[CodexAppServer] Starting ${codexCommand.command} app-server`);
+        this.process = spawn(codexCommand.command, [...codexCommand.args, 'app-server'], {
             env: Object.keys(process.env).reduce((acc, key) => {
                 const value = process.env[key];
                 if (typeof value === 'string') acc[key] = value;

@@ -356,21 +356,21 @@ describe('projects routes', () => {
         try {
             const admin = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'admin-user',
+                email: 'admin-user@hapi.local',
                 passwordHash: 'hash',
                 displayName: 'Admin User',
                 role: 'user'
             })
             const candidate = store.users.createLocalUser({
                 namespace: 'default',
-                username: 'candidate',
+                email: 'candidate@hapi.local',
                 passwordHash: 'hash',
                 displayName: 'Candidate User',
                 role: 'user'
             })
             const otherNamespace = store.users.createLocalUser({
                 namespace: 'other',
-                username: 'outside',
+                email: 'outside@hapi.local',
                 passwordHash: 'hash',
                 displayName: 'Outside User',
                 role: 'user'
@@ -383,7 +383,7 @@ describe('projects routes', () => {
 
             expect(response.status).toBe(200)
             const body = await response.json() as {
-                users: Array<{ id: number; username: string | null; accessToken?: string | null }>
+                users: Array<{ id: number; email: string | null; accessToken?: string | null }>
             }
             expect(body.users.map((user) => user.id)).toContain(1)
             expect(body.users.map((user) => user.id)).toContain(candidate.id)

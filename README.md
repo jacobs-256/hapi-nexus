@@ -4,7 +4,7 @@
 
 Enterprise-oriented private-deployment platform for running official Claude Code / Codex / Cursor Agent / Grok Build / OpenCode sessions locally and controlling them remotely through a Web / PWA / Telegram Mini App.
 
-HAPI Nexus is an independent modified version of HAPI. It keeps the local-first agent workflow and adds private-hub features for teams: local username/password accounts, administrator-managed users, per-user access tokens, scoped runner workspaces, project sharing, and an enterprise-style Web console.
+HAPI Nexus is an independent modified version of HAPI. It keeps the local-first agent workflow and adds private-hub features for teams: local email/password accounts, administrator-managed users, per-user access tokens, scoped runner workspaces, project sharing, and an enterprise-style Web console.
 
 The CLI command is still `hapi` for compatibility with the existing codebase.
 
@@ -30,7 +30,7 @@ This installs the client for auth, runner, and local agent sessions. It does not
 - **Workspace Browser** - Opt-in via one or more `hapi runner start --workspace-root <path>` flags: browse scoped file trees from the web and start sessions in allowed subdirectories.
 - **Codex Folder History Sync** - Import every Codex CLI transcript for a workspace folder into HAPI Nexus, then continue from the latest imported session through the Web UI or `hapi resume`.
 - **Project Sharing** - Create projects, attach runner workspaces, invite users, and share sessions without copying source code to every device.
-- **Private Hub Accounts** - Browser users sign in with local username/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
+- **Private Hub Accounts** - Browser users sign in with local email/password accounts. Admins can create users, assign roles, reset passwords, and issue per-user access tokens for companion/CLI use.
 - **Configurable Storage** - Conversation history can use SQLite or Elasticsearch; other hub data can use SQLite or MySQL, managed from Settings -> Storage with optional data copy when switching.
 
 ## Getting Started
@@ -77,7 +77,7 @@ Sign in to the Web UI, open **Settings -> Account**, and copy the current user's
 CLI_API_TOKEN="<personal-access-token>" "$HAPI_BIN" runner start --workspace-root /path/to/projects
 ```
 
-Open the hub URL in a browser. The default browser login is `admin` / `admin`; change it from **Settings -> Account** after first sign-in.
+Open the hub URL in a browser. The default browser login is `admin@hapi.local` / `admin`; change it from **Settings -> Account** after first sign-in.
 
 For deployment options, see [Installation](docs/en/guide/installation.md).
 

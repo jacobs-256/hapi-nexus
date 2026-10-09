@@ -14,26 +14,26 @@ The Web settings area is designed as a private-deployment administration console
 
 Open **Settings -> Account** to manage the signed-in user:
 
-- view profile, username, role, namespace, and personal access token
+- view profile, email, role, namespace, and personal access token
 - copy or regenerate the personal access token
-- change username
+- change email
 - change password
 - sign out
 
-Only local username/password users can change their own username and password. Usernames must be unique inside the namespace.
+Only local email/password users can change their own email and password. Emails must be unique inside the namespace.
 
 ## Users
 
 Open **Settings -> Users** as an administrator to manage local accounts:
 
-- create username/password users
+- create email/password users
 - set display names
 - assign `user` or `admin` roles
 - disable or re-enable accounts
 - reset passwords
 - regenerate personal access tokens
 
-The first local administrator is created on first hub start with username `admin` and password `admin` unless `HAPI_ADMIN_USERNAME` and `HAPI_ADMIN_PASSWORD` are set before bootstrap. Change the default credentials immediately from **Settings -> Account**.
+The first local administrator is created on first hub start with email `admin@hapi.local` and password `admin` unless `HAPI_ADMIN_EMAIL` and `HAPI_ADMIN_PASSWORD` are set before bootstrap. Change the default credentials immediately from **Settings -> Account**.
 
 ## Projects
 

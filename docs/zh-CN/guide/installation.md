@@ -72,7 +72,7 @@ HAPI Nexus 有三个组件：
 
 **远程访问**：`hapi-server hub --relay` -> `CLI_API_TOKEN="<personal-access-token>" hapi runner start --workspace-root /path/to/projects` -> 从 Web/PWA 控制
 
-浏览器/PWA 用户使用本地用户名/密码账号登录。首次启动管理员是 `admin` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_USERNAME` 和 `HAPI_ADMIN_PASSWORD`。
+浏览器/PWA 用户使用本地邮箱/密码账号登录。首次启动管理员是 `admin@hapi.local` / `admin`；首次登录后请修改，或在第一次启动 hub 前设置 `HAPI_ADMIN_EMAIL` 和 `HAPI_ADMIN_PASSWORD`。
 
 ## 在 macOS 安装客户端
 
@@ -218,9 +218,9 @@ Hub 默认监听 `http://localhost:3006`。
 1. 创建 `~/.hapi/`
 2. 生成安全的 `CLI_API_TOKEN`
 3. 打印 token 并保存到 `~/.hapi/settings.json`
-4. 创建用户名为 `admin`、密码为 `admin` 的本地 Web 管理员
+4. 创建邮箱为 `admin@hapi.local`、密码为 `admin` 的本地 Web 管理员
 
-`admin` / `admin` 只用于首次登录，之后请在 **Settings -> Account** 中修改。
+`admin@hapi.local` / `admin` 只用于首次登录，之后请在 **Settings -> Account** 中修改。
 
 <details>
 <summary>配置文件</summary>
@@ -262,7 +262,7 @@ Hub 默认监听 `http://localhost:3006`。
 | 变量 | 默认值 | settings.json | 说明 |
 |----------|---------|---------------|-------------|
 | `CLI_API_TOKEN` | 自动生成 | `cliApiToken` | 认证共享密钥 |
-| `HAPI_ADMIN_USERNAME` | `admin` | - | 第一个本地 Web 管理员用户名 |
+| `HAPI_ADMIN_EMAIL` | `admin@hapi.local` | - | 第一个本地 Web 管理员邮箱 |
 | `HAPI_ADMIN_PASSWORD` | `admin` | - | 第一个本地 Web 管理员密码 |
 | `HAPI_API_URL` | `http://localhost:3006` | `apiUrl` | CLI 连接 hub 的 URL |
 | `HAPI_EXTRA_HEADERS_JSON` | - | `extraHeaders` | CLI → hub HTTP/WebSocket 请求的额外出站 headers |
@@ -435,7 +435,7 @@ hapi-server hub
 
 然后向 bot 发送 `/start`，打开应用，并输入你的 `CLI_API_TOKEN`。
 
-普通浏览器/PWA 登录不使用 `CLI_API_TOKEN`；请使用本地用户名/密码账号。
+普通浏览器/PWA 登录不使用 `CLI_API_TOKEN`；请使用本地邮箱/密码账号。
 
 **故障排查：**
 
@@ -698,7 +698,7 @@ hapi-server hub --relay
 
 ### 安全注意事项
 
-- 首次登录后立即修改默认 `admin` / `admin` 凭据
+- 首次登录后立即修改默认 `admin@hapi.local` / `admin` 凭据
 - 保管好 CLI 和个人 access token，并在需要时轮换
 - 公网访问使用 HTTPS
 - 生产环境限制 CORS origins

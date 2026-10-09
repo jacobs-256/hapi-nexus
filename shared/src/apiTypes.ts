@@ -72,6 +72,7 @@ export type AuthResponse = {
     token: string
     user: {
         id: number
+        email?: string
         username?: string
         displayName?: string | null
         firstName?: string
@@ -128,7 +129,7 @@ export type EnterpriseUser = {
     platform: string
     platformUserId: string
     namespace: string
-    username: string | null
+    email: string | null
     displayName: string | null
     role: UserRole
     disabledAt: number | null
@@ -171,8 +172,10 @@ export const UpdateGlobalComposerToolbarSettingsRequestSchema = z.object({
 export type UpdateGlobalComposerToolbarSettingsRequest = z.infer<typeof UpdateGlobalComposerToolbarSettingsRequestSchema>
 export type GlobalComposerToolbarSettingsResponse = { settings: GlobalComposerToolbarSettings }
 
+export const LocalEmailSchema = z.string().trim().max(254).email()
+
 export const CreateUserRequestSchema = z.object({
-    username: z.string().trim().min(1).max(128),
+    email: LocalEmailSchema,
     password: z.string().min(8).max(1024),
     displayName: z.string().trim().min(1).max(128).nullable().optional(),
     role: UserRoleSchema.default('user')
@@ -203,11 +206,11 @@ export const ChangeOwnPasswordRequestSchema = z.object({
 
 export type ChangeOwnPasswordRequest = z.infer<typeof ChangeOwnPasswordRequestSchema>
 
-export const ChangeOwnUsernameRequestSchema = z.object({
-    username: z.string().trim().min(1).max(128)
+export const ChangeOwnEmailRequestSchema = z.object({
+    email: LocalEmailSchema
 })
 
-export type ChangeOwnUsernameRequest = z.infer<typeof ChangeOwnUsernameRequestSchema>
+export type ChangeOwnEmailRequest = z.infer<typeof ChangeOwnEmailRequestSchema>
 
 export const CreateProjectRequestSchema = z.object({
     name: z.string().trim().min(1).max(255),
@@ -687,7 +690,14 @@ export const AuthRequestSchema = z.union([
     z.object({ initData: z.string() }),
     z.object({ accessToken: z.string() }),
     z.object({
-        username: z.string().trim().min(1).max(128),
+        email: z.string().trim().min(1).max(254),
+        password: z.string().min(1).max(1024),
+        namespace: z.string().trim().min(1).max(128).optional()
+    }),
+    z.object({
+        // Compatibility for a browser page that was open during the upgrade.
+        // The server resolves it to the exact migrated `<username>@hapi.local`.
+        username: z.string().trim().min(1).max(191),
         password: z.string().min(1).max(1024),
         namespace: z.string().trim().min(1).max(128).optional()
     })

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { I18nProvider } from '@/lib/i18n-context'
@@ -15,7 +15,7 @@ const apiMock = {
 
 let currentUser: AuthResponse['user'] = {
     id: 1,
-    username: 'admin',
+    email: 'admin@hapi.local',
     role: 'admin'
 }
 
@@ -31,9 +31,9 @@ function makeLocalUser(overrides?: Partial<EnterpriseUser>): EnterpriseUser {
     return {
         id: 2,
         platform: 'local',
-        platformUserId: 'default:alice',
+        platformUserId: 'default:alice@hapi.local',
         namespace: 'default',
-        username: 'alice',
+        email: 'alice@hapi.local',
         displayName: 'Alice',
         role: 'user',
         disabledAt: null,
@@ -58,9 +58,9 @@ function renderPage() {
 describe('SettingsUsersPage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
-        currentUser = { id: 1, username: 'admin', role: 'admin' }
+        currentUser = { id: 1, email: 'admin@hapi.local', role: 'admin' }
         apiMock.getUsers.mockResolvedValue({ users: [makeLocalUser()] })
-        apiMock.createUser.mockResolvedValue({ user: makeLocalUser({ id: 3, username: 'bob' }) })
+        apiMock.createUser.mockResolvedValue({ user: makeLocalUser({ id: 3, email: 'bob@hapi.local' }) })
         apiMock.deleteUser.mockResolvedValue({ ok: true })
     })
 
@@ -72,15 +72,20 @@ describe('SettingsUsersPage', () => {
         renderPage()
 
         expect(await screen.findByText('Alice')).toBeInTheDocument()
+        expect(screen.getByText('alice@hapi.local')).toBeInTheDocument()
         expect(screen.getByText('Password')).toBeInTheDocument()
         expect(screen.getByText('Actions')).toBeInTheDocument()
 
-        fireEvent.change(screen.getByPlaceholderText('Username'), { target: { value: 'bob' } })
-        fireEvent.change(screen.getByPlaceholderText('Password (8+ characters)'), { target: { value: 'correct-password' } })
         fireEvent.click(screen.getByRole('button', { name: 'Create user' }))
+        const dialog = screen.getByRole('dialog')
+        expect(within(dialog).getByRole('heading', { name: 'Create user' })).toBeInTheDocument()
+
+        fireEvent.change(within(dialog).getByPlaceholderText('Email'), { target: { value: 'bob@hapi.local' } })
+        fireEvent.change(within(dialog).getByPlaceholderText('Password (8+ characters)'), { target: { value: 'correct-password' } })
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Create user' }))
 
         await waitFor(() => expect(apiMock.createUser).toHaveBeenCalledWith({
-            username: 'bob',
+            email: 'bob@hapi.local',
             password: 'correct-password',
             displayName: null,
             role: 'user'
@@ -100,8 +105,8 @@ describe('SettingsUsersPage', () => {
     })
 
     it('shows delete for local users when the owner has the same numeric id', async () => {
-        currentUser = { id: 1, username: 'admin', role: 'admin', platform: 'owner' }
-        apiMock.getUsers.mockResolvedValue({ users: [makeLocalUser({ id: 1, username: 'jacobs', displayName: 'Jacobs' })] })
+        currentUser = { id: 1, email: 'admin@hapi.local', role: 'admin', platform: 'owner' }
+        apiMock.getUsers.mockResolvedValue({ users: [makeLocalUser({ id: 1, email: 'jacobs@hapi.local', displayName: 'Jacobs' })] })
 
         renderPage()
 
@@ -130,7 +135,7 @@ describe('SettingsUsersPage', () => {
     })
 
     it('does not render the current users own access token in the management list', async () => {
-        currentUser = { id: 2, username: 'alice', role: 'admin', platform: 'local' }
+        currentUser = { id: 2, email: 'alice@hapi.local', role: 'admin', platform: 'local' }
 
         renderPage()
 
@@ -139,7 +144,7 @@ describe('SettingsUsersPage', () => {
     })
 
     it('blocks non-admin users from the management list', () => {
-        currentUser = { id: 2, username: 'alice', role: 'user' }
+        currentUser = { id: 2, email: 'alice@hapi.local', role: 'user' }
 
         renderPage()
 

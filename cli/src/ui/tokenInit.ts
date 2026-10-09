@@ -57,7 +57,7 @@ async function promptForToken(): Promise<string> {
 
     console.log(chalk.yellow('\nNo CLI_API_TOKEN found.'))
     console.log(chalk.gray('Where to find the token:'))
-    console.log(chalk.gray('  1. Sign in to the Web UI with your username/password'))
+    console.log(chalk.gray('  1. Sign in to the Web UI with your email/password'))
     console.log(chalk.gray('  2. Open Settings -> Account'))
     console.log(chalk.gray('  3. Copy your personal access token\n'))
 

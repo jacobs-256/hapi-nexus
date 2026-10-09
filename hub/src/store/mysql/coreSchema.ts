@@ -1,5 +1,6 @@
 import type { StorageConfig } from '@hapi/protocol/storage'
 import { withMysqlClient } from './client'
+import { migrateMysqlLocalEmails } from './localEmailMigration'
 
 type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['mysql']
 
@@ -69,10 +70,10 @@ const MYSQL_CORE_SCHEMA = [
     `CREATE TABLE IF NOT EXISTS users (
         id BIGINT PRIMARY KEY AUTO_INCREMENT,
         platform VARCHAR(64) NOT NULL,
-        platform_user_id VARCHAR(191) NOT NULL,
+        platform_user_id VARCHAR(512) NOT NULL,
         namespace VARCHAR(191) NOT NULL DEFAULT 'default',
-        username VARCHAR(191),
-        username_normalized VARCHAR(191),
+        username VARCHAR(254),
+        username_normalized VARCHAR(254),
         display_name LONGTEXT,
         password_hash LONGTEXT,
         access_token LONGTEXT,
@@ -220,5 +221,6 @@ export async function ensureMysqlCoreSchema(target: MysqlTarget): Promise<void> 
             await sql.unsafe(statement)
         }
         await ensureMysqlCoreCompatibility(sql)
+        await migrateMysqlLocalEmails(sql)
     })
 }

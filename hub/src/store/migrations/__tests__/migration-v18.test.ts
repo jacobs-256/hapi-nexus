@@ -55,7 +55,7 @@ describe('Store V17→V18 migration: schema migration ledger', () => {
                 to_version: number
                 backup_path: string | null
             }>
-            expect(rows).toHaveLength(3)
+            expect(rows).toHaveLength(SCHEMA_VERSION - 17)
             expect(rows[0].from_version).toBe(17)
             expect(rows[0].to_version).toBe(18)
             expect(typeof rows[0].backup_path).toBe('string')
@@ -64,8 +64,11 @@ describe('Store V17→V18 migration: schema migration ledger', () => {
             expect(rows[1].to_version).toBe(19)
             expect(rows[1].backup_path).toBe(rows[0].backup_path)
             expect(rows[2].from_version).toBe(19)
-            expect(rows[2].to_version).toBe(SCHEMA_VERSION)
+            expect(rows[2].to_version).toBe(20)
             expect(rows[2].backup_path).toBe(rows[0].backup_path)
+            expect(rows[3].from_version).toBe(20)
+            expect(rows[3].to_version).toBe(SCHEMA_VERSION)
+            expect(rows[3].backup_path).toBe(rows[0].backup_path)
             expect(readdirSync(join(dir, 'backups')).some((name) => name.includes(`v17-to-v${SCHEMA_VERSION}`))).toBe(true)
 
             const sessions = upgradedDb.prepare('SELECT id FROM sessions').all() as Array<{ id: string }>

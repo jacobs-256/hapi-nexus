@@ -138,7 +138,7 @@ export function useAuthSource(baseUrl: string): {
 
         clearTokenUrlParam()
 
-        // Plain browser sessions only restore Web JWTs created by username/password login.
+        // Plain browser sessions only restore Web JWTs created by email/password login.
         // Access-token URL params/localStorage are intentionally ignored for Web login.
         const storedWebSession = getStoredWebSession(webSessionKey)
         if (storedWebSession) {

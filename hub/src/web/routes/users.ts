@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import {
     ChangeOwnPasswordRequestSchema,
-    ChangeOwnUsernameRequestSchema,
+    ChangeOwnEmailRequestSchema,
     CreateUserRequestSchema,
     ResetUserPasswordRequestSchema,
     UpdateUserRequestSchema,
@@ -33,7 +33,7 @@ function toEnterpriseUser(user: StoredUser, includeToken: boolean): EnterpriseUs
         platform: user.platform,
         platformUserId: user.platformUserId,
         namespace: user.namespace,
-        username: user.username,
+        email: user.email,
         displayName: user.displayName,
         role: user.role,
         disabledAt: user.disabledAt,
@@ -54,7 +54,7 @@ function toOwnerEnterpriseUser(ownerId: number, namespace: string, includeToken:
         platform: 'owner',
         platformUserId: 'hub-owner',
         namespace,
-        username: 'admin',
+        email: null,
         displayName: 'Hub Owner',
         role: 'admin',
         disabledAt: null,
@@ -177,25 +177,25 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
         return c.json({ user: toEnterpriseUser(updated, true) })
     })
 
-    app.patch('/me/username', async (c) => {
+    app.patch('/me/email', async (c) => {
         const namespace = c.get('namespace')
         const userId = c.get('userId')
         if (await isOwnerAuth(userId, c.get('authPlatform'), getOwnerUserId)) {
-            return c.json({ error: 'Hub owner username is not editable. Sign in with a local admin account.' }, 400)
+            return c.json({ error: 'Hub owner email is not editable. Sign in with a local admin account.' }, 400)
         }
 
         const body = await c.req.json().catch(() => null)
-        const parsed = ChangeOwnUsernameRequestSchema.safeParse(body)
+        const parsed = ChangeOwnEmailRequestSchema.safeParse(body)
         if (!parsed.success) {
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        const result = await store.users.updateLocalUsername(userId, namespace, parsed.data.username)
+        const result = await store.users.updateLocalEmail(userId, namespace, parsed.data.email)
         if (result.status === 'not_found') {
             return c.json({ error: 'Local user not found' }, 404)
         }
         if (result.status === 'duplicate') {
-            return c.json({ error: 'Username already exists' }, 409)
+            return c.json({ error: 'Email already exists' }, 409)
         }
 
         return c.json({ user: toEnterpriseUser(result.user, true) })
@@ -236,15 +236,15 @@ export function createUsersRoutes(store: Store, options?: UsersRouteOptions): Ho
             return c.json({ error: 'Invalid body', issues: parsed.error.flatten() }, 400)
         }
 
-        if (await store.users.getLocalUserByUsername(namespace, parsed.data.username)) {
-            return c.json({ error: 'Username already exists' }, 409)
+        if (await store.users.getLocalUserByEmail(namespace, parsed.data.email)) {
+            return c.json({ error: 'Email already exists' }, 409)
         }
 
         try {
             const passwordHash = await hashPassword(parsed.data.password)
             const user = await store.users.createLocalUser({
                 namespace,
-                username: parsed.data.username,
+                email: parsed.data.email,
                 passwordHash,
                 displayName: parsed.data.displayName ?? null,
                 role: parsed.data.role

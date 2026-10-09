@@ -3,7 +3,7 @@ import type { DeleteMachineResult } from '../machines'
 import type { CreateScratchlistResult } from '../scratchlist'
 import type { StoredCodexImportJobRecord } from '../codexImportJobStore'
 import type { ProjectRole } from '../projects'
-import type { CreateLocalUserInput, UpdateLocalUsernameResult, UpdateUserInput } from '../users'
+import type { CreateLocalUserInput, UpdateLocalEmailResult, UpdateUserInput } from '../users'
 import type { StoredFcmDevice, StoredMachine, StoredProject, StoredProjectInvite, StoredProjectMember, StoredProjectWorkspace, StoredPushSubscription, StoredScratchlistEntry, StoredSession, StoredUser, VersionedUpdateResult } from '../types'
 import type { MaybePromise } from './types'
 
@@ -105,7 +105,7 @@ export interface ProjectStorePort {
 export interface UserStorePort {
     getUser(platform: string, platformUserId: string): MaybePromise<StoredUser | null>
     getUserById(userId: number, namespace: string): MaybePromise<StoredUser | null>
-    getLocalUserByUsername(namespace: string, username: string): MaybePromise<StoredUser | null>
+    getLocalUserByEmail(namespace: string, email: string): MaybePromise<StoredUser | null>
     getUserByAccessToken(accessToken: string): MaybePromise<StoredUser | null>
     getUsersByPlatform(platform: string): MaybePromise<StoredUser[]>
     listUsersByNamespace(namespace: string): MaybePromise<StoredUser[]>
@@ -114,7 +114,7 @@ export interface UserStorePort {
     createLocalUser(input: CreateLocalUserInput): MaybePromise<StoredUser>
     updateUser(userId: number, namespace: string, input: UpdateUserInput): MaybePromise<StoredUser | null>
     updateUserPassword(userId: number, namespace: string, passwordHash: string): MaybePromise<StoredUser | null>
-    updateLocalUsername(userId: number, namespace: string, username: string): MaybePromise<UpdateLocalUsernameResult>
+    updateLocalEmail(userId: number, namespace: string, email: string): MaybePromise<UpdateLocalEmailResult>
     regenerateUserAccessToken(userId: number, namespace: string): MaybePromise<StoredUser | null>
     removeLocalUserById(userId: number, namespace: string, replacementOwnerUserId: number): MaybePromise<StoredUser | null>
     removeUser(platform: string, platformUserId: string): MaybePromise<boolean>

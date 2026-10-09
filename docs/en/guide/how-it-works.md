@@ -74,7 +74,7 @@ The hub is the central service that connects everything:
 - **Socket.IO** - Real-time bidirectional communication with CLI
 - **SSE (Server-Sent Events)** - Live updates pushed to web clients
 - **Configurable Storage** - SQLite by default, Elasticsearch for conversation history, and MySQL for core hub data
-- **Local Accounts** - Username/password browser login, admin user management, and per-user access tokens
+- **Local Accounts** - Email/password browser login, admin user management, and per-user access tokens
 - **Project ACLs** - User/project/workspace access checks before sessions, machines, files, and events are exposed
 - **Telegram Bot** - Notifications and Mini App integration
 

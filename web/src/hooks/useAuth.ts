@@ -37,7 +37,7 @@ function isNotBoundError(error: unknown): boolean {
 function toAuthUser(user: EnterpriseUser): AuthResponse['user'] {
     return {
         id: user.id,
-        username: user.username ?? undefined,
+        email: user.email ?? undefined,
         displayName: user.displayName,
         platform: user.platform,
         role: user.role,

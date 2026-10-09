@@ -95,7 +95,7 @@ function makeProject(overrides: Partial<ProjectWithDetails> & { id: string; name
 
 function makeCurrentUser(overrides: Partial<AuthResponse['user']> & { id: number }): AuthResponse['user'] {
     return {
-        username: `user-${overrides.id}`,
+        email: `user-${overrides.id}@hapi.local`,
         displayName: `User ${overrides.id}`,
         platform: 'local',
         role: 'user',
@@ -278,7 +278,7 @@ describe('SessionList directory action', () => {
         )
 
         const projectHeader = screen.getByTitle('/home/ubuntu')
-        expect(projectHeader).toHaveClass('bg-[var(--sidebar)]')
+        expect(projectHeader).toHaveClass('bg-[var(--app-bg)]')
         expect(projectHeader).toHaveClass('hover:bg-[var(--secondary)]')
         expect(projectHeader).not.toHaveClass('hover:bg-[var(--app-subtle-bg)]')
 
@@ -289,7 +289,7 @@ describe('SessionList directory action', () => {
         const searchInput = screen.getByPlaceholderText(/Search sessions/)
         const headerRow = searchInput.parentElement?.parentElement
         expect(headerRow).toHaveClass('px-2')
-        expect(headerRow).toHaveClass('py-1')
+        expect(headerRow).toHaveClass('py-2')
     })
 
     it('hides the directory action for sessions without path metadata', () => {
@@ -384,7 +384,7 @@ describe('SessionList directory action', () => {
                 platform: 'local',
                 platformUserId: 'local:alice',
                 namespace: 'default',
-                username: 'alice',
+                email: 'alice@hapi.local',
                 displayName: 'Alice',
                 role: 'user',
                 disabledAt: null,
@@ -426,7 +426,7 @@ describe('SessionList directory action', () => {
                 isLoading={false}
                 renderHeader={false}
                 api={api}
-                currentUser={makeCurrentUser({ id: 1, username: 'bob', displayName: 'Bob' })}
+                currentUser={makeCurrentUser({ id: 1, email: 'bob@hapi.local', displayName: 'Bob' })}
                 machineLabelsById={{ [machine.id]: 'Mac Studio' }}
                 machinesById={{ [machine.id]: machine }}
             />
@@ -437,7 +437,7 @@ describe('SessionList directory action', () => {
 
         expect(await screen.findByText('Shared')).toBeInTheDocument()
         expect(screen.getByText('Shared by')).toBeInTheDocument()
-        expect(screen.getByText('Alice (@alice)')).toBeInTheDocument()
+        expect(screen.getByText('Alice (alice@hapi.local)')).toBeInTheDocument()
         expect(screen.queryByText('Machine')).toBeNull()
         expect(screen.queryByText('Project')).toBeNull()
         expect(screen.queryByText('Move to project')).toBeNull()
@@ -494,7 +494,7 @@ describe('SessionList directory action', () => {
                 isLoading={false}
                 renderHeader={false}
                 api={api}
-                currentUser={makeCurrentUser({ id: 1, username: 'owner', displayName: 'Owner' })}
+                currentUser={makeCurrentUser({ id: 1, email: 'owner@hapi.local', displayName: 'Owner' })}
                 machineLabelsById={{ [machine.id]: 'Mac Studio' }}
                 machinesById={{ [machine.id]: machine }}
             />

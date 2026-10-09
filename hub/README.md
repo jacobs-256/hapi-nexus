@@ -9,7 +9,7 @@ Telegram bot + HTTP API + realtime updates for the HAPI Nexus hub.
 - Server-Sent Events stream for live updates in the web app.
 - Socket.IO channel for CLI connections.
 - Serves the web app from `web/dist` or embedded assets in the single binary.
-- Local username/password accounts for private deployments.
+- Local email/password accounts for private deployments.
 - Project/member/workspace sharing inside a namespace.
 - Persists data through configurable storage: SQLite by default, Elasticsearch for conversations, and MySQL for core hub data.
 
@@ -23,7 +23,7 @@ See `src/configuration.ts` for all options.
 
 ### Optional (initial local admin)
 
-- `HAPI_ADMIN_USERNAME` - Username for the first local administrator. Defaults to `admin`.
+- `HAPI_ADMIN_EMAIL` - Email for the first local administrator. Defaults to `admin@hapi.local`.
 - `HAPI_ADMIN_PASSWORD` - Password for the first local administrator. Defaults to `admin`.
 
 These are used only when the hub creates the first active local admin. If an active local admin already exists, they do not replace it.
@@ -74,7 +74,7 @@ hapi hub
 `hapi server` remains supported as an alias.
 
 If you only need web + CLI, you can omit TELEGRAM_BOT_TOKEN.
-The browser UI signs in with local username/password accounts. On first start the default admin is `admin` / `admin`; change it from Settings -> Account.
+The browser UI signs in with local email/password accounts. On first start the default admin is `admin@hapi.local` / `admin`; change it from Settings -> Account.
 To enable Telegram, set TELEGRAM_BOT_TOKEN and HAPI_PUBLIC_URL, start the hub, open `/app`
 in the bot chat, and bind the Mini App with `CLI_API_TOKEN:<namespace>` when prompted.
 
@@ -91,17 +91,17 @@ See `src/web/routes/` for all endpoints.
 
 ### Authentication (`src/web/routes/auth.ts`)
 
-- `POST /api/auth` - Get JWT token (Telegram initData, local username/password, `CLI_API_TOKEN[:namespace]`, or a personal access token). The Web UI uses username/password for normal browser login.
+- `POST /api/auth` - Get JWT token (Telegram initData, local email/password, `CLI_API_TOKEN[:namespace]`, or a personal access token). The Web UI uses email/password for normal browser login.
 - `POST /api/bind` - Bind a Telegram account using initData + `CLI_API_TOKEN:<namespace>`.
 
 ### Users (`src/web/routes/users.ts`)
 
 - `GET /api/me` - Return current profile, role, namespace, and own access token.
 - `POST /api/me/token/regenerate` - Regenerate the current local user's personal access token.
-- `PATCH /api/me/username` - Change the current local user's username. Usernames are unique inside a namespace.
+- `PATCH /api/me/email` - Change the current local user's email. Emails are unique inside a namespace.
 - `POST /api/me/password` - Change the current local user's password after verifying the current password.
 - `GET /api/users` - Admin-only user list for the current namespace.
-- `POST /api/users` - Admin-only local user creation with username, password, display name, and role.
+- `POST /api/users` - Admin-only local user creation with email, password, display name, and role.
 - `PATCH /api/users/:id` - Admin-only profile, role, and disabled-state updates.
 - `POST /api/users/:id/password` - Admin-only local password reset.
 - `POST /api/users/:id/token/regenerate` - Admin/self personal access token regeneration.
@@ -280,7 +280,7 @@ The selected backend is authoritative for its domain. Runtime writes do not go t
 
 Access is controlled by:
 - Telegram initData verification plus bound Telegram users (bound via `CLI_API_TOKEN:<namespace>`).
-- Local username/password accounts for normal browser/PWA login.
+- Local email/password accounts for normal browser/PWA login.
 - `CLI_API_TOKEN` base secret for CLI, runner, owner access, and Telegram binding (namespace is appended by clients).
 - Per-user personal access tokens for companion/CLI-style user access.
 - Project ACLs for sessions, messages, machines, files, and SSE events inside a namespace.
