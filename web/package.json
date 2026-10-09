@@ -1,7 +1,7 @@
 {
     "name": "hapi-web",
     "private": true,
-    "version": "2.0.4",
+    "version": "2.0.5",
     "description": "HAPI Nexus Web console for private multi-user AI coding agent control",
     "license": "AGPL-3.0-only",
     "type": "module",

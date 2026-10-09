@@ -18,7 +18,6 @@ import type { Suggestion } from '@/hooks/useActiveSuggestions'
 import { normalizeDecryptedMessage } from '@/chat/normalize'
 import { reduceChatBlocks } from '@/chat/reducer'
 import { reconcileChatBlocks } from '@/chat/reconcile'
-import { buildConversationOutline } from '@/chat/outline'
 import { buildVisibleChatBlocks, isToolGroupBlock, type ToolGroupBlock } from '@/chat/toolGroups'
 import { useUnseenBlockCount } from '@/hooks/useUnseenBlockCount'
 import { isQueuedForInvocation } from '@/lib/messages'
@@ -36,6 +35,7 @@ import { QueuedMessagesBar } from '@/components/AssistantChat/QueuedMessagesBar'
 import { ScratchlistDrawer } from '@/components/AssistantChat/ScratchlistPanel'
 import { useHubScratchlist } from '@/lib/use-hub-scratchlist'
 import { useSessions } from '@/hooks/queries/useSessions'
+import { useConversationOutline } from '@/hooks/queries/useConversationOutline'
 import { getSessionTitle } from '@/lib/sessionTitle'
 import { formatSessionMentionTooltip } from '@/lib/sessionReference'
 import { classifySessionAttention, getSessionAttentionLabelKey } from '@/lib/sessionAttention'
@@ -490,6 +490,7 @@ function SessionChatInner(props: SessionChatProps) {
     const visibleGroupsRef = useRef<ToolGroupBlock[]>([])
     const [forceScrollToken, setForceScrollToken] = useState(0)
     const [outlineOpen, setOutlineOpen] = useState(props.initialOutlineOpen ?? false)
+    const conversationOutline = useConversationOutline(props.api, props.session.id, outlineOpen)
     useEffect(() => {
         if (!props.initialOutlineOpen) {
             return
@@ -1079,11 +1080,6 @@ function SessionChatInner(props: SessionChatProps) {
     // tool_result pair is one card.
     const unseenCount = useUnseenBlockCount(props.viewMode, visibleBlocks)
 
-    const outlineItems = useMemo(
-        () => buildConversationOutline(reconciled.blocks),
-        [reconciled.blocks]
-    )
-
     // Permission mode change handler
     const handlePermissionModeChange = useCallback(async (mode: PermissionMode) => {
         try {
@@ -1402,7 +1398,10 @@ function SessionChatInner(props: SessionChatProps) {
                         historyVersion={props.historyVersion}
                         forceScrollToken={forceScrollToken}
                         outlineOpen={outlineOpen}
-                        outlineItems={outlineItems}
+                        outlineItems={conversationOutline.items}
+                        outlineHasMore={conversationOutline.hasMore}
+                        outlineIsLoading={conversationOutline.isLoading}
+                        onOutlineLoadMore={conversationOutline.loadMore}
                         onOutlineOpenChange={setOutlineOpen}
                     />
 

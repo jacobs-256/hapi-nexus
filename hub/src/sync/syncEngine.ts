@@ -8,7 +8,15 @@
  */
 
 import { isKnownFlavor, type LocalResumeTarget, type ResumableSession } from '@hapi/protocol'
-import type { CursorChatStoreStatus, CursorMigrateOutcome, CursorMigrateToAcpRequest, MessagesResponse, QueuedStateResponse, SlashCommandsResponse } from '@hapi/protocol/apiTypes'
+import type {
+    ConversationOutlineResponse,
+    CursorChatStoreStatus,
+    CursorMigrateOutcome,
+    CursorMigrateToAcpRequest,
+    MessagesResponse,
+    QueuedStateResponse,
+    SlashCommandsResponse
+} from '@hapi/protocol/apiTypes'
 import type { AgentFlavor, CodexCollaborationMode, DecryptedMessage, PermissionMode, Session, SyncEvent } from '@hapi/protocol/types'
 import { unwrapRoleWrappedRecordEnvelope } from '@hapi/protocol/messages'
 import type { Server } from 'socket.io'
@@ -672,6 +680,13 @@ export class SyncEngine {
         }
     ): Promise<MessagesResponse> {
         return await this.messageService.getMessagesPageAsync(sessionId, options)
+    }
+
+    async getConversationOutlinePageAsync(
+        sessionId: string,
+        options: { limit: number; before?: { at: number; seq: number } | null }
+    ): Promise<ConversationOutlineResponse> {
+        return await this.messageService.getConversationOutlinePageAsync(sessionId, options)
     }
 
     getQueuedState(sessionId: string, localIds: string[]): QueuedStateResponse {

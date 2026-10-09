@@ -13,6 +13,7 @@ import { createMessagesRoutes } from './messages'
 
 type GetMessagesPage = SyncEngine['getMessagesPage']
 type GetMessagesPageAsync = SyncEngine['getMessagesPageAsync']
+type GetConversationOutlinePageAsync = SyncEngine['getConversationOutlinePageAsync']
 
 // TS note: engine is cast to unknown→SyncEngine so test helpers don't need to
 // satisfy the full SyncEngine shape (only the subset the route under test uses).
@@ -25,6 +26,7 @@ function createApp(opts: {
     active?: boolean
     sendMessage?: (sessionId: string, payload: unknown) => Promise<void>
     getMessagesPage?: GetMessagesPage
+    getConversationOutlinePageAsync?: GetConversationOutlinePageAsync
     getQueuedState?: (sessionId: string, localIds: string[]) => {
         queuedLocalIds: string[]
         invokedLocalMessages: Array<{ localId: string; invokedAt: number }>
@@ -60,6 +62,15 @@ function createApp(opts: {
             hasMore: false
         }
     }))
+    const getConversationOutlinePageAsync = opts.getConversationOutlinePageAsync ?? (async () => ({
+        items: [],
+        page: {
+            limit: 50,
+            nextBeforeSeq: null,
+            nextBeforeAt: null,
+            hasMore: false
+        }
+    }))
 
     const engine = {
         resolveSessionAccess: () => ({
@@ -73,6 +84,7 @@ function createApp(opts: {
         cancelQueuedMessage: async () => ({ status: 'cancelled' }),
         getMessagesPage,
         getMessagesPageAsync: (async (sessionId: string, options: Parameters<GetMessagesPage>[1]) => getMessagesPage(sessionId, options)) as GetMessagesPageAsync,
+        getConversationOutlinePageAsync,
     } as unknown as SyncEngine
 
     const app = new Hono<WebAppEnv>()
@@ -192,6 +204,46 @@ describe('GET /api/sessions/:id/messages', () => {
         expect(response.status).toBe(400)
         expect(await response.json()).toMatchObject({ error: 'Invalid query' })
         expect(called).toBe(false)
+    })
+})
+
+describe('GET /api/sessions/:id/conversation-outline', () => {
+    it('uses an independent cursor and does not call the message page API', async () => {
+        const calls: Array<{ sessionId: string; options: Parameters<GetConversationOutlinePageAsync>[1] }> = []
+        const { app } = createApp({
+            getConversationOutlinePageAsync: async (sessionId, options) => {
+                calls.push({ sessionId, options })
+                return {
+                    items: [{
+                        id: 'outline:user-text:m2',
+                        targetMessageId: 'user-text:m2',
+                        kind: 'user',
+                        label: 'Latest prompt',
+                        createdAt: 2_000
+                    }],
+                    page: {
+                        limit: options.limit,
+                        nextBeforeSeq: 4,
+                        nextBeforeAt: 1_000,
+                        hasMore: true
+                    }
+                }
+            }
+        })
+
+        const response = await app.request(
+            '/api/sessions/session-1/conversation-outline?beforeAt=1000&beforeSeq=3&limit=25'
+        )
+
+        expect(response.status).toBe(200)
+        expect(calls).toEqual([{
+            sessionId: 'session-1',
+            options: { limit: 25, before: { at: 1_000, seq: 3 } }
+        }])
+        expect(await response.json()).toMatchObject({
+            items: [{ label: 'Latest prompt' }],
+            page: { hasMore: true }
+        })
     })
 })
 

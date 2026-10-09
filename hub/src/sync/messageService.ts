@@ -10,7 +10,11 @@ import {
     unwrapRoleWrappedRecordEnvelope
 } from '@hapi/protocol/messages'
 import { isObject } from '@hapi/protocol'
-import type { MessagesResponse, QueuedStateResponse } from '@hapi/protocol/apiTypes'
+import type {
+    ConversationOutlineResponse,
+    MessagesResponse,
+    QueuedStateResponse
+} from '@hapi/protocol/apiTypes'
 import type { Server } from 'socket.io'
 import { randomUUID } from 'node:crypto'
 import type { Store, CancelQueuedMessageResult } from '../store'
@@ -48,6 +52,79 @@ function toDecryptedMessage(message: StoredMessageForDelivery): DecryptedMessage
 
 function toVisibleDecryptedMessages(messages: StoredMessageForDelivery[]): DecryptedMessage[] {
     return messages.filter(isWebVisibleStoredMessage).map(toDecryptedMessage)
+}
+
+const MAX_OUTLINE_LABEL_LENGTH = 96
+
+function normalizeOutlineText(value: string): string | undefined {
+    const text = value.replace(/\s+/g, ' ').trim()
+    return text.length > 0 ? text : undefined
+}
+
+function extractOutlineText(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+        return normalizeOutlineText(value)
+    }
+    if (Array.isArray(value)) {
+        const parts = value
+            .map((part) => {
+                if (!isObject(part) || part.type !== 'text' || typeof part.text !== 'string') {
+                    return null
+                }
+                return part.text
+            })
+            .filter((part): part is string => part !== null)
+        if (parts.length !== value.length) return undefined
+        return normalizeOutlineText(parts.join(' '))
+    }
+    if (isObject(value) && value.type === 'text' && typeof value.text === 'string') {
+        return normalizeOutlineText(value.text)
+    }
+    return undefined
+}
+
+function extractOutlineUserText(content: unknown): string | null {
+    const record = unwrapRoleWrappedRecordEnvelope(content)
+    if (!record) return null
+
+    if (record.role === 'user') {
+        const text = extractOutlineText(record.content)
+        if (text !== undefined) return text
+        if (typeof record.content === 'string') return ''
+        if (isObject(record.content) && record.content.type === 'text' && typeof record.content.text === 'string') {
+            return ''
+        }
+        if (Array.isArray(record.content) && record.content.length > 0 && record.content.every((part) => (
+            isObject(part) && part.type === 'text' && typeof part.text === 'string'
+        ))) {
+            return ''
+        }
+        return null
+    }
+
+    // Claude transcripts can wrap a real, non-sidechain user prompt inside an
+    // agent/output envelope. Sidechain prompts are internal task messages and
+    // should not become outline entries.
+    if (record.role !== 'agent' || !isObject(record.content) || record.content.type !== 'output') {
+        return null
+    }
+    const data = isObject(record.content.data) ? record.content.data : null
+    if (!data || data.type !== 'user' || Boolean(data.isSidechain)) return null
+    const message = isObject(data.message) ? data.message : null
+    if (!message) return null
+    const text = extractOutlineText(message.content)
+    return text ?? null
+}
+
+function truncateOutlineLabel(value: string): string {
+    if (value.length <= MAX_OUTLINE_LABEL_LENGTH) return value
+    return `${value.slice(0, MAX_OUTLINE_LABEL_LENGTH - 3).trimEnd()}...`
+}
+
+function isOutlineMessage(message: StoredMessageForDelivery): boolean {
+    return message.invokedAt !== null
+        && isWebVisibleStoredMessage(message)
+        && extractOutlineUserText(message.content) !== null
 }
 
 function isQueuedUserMessage(message: StoredMessageForDelivery): boolean {
@@ -111,6 +188,52 @@ export class MessageService {
                 ? (await this.store.messages.getAllMessagesAsync(sessionId)).slice(-limit)
                 : this.store.messages.getMessages(sessionId, limit)
         return toVisibleDecryptedMessages(stored)
+    }
+
+    async getConversationOutlinePageAsync(
+        sessionId: string,
+        options: {
+            limit: number
+            before?: MessagePosition | null
+        }
+    ): Promise<ConversationOutlineResponse> {
+        const stored = this.store.messages.getAllMessagesAsync
+            ? await this.store.messages.getAllMessagesAsync(sessionId)
+            : this.store.messages.getAllMessages(sessionId)
+
+        const candidates = stored
+            .filter(isOutlineMessage)
+            .sort((left, right) => comparePosition(messagePosition(right), messagePosition(left)))
+        const filtered = options.before
+            ? candidates.filter((message) => comparePosition(messagePosition(message), options.before!) < 0)
+            : candidates
+        const page = filtered.slice(0, Math.max(1, Math.min(100, options.limit)))
+        const items = page.flatMap((message) => {
+            const text = extractOutlineUserText(message.content)
+            if (text === null) return []
+            return [{
+                id: `outline:user-text:${message.id}`,
+                targetMessageId: `user-text:${message.id}`,
+                kind: 'user' as const,
+                label: truncateOutlineLabel(text) || 'Empty message',
+                createdAt: message.createdAt
+            }]
+        })
+        const oldest = page[page.length - 1]
+        const nextBefore = oldest ? messagePosition(oldest) : null
+        const hasMore = oldest
+            ? filtered.some((message) => comparePosition(messagePosition(message), nextBefore!) < 0)
+            : false
+
+        return {
+            items,
+            page: {
+                limit: options.limit,
+                nextBeforeSeq: nextBefore?.seq ?? null,
+                nextBeforeAt: nextBefore?.at ?? null,
+                hasMore
+            }
+        }
     }
 
     getQueuedState(sessionId: string, localIds: string[]): QueuedStateResponse {

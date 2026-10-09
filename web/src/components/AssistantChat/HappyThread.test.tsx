@@ -78,7 +78,7 @@ describe('ConversationOutlinePanel', () => {
 
         const timestamps = container.querySelectorAll('time')
         expect(timestamps).toHaveLength(outlineItems.length)
-        expect(timestamps[0]).toHaveAttribute('dateTime', new Date(outlineItems[0].createdAt).toISOString())
+        expect(timestamps[0]).toHaveAttribute('dateTime', new Date(outlineItems[1].createdAt).toISOString())
         expect(timestamps[0]).toHaveAttribute('title')
         expect(screen.queryByText('User')).not.toBeInTheDocument()
     })
@@ -132,7 +132,7 @@ describe('ConversationOutlinePanel', () => {
         })
 
         expect(screen.getByText('No matching outline items')).toBeInTheDocument()
-        expect(screen.queryByText('No outline items in loaded messages')).not.toBeInTheDocument()
+        expect(screen.queryByText('No conversation items')).not.toBeInTheDocument()
     })
 
     it('keeps an in-panel close action available', () => {
@@ -149,7 +149,7 @@ describe('ConversationOutlinePanel', () => {
     it('renders an empty state', () => {
         renderPanel({ items: [] })
 
-        expect(screen.getByText('No outline items in loaded messages')).toBeInTheDocument()
+        expect(screen.getByText('No conversation items')).toBeInTheDocument()
     })
 })
 

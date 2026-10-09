@@ -102,6 +102,24 @@ export type MessagesResponse = {
     }
 }
 
+export type ConversationOutlineItem = {
+    id: string
+    targetMessageId: string
+    kind: 'user'
+    label: string
+    createdAt: number
+}
+
+export type ConversationOutlineResponse = {
+    items: ConversationOutlineItem[]
+    page: {
+        limit: number
+        nextBeforeSeq: number | null
+        nextBeforeAt: number | null
+        hasMore: boolean
+    }
+}
+
 export type MachinesResponse = { machines: Machine[] }
 export type DeleteMachineResponse = {
     ok: true
@@ -624,6 +642,17 @@ export const MessagesQuerySchema = z.object({
     })
 
 export type MessagesQuery = z.infer<typeof MessagesQuerySchema>
+
+export const ConversationOutlineQuerySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    beforeSeq: z.coerce.number().int().min(1).optional(),
+    beforeAt: z.coerce.number().int().min(0).optional(),
+}).refine((data) => (data.beforeAt === undefined) === (data.beforeSeq === undefined), {
+    message: 'beforeAt and beforeSeq must be provided together',
+    path: ['beforeAt'],
+})
+
+export type ConversationOutlineQuery = z.infer<typeof ConversationOutlineQuerySchema>
 
 export const SendMessageRequestSchema = z.object({
     text: z.string(),

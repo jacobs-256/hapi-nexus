@@ -1,5 +1,10 @@
 import { Hono } from 'hono'
-import { MessagesQuerySchema, QueuedStateRequestSchema, SendMessageRequestSchema } from '@hapi/protocol'
+import {
+    ConversationOutlineQuerySchema,
+    MessagesQuerySchema,
+    QueuedStateRequestSchema,
+    SendMessageRequestSchema
+} from '@hapi/protocol'
 import type { SyncEngine } from '../../sync/syncEngine'
 import type { WebAppEnv } from '../middleware/auth'
 import { requireSessionFromParam, requireSyncEngine } from './guards'
@@ -41,6 +46,31 @@ export function createMessagesRoutes(getSyncEngine: () => SyncEngine | null): Ho
             until,
             epoch: parsed.data.epoch ?? null
         })
+        return c.json(page)
+    })
+
+    app.get('/sessions/:id/conversation-outline', async (c) => {
+        const engine = requireSyncEngine(c, getSyncEngine)
+        if (engine instanceof Response) {
+            return engine
+        }
+
+        const sessionResult = await requireSessionFromParam(c, engine)
+        if (sessionResult instanceof Response) {
+            return sessionResult
+        }
+        const sessionId = sessionResult.sessionId
+
+        const parsed = ConversationOutlineQuerySchema.safeParse(c.req.query())
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid query', issues: parsed.error.flatten() }, 400)
+        }
+
+        const limit = parsed.data.limit ?? 50
+        const before = parsed.data.beforeAt !== undefined && parsed.data.beforeSeq !== undefined
+            ? { at: parsed.data.beforeAt, seq: parsed.data.beforeSeq }
+            : null
+        const page = await engine.getConversationOutlinePageAsync(sessionId, { limit, before })
         return c.json(page)
     })
 

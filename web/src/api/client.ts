@@ -12,6 +12,7 @@ import type {
     CodexDesktopStatusResponse,
     CodexArchiveSessionResponse,
     CodexCollaborationMode,
+    ConversationOutlineResponse,
     FileSearchResponse,
     MachinesResponse,
     MessagesResponse,
@@ -594,6 +595,30 @@ export class ApiClient {
         const qs = params.toString()
         const url = `/api/sessions/${encodeURIComponent(sessionId)}/messages${qs ? `?${qs}` : ''}`
         return await this.request<MessagesResponse>(url)
+    }
+
+    async getConversationOutline(
+        sessionId: string,
+        options: {
+            beforeSeq?: number | null
+            beforeAt?: number | null
+            limit?: number
+        } = {}
+    ): Promise<ConversationOutlineResponse> {
+        const params = new URLSearchParams()
+        if (options.beforeAt !== undefined && options.beforeAt !== null) {
+            params.set('beforeAt', `${options.beforeAt}`)
+        }
+        if (options.beforeSeq !== undefined && options.beforeSeq !== null) {
+            params.set('beforeSeq', `${options.beforeSeq}`)
+        }
+        if (options.limit !== undefined && options.limit !== null) {
+            params.set('limit', `${options.limit}`)
+        }
+
+        const qs = params.toString()
+        const url = `/api/sessions/${encodeURIComponent(sessionId)}/conversation-outline${qs ? `?${qs}` : ''}`
+        return await this.request<ConversationOutlineResponse>(url)
     }
 
     async getGitStatus(sessionId: string): Promise<GitCommandResponse> {

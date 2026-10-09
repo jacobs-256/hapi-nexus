@@ -268,7 +268,7 @@ export default {
   'session.outline.close': 'Close outline',
   'session.outline.title': 'Outline',
   'session.outline.loadOlder': 'Load earlier',
-  'session.outline.empty': 'No outline items in loaded messages',
+  'session.outline.empty': 'No conversation items',
   'session.outline.searchPlaceholder': 'Search outline...',
   'session.outline.searchLabel': 'Search outline items',
   'session.outline.searchResults': '{matched} of {total} items',

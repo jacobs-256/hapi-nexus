@@ -268,7 +268,7 @@ export default {
   'session.outline.close': '关闭大纲',
   'session.outline.title': '大纲',
   'session.outline.loadOlder': '加载更早',
-  'session.outline.empty': '已加载消息中暂无大纲项',
+  'session.outline.empty': '暂无对话记录',
   'session.outline.searchPlaceholder': '搜索大纲…',
   'session.outline.searchLabel': '搜索大纲条目',
   'session.outline.searchResults': '{matched}/{total} 个条目',

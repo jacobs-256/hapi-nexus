@@ -32,6 +32,7 @@ export type {
     MachinePathsExistsResponse,
     AccountResponse,
     AuthResponse,
+    ConversationOutlineResponse,
     MachinesResponse,
     MessagesResponse,
     OpencodeModelsResponse,

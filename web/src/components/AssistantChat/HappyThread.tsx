@@ -283,14 +283,23 @@ export function ConversationOutlinePanel(props: {
     const { t, locale } = useTranslation()
     const [searchQuery, setSearchQuery] = useState('')
     const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase()
+    const orderedItems = useMemo(
+        () => [...props.items].sort((left, right) => {
+            const timeDifference = right.createdAt - left.createdAt
+            return Number.isFinite(timeDifference) && timeDifference !== 0
+                ? timeDifference
+                : right.id.localeCompare(left.id)
+        }),
+        [props.items]
+    )
     const filteredItems = useMemo(() => {
         if (normalizedSearchQuery.length === 0) {
-            return props.items
+            return orderedItems
         }
-        return props.items.filter((item) => (
+        return orderedItems.filter((item) => (
             item.label.toLocaleLowerCase().includes(normalizedSearchQuery)
         ))
-    }, [normalizedSearchQuery, props.items])
+    }, [normalizedSearchQuery, orderedItems])
 
     return (
         <aside
@@ -357,14 +366,18 @@ export function ConversationOutlinePanel(props: {
                     <div className="mt-1.5 text-right text-xs text-[var(--app-hint)]" aria-live="polite">
                         {t('session.outline.searchResults', {
                             matched: filteredItems.length,
-                            total: props.items.length
+                            total: orderedItems.length
                         })}
                     </div>
                 ) : null}
             </div>
 
             <div className="app-scroll-y min-h-0 flex-1 p-2">
-                {props.items.length === 0 ? (
+                {orderedItems.length === 0 && props.isLoadingMoreMessages ? (
+                    <div className="flex justify-center px-2 py-8" role="status" aria-live="polite">
+                        <Spinner size="sm" label={t('misc.loading')} className="text-[var(--app-hint)]" />
+                    </div>
+                ) : orderedItems.length === 0 ? (
                     <div className="px-2 py-8 text-center text-sm text-[var(--app-hint)]">
                         {t('session.outline.empty')}
                     </div>
@@ -431,6 +444,9 @@ export function HappyThread(props: {
     forceScrollToken: number
     outlineOpen: boolean
     outlineItems: readonly ConversationOutlineItem[]
+    outlineHasMore: boolean
+    outlineIsLoading: boolean
+    onOutlineLoadMore: () => Promise<void>
     onOutlineOpenChange: (open: boolean) => void
     onOutlineItemClick?: (item: ConversationOutlineItem) => void
 }) {
@@ -1455,10 +1471,10 @@ export function HappyThread(props: {
                         />
                         <ConversationOutlinePanel
                             items={props.outlineItems}
-                            hasMoreMessages={props.hasMoreMessages}
-                            isLoadingMoreMessages={props.isLoadingMoreMessages}
+                            hasMoreMessages={props.outlineHasMore}
+                            isLoadingMoreMessages={props.outlineIsLoading}
                             onLoadMore={() => {
-                                void loadOlderFromConsumer()
+                                void props.onOutlineLoadMore()
                             }}
                             onSelect={handleOutlineSelect}
                             onClose={() => props.onOutlineOpenChange(false)}

@@ -59,9 +59,10 @@ describe('UserBubbleContent', () => {
         expect(formatDirectiveLabel('$DeEp-INTERVIEW')).toBe('DeEp INTERVIEW')
     })
 
-    it('uses the shadowless queued bubble styling', () => {
+    it('uses the distinct queued bubble styling', () => {
         const className = getUserBubbleClassName('queued')
-        expect(className).toContain('shadow-none')
+        expect(className).toContain('border-[var(--app-chat-user-border)]')
+        expect(className).toContain('shadow-sm')
         expect(className).toContain('opacity-60')
     })
 })

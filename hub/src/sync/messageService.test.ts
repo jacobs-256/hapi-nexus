@@ -319,6 +319,52 @@ describe('MessageService message pagination', () => {
         expect(first.id).toBeDefined()
     })
 
+    it('returns an independent, newest-first page of user conversation items', async () => {
+        const store = makeStore()
+        const session = makeSession(store, 'outline-page')
+        const first = store.messages.addMessage(session.id, {
+            role: 'user',
+            content: { type: 'text', text: ' First prompt ' }
+        }, 'outline-first')
+        const assistant = store.messages.addMessage(session.id, {
+            role: 'agent',
+            content: { type: 'text', text: 'Assistant reply' }
+        }, 'outline-assistant')
+        const second = store.messages.addMessage(session.id, {
+            role: 'user',
+            content: { type: 'text', text: 'Second prompt' }
+        }, 'outline-second')
+        const third = store.messages.addMessage(session.id, {
+            role: 'user',
+            content: { type: 'text', text: 'Third prompt' }
+        }, 'outline-third')
+        store.messages.markMessagesInvoked(session.id, ['outline-first'], 1_000)
+        store.messages.markMessagesInvoked(session.id, ['outline-assistant'], 1_500)
+        store.messages.markMessagesInvoked(session.id, ['outline-second'], 2_000)
+        store.messages.markMessagesInvoked(session.id, ['outline-third'], 3_000)
+
+        const service = makeService(store)
+        const latest = await service.getConversationOutlinePageAsync(session.id, { limit: 2 })
+        expect(latest.items.map((item) => item.label)).toEqual(['Third prompt', 'Second prompt'])
+        expect(latest.items.map((item) => item.targetMessageId)).toEqual([
+            `user-text:${third.id}`,
+            `user-text:${second.id}`
+        ])
+        expect(latest.page.hasMore).toBe(true)
+
+        const older = await service.getConversationOutlinePageAsync(session.id, {
+            limit: 2,
+            before: {
+                at: latest.page.nextBeforeAt!,
+                seq: latest.page.nextBeforeSeq!
+            }
+        })
+        expect(older.items.map((item) => item.label)).toEqual(['First prompt'])
+        expect(older.page.hasMore).toBe(false)
+        expect(assistant.id).toBeDefined()
+        expect(first.id).toBeDefined()
+    })
+
     it('uses the composite cursor for older pages', async () => {
         const store = makeStore()
         const session = makeSession(store, 'page-older')

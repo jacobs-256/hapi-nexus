@@ -24,6 +24,7 @@ type ThemePalette = {
     secondary: string
     dialog: string
     surface: string
+    userBubble: string
     surfaceHover: string
     code: string
     border: string
@@ -52,6 +53,7 @@ const PALETTES: Record<'light' | 'dark', ThemePalette> = {
         secondary: '#eef2f7',
         dialog: '#ffffff',
         surface: '#ffffff',
+        userBubble: '#edf3ff',
         surfaceHover: '#f8faff',
         code: '#eef2f7',
         border: 'rgba(23, 32, 51, 0.12)',
@@ -66,6 +68,7 @@ const PALETTES: Record<'light' | 'dark', ThemePalette> = {
         secondary: '#18263d',
         dialog: '#18263d',
         surface: '#1e2b40',
+        userBubble: '#223756',
         surfaceHover: '#263957',
         code: '#18263d',
         border: 'rgba(230, 234, 241, 0.16)',
@@ -134,7 +137,7 @@ export function getColorThemePickerValue(_theme: ColorThemePreset, scheme: Color
         hint: palette.hint,
         accent: palette.accent,
         border: compositeOnBackground(palette.border, palette.background),
-        userBubble: palette.surface,
+        userBubble: palette.userBubble,
     }
     return values[id]
 }
@@ -157,7 +160,7 @@ export function applyColorTheme(_theme: ColorThemePreset = XTHINGS_THEME, scheme
         '--app-banner-text': values.buttonText,
         '--app-secondary-bg': values.secondary,
         '--app-dialog-bg': values.dialog,
-        '--app-chat-user-bg': values.surface,
+        '--app-chat-user-bg': values.userBubble,
         '--app-chat-user-fg': values.foreground,
         '--app-chat-user-chip-bg': withAlpha(values.accent, toPaletteScheme(scheme) === 'dark' ? 0.24 : 0.15),
         '--app-chat-user-chip-fg': values.accent,
