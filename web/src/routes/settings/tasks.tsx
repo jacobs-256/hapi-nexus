@@ -207,7 +207,7 @@ export default function SettingsTasksPage() {
             className="flex h-full min-h-0 flex-col"
             contentClassName="flex min-h-0 flex-1 flex-col"
         >
-            <SettingsSection className="flex min-h-0 flex-1 flex-col" cardClassName="min-h-0 flex-1">
+            <SettingsSection className="flex min-h-0 flex-1 flex-col" cardClassName="flex min-h-0 flex-1 flex-col">
                 <div className="grid min-h-0 flex-1 grid-rows-[minmax(12rem,1fr)_minmax(14rem,1fr)] lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] lg:grid-rows-1">
                     <div ref={listScrollRef} className="app-scroll-y min-h-0 overflow-x-hidden border-b border-[var(--app-divider)] lg:border-b-0 lg:border-r">
                         {jobsQuery.error ? <div className="p-4 text-sm text-red-600">{jobsQuery.error instanceof Error ? jobsQuery.error.message : 'Failed to load tasks'}</div> : null}
