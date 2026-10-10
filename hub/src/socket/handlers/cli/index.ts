@@ -9,6 +9,7 @@ import { registerMachineHandlers } from './machineHandlers'
 import { registerRpcHandlers } from './rpcHandlers'
 import { registerSessionHandlers } from './sessionHandlers'
 import { cleanupTerminalHandlers, registerTerminalHandlers } from './terminalHandlers'
+import { isIP } from 'node:net'
 
 type SessionAlivePayload = {
     sid: string
@@ -37,6 +38,19 @@ type MachineAlivePayload = {
     time: number
 }
 
+function normalizeIp(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined
+    const candidate = value.trim().replace(/^::ffff:/i, '')
+    return isIP(candidate) ? candidate : undefined
+}
+
+function resolveSocketPeerIp(socket: CliSocketWithData): string | undefined {
+    const forwarded = socket.handshake.headers['x-forwarded-for']
+    const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded
+    const firstForwarded = typeof forwardedValue === 'string' ? forwardedValue.split(',')[0] : undefined
+    return normalizeIp(firstForwarded) ?? normalizeIp(socket.handshake.headers['x-real-ip']) ?? normalizeIp(socket.handshake.address)
+}
+
 export type CliHandlersDeps = {
     io: SocketServer
     store: Store
@@ -46,6 +60,8 @@ export type CliHandlersDeps = {
     onSessionReady?: (payload: SessionReadyPayload) => void | Promise<void>
     onSessionEnd?: (payload: SessionEndPayload) => void | Promise<void>
     onMachineAlive?: (payload: MachineAlivePayload) => void
+    onMachineConnected?: (payload: { machineId: string; localIp?: string; publicIp?: string; connectedAt: number; socketId: string }) => void | Promise<void>
+    onMachineDisconnected?: (payload: { machineId: string; socketId: string }) => void
     onWebappEvent?: (event: SyncEvent) => void | Promise<void>
     onBackgroundTaskDelta?: (sessionId: string, delta: { started: number; completed: number }) => void
     onSessionActivity?: (sessionId: string, updatedAt: number) => unknown | Promise<unknown>
@@ -54,7 +70,7 @@ export type CliHandlersDeps = {
 }
 
 export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlersDeps): void {
-    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionReady, onSessionEnd, onMachineAlive, onWebappEvent, onBackgroundTaskDelta, onSessionActivity, onSweepImmediateQueued, onMessagesConsumed } = deps
+    const { io, store, rpcRegistry, terminalRegistry, onSessionAlive, onSessionReady, onSessionEnd, onMachineAlive, onMachineConnected, onMachineDisconnected, onWebappEvent, onBackgroundTaskDelta, onSessionActivity, onSweepImmediateQueued, onMessagesConsumed } = deps
     const terminalNamespace = io.of('/terminal')
     const namespace = typeof socket.data.namespace === 'string' ? socket.data.namespace : null
     const userId = typeof socket.data.userId === 'number' ? socket.data.userId : null
@@ -108,9 +124,18 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     }
 
     const machineId = typeof auth?.machineId === 'string' ? auth.machineId : null
+    let disconnected = false
     if (machineId) {
         void resolveMachineAccess(machineId).then((access) => {
-            if (access.ok) socket.join(`machine:${machineId}`)
+            if (!access.ok || disconnected) return
+            socket.join(`machine:${machineId}`)
+            void onMachineConnected?.({
+                machineId,
+                localIp: normalizeIp(auth?.localIp),
+                publicIp: resolveSocketPeerIp(socket),
+                connectedAt: Date.now(),
+                socketId: socket.id
+            })
         })
     }
 
@@ -156,6 +181,10 @@ export function registerCliHandlers(socket: CliSocketWithData, deps: CliHandlers
     })
 
     socket.on('disconnect', () => {
+        disconnected = true
+        if (machineId) {
+            onMachineDisconnected?.({ machineId, socketId: socket.id })
+        }
         rpcRegistry.unregisterAll(socket)
         cleanupTerminalHandlers(socket, { terminalRegistry, terminalNamespace })
     })

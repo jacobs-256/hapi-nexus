@@ -122,6 +122,22 @@ describe('SettingsMachinesPage', () => {
         expect(screen.getByText('workstation.local · linux')).toBeTruthy()
     })
 
+    it('shows client version and connection addresses', () => {
+        machinesMock.mockReturnValue([makeMachine({
+            connection: {
+                localIp: '192.168.1.20',
+                publicIp: '203.0.113.10',
+                connectedAt: 1
+            }
+        })])
+
+        renderPage()
+
+        expect(screen.getByText('Client 1.0.0')).toBeTruthy()
+        expect(screen.getByText('LAN IP 192.168.1.20')).toBeTruthy()
+        expect(screen.getByText('Public IP 203.0.113.10')).toBeTruthy()
+    })
+
     it('shows the custom name while keeping the hostname visible', () => {
         machinesMock.mockReturnValue([makeMachine({
             metadata: { host: 'workstation.local', platform: 'linux', happyCliVersion: '1.0.0', displayName: 'Workstation' },

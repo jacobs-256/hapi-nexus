@@ -10,6 +10,19 @@ type MachineAlivePayload = {
     health?: unknown
 }
 
+type MachineConnectionPayload = {
+    machineId: string
+    localIp?: string
+    publicIp?: string
+    connectedAt: number
+    socketId: string
+}
+
+type MachineDisconnectionPayload = {
+    machineId: string
+    socketId: string
+}
+
 const METADATA_RETRY_ATTEMPTS = 5
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -42,6 +55,7 @@ function healthDisplayChanged(
 export class MachineCache {
     private readonly machines: Map<string, Machine> = new Map()
     private readonly lastBroadcastAtByMachineId: Map<string, number> = new Map()
+    private readonly connectionSocketIdByMachineId: Map<string, string> = new Map()
 
     constructor(
         private readonly store: Store,
@@ -145,6 +159,7 @@ export class MachineCache {
             const existing = this.machines.get(machineId)
             const existed = this.machines.delete(machineId)
             if (existed) {
+                this.connectionSocketIdByMachineId.delete(machineId)
                 this.publisher.emit({ type: 'machine-updated', machineId, data: null, namespace: existing?.namespace })
             }
             return null
@@ -189,7 +204,8 @@ export class MachineCache {
             metadataVersion: stored.metadataVersion,
             runnerState,
             runnerStateVersion: stored.runnerStateVersion,
-            health: existing?.health ?? null
+            health: existing?.health ?? null,
+            connection: existing?.connection
         }
 
         this.machines.set(machineId, machine)
@@ -231,6 +247,34 @@ export class MachineCache {
             this.lastBroadcastAtByMachineId.set(machine.id, now)
             this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: machine })
         }
+    }
+
+    async handleMachineConnected(payload: MachineConnectionPayload): Promise<void> {
+        const machine = this.machines.get(payload.machineId) ?? await this.refreshMachine(payload.machineId)
+        if (!machine) return
+
+        if ((machine.connection?.connectedAt ?? 0) > payload.connectedAt) {
+            return
+        }
+
+        this.connectionSocketIdByMachineId.set(payload.machineId, payload.socketId)
+        machine.connection = {
+            localIp: payload.localIp,
+            publicIp: payload.publicIp,
+            connectedAt: payload.connectedAt
+        }
+        this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: machine })
+    }
+
+    handleMachineDisconnected(payload: MachineDisconnectionPayload): void {
+        if (this.connectionSocketIdByMachineId.get(payload.machineId) !== payload.socketId) {
+            return
+        }
+        this.connectionSocketIdByMachineId.delete(payload.machineId)
+        const machine = this.machines.get(payload.machineId)
+        if (!machine || !machine.connection) return
+        delete machine.connection
+        this.publisher.emit({ type: 'machine-updated', machineId: machine.id, data: machine })
     }
 
     expireInactive(now: number = Date.now()): void {

@@ -91,6 +91,32 @@ describe('MachineCache.renameMachine', () => {
         expect(seen).toContain('machine-1')
     })
 
+    it('tracks runtime connection details and clears stale connections', async () => {
+        const { store, cache } = createCache()
+        seedMachine(store, BASE_METADATA)
+        await cache.reloadAll()
+
+        await cache.handleMachineConnected({
+            machineId: 'machine-1',
+            localIp: '192.168.1.20',
+            publicIp: '203.0.113.10',
+            connectedAt: 100,
+            socketId: 'socket-1'
+        })
+
+        expect(cache.getMachine('machine-1')?.connection).toEqual({
+            localIp: '192.168.1.20',
+            publicIp: '203.0.113.10',
+            connectedAt: 100
+        })
+
+        cache.handleMachineDisconnected({ machineId: 'machine-1', socketId: 'stale-socket' })
+        expect(cache.getMachine('machine-1')?.connection).toBeTruthy()
+
+        cache.handleMachineDisconnected({ machineId: 'machine-1', socketId: 'socket-1' })
+        expect(cache.getMachine('machine-1')?.connection).toBeUndefined()
+    })
+
     it('throws when the machine is unknown', async () => {
         const { cache } = createCache()
 

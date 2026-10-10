@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { CodexImportJob } from '@/types/api'
 import { SettingsPageContent, SettingsSection } from '@/components/settings/SettingsPrimitives'
 import { useAppContext } from '@/lib/app-context'
@@ -8,6 +8,8 @@ import { useTranslation } from '@/lib/use-translation'
 function isActiveTask(job: CodexImportJob): boolean {
     return job.status === 'queued' || job.status === 'running'
 }
+
+const TASKS_PAGE_SIZE = 20
 
 function formatTime(value?: number): string {
     if (!value) return '—'
@@ -128,19 +130,47 @@ export default function SettingsTasksPage() {
     const queryClient = useQueryClient()
     const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
     const queryKey = useMemo(() => ['codex-import-jobs', 'settings', 'all'], [])
-    const jobsQuery = useQuery({
+    const listScrollRef = useRef<HTMLDivElement>(null)
+    const loadMoreRef = useRef<HTMLDivElement>(null)
+    const jobsQuery = useInfiniteQuery({
         queryKey,
-        queryFn: async () => {
+        initialPageParam: undefined as string | undefined,
+        queryFn: async ({ pageParam }) => {
             if (!api) throw new Error('API unavailable')
-            const result = await api.getCodexImportJobs({ all: true })
+            const result = await api.getCodexImportJobs({ all: true, limit: TASKS_PAGE_SIZE, cursor: pageParam })
             if (!result.success) throw new Error(result.error)
-            return result.jobs
+            return result
         },
+        getNextPageParam: (lastPage) => lastPage.success && lastPage.hasMore ? lastPage.nextCursor : undefined,
         enabled: Boolean(api),
-        refetchInterval: (query) => query.state.data?.some(isActiveTask) ? 1500 : false
+        refetchInterval: (query) => query.state.data?.pages.some((page) => page.success && page.jobs.some(isActiveTask)) ? 1500 : false
     })
-    const jobs = jobsQuery.data ?? []
+    const jobs = useMemo(() => {
+        const seen = new Set<string>()
+        return (jobsQuery.data?.pages ?? []).flatMap((page) => {
+            if (!page.success) return []
+            return page.jobs.filter((job) => {
+                if (seen.has(job.id)) return false
+                seen.add(job.id)
+                return true
+            })
+        })
+    }, [jobsQuery.data?.pages])
     const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null
+
+    useEffect(() => {
+        const root = listScrollRef.current
+        const target = loadMoreRef.current
+        if (!root || !target || typeof IntersectionObserver === 'undefined') return
+
+        const observer = new IntersectionObserver((entries) => {
+            if (!entries.some((entry) => entry.isIntersecting)) return
+            if (!jobsQuery.hasNextPage || jobsQuery.isFetchingNextPage) return
+            void jobsQuery.fetchNextPage()
+        }, { root, rootMargin: '160px 0px' })
+        observer.observe(target)
+        return () => observer.disconnect()
+    }, [jobsQuery.fetchNextPage, jobsQuery.hasNextPage, jobsQuery.isFetchingNextPage])
 
     useEffect(() => {
         if (!selectedJobId && jobs[0]) setSelectedJobId(jobs[0].id)
@@ -174,15 +204,20 @@ export default function SettingsTasksPage() {
             title={t('settings.tasks.title')}
             description={t('settings.tasks.description')}
             actions={<button type="button" onClick={() => void jobsQuery.refetch()} className="rounded-md border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-fg)] hover:bg-[var(--app-subtle-bg)]">Refresh</button>}
+            className="flex h-full min-h-0 flex-col"
+            contentClassName="flex min-h-0 flex-1 flex-col"
         >
-            <SettingsSection>
-                <div className="grid min-h-[28rem] lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]">
-                    <div className="border-b border-[var(--app-divider)] lg:border-b-0 lg:border-r">
+            <SettingsSection className="flex min-h-0 flex-1 flex-col" cardClassName="min-h-0 flex-1">
+                <div className="grid min-h-0 flex-1 grid-rows-[minmax(12rem,1fr)_minmax(14rem,1fr)] lg:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] lg:grid-rows-1">
+                    <div ref={listScrollRef} className="app-scroll-y min-h-0 overflow-x-hidden border-b border-[var(--app-divider)] lg:border-b-0 lg:border-r">
                         {jobsQuery.error ? <div className="p-4 text-sm text-red-600">{jobsQuery.error instanceof Error ? jobsQuery.error.message : 'Failed to load tasks'}</div> : null}
-                        {jobs.length === 0 && !jobsQuery.isLoading ? <div className="p-4 text-sm text-[var(--app-hint)]">No sync tasks</div> : null}
+                        {jobs.length === 0 && jobsQuery.isLoading ? <div className="p-4 text-sm text-[var(--app-hint)]">Loading tasks…</div> : null}
+                        {jobs.length === 0 && !jobsQuery.isLoading && !jobsQuery.error ? <div className="p-4 text-sm text-[var(--app-hint)]">No sync tasks</div> : null}
                         {jobs.map((job) => <TaskSummary key={job.id} job={job} selected={selectedJob?.id === job.id} onClick={() => setSelectedJobId(job.id)} />)}
+                        <div ref={loadMoreRef} className="h-1" aria-hidden="true" />
+                        {jobsQuery.isFetchingNextPage ? <div className="px-4 py-3 text-center text-xs text-[var(--app-hint)]">Loading more…</div> : null}
                     </div>
-                    <div className="min-w-0">
+                    <div className="app-scroll-y min-h-0 min-w-0 overflow-x-hidden">
                         {selectedJob ? (
                             <TaskDetail
                                 job={selectedJob}

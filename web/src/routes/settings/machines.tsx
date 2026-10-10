@@ -99,6 +99,9 @@ function MachineRow(props: { api: ApiClient | null; machine: Machine; currentUse
     const host = props.machine.metadata?.host
     const platform = props.machine.metadata?.platform
     const subtitle = [host, platform].filter(Boolean).join(' · ')
+    const clientVersion = props.machine.metadata?.happyCliVersion ?? '-'
+    const localIp = props.machine.connection?.localIp ?? '-'
+    const publicIp = props.machine.connection?.publicIp ?? '-'
     const activityTime = formatAbsoluteDateTime(props.machine.activeAt)
     const activityLabel = props.machine.active
         ? (activityTime ? t('settings.machines.lastSeen', { time: activityTime }) : null)
@@ -209,6 +212,11 @@ function MachineRow(props: { api: ApiClient | null; machine: Machine; currentUse
                     {subtitle ? (
                         <div className="mt-0.5 truncate text-xs leading-snug text-[var(--app-hint)]">{subtitle}</div>
                     ) : null}
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs leading-snug text-[var(--app-hint)]">
+                        <span>{t('settings.machines.clientVersion', { version: clientVersion })}</span>
+                        <span>{t('settings.machines.localIp', { ip: localIp })}</span>
+                        <span>{t('settings.machines.publicIp', { ip: publicIp })}</span>
+                    </div>
                     {activityLabel ? (
                         <div className="mt-0.5 truncate text-xs leading-snug text-[var(--app-hint)]">{activityLabel}</div>
                     ) : null}

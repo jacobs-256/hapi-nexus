@@ -456,9 +456,13 @@ export class ApiClient {
         })
     }
 
-    async getCodexImportJobs(options?: { all?: boolean }): Promise<CodexImportJobsResponse> {
-        const query = options?.all ? '?all=true' : ''
-        return await this.request<CodexImportJobsResponse>(`/api/codex/import-jobs${query}`)
+    async getCodexImportJobs(options?: { all?: boolean; limit?: number; cursor?: string }): Promise<CodexImportJobsResponse> {
+        const query = new URLSearchParams()
+        if (options?.all) query.set('all', 'true')
+        if (options?.limit) query.set('limit', String(options.limit))
+        if (options?.cursor) query.set('cursor', options.cursor)
+        const suffix = query.toString()
+        return await this.request<CodexImportJobsResponse>(`/api/codex/import-jobs${suffix ? `?${suffix}` : ''}`)
     }
 
     async getCodexImportJob(jobId: string, options?: { all?: boolean }): Promise<CodexImportJobResponse> {

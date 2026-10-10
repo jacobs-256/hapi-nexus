@@ -252,6 +252,8 @@ type CodexImportJobResponse = {
 type CodexImportJobsResponse = {
     success: true
     jobs: CodexImportJob[]
+    hasMore?: boolean
+    nextCursor?: string
 } | {
     success: false
     error: string
@@ -266,6 +268,14 @@ const DEFAULT_CODEX_SESSION_SCAN_LIMIT = 500
 const CODEX_IMPORT_CHUNK_SIZE = 200
 const CODEX_IMPORT_RPC_MESSAGE_CHUNK_SIZE = 200
 const MAX_CODEX_IMPORT_JOBS = 50
+const CODEX_IMPORT_JOBS_PAGE_MAX = 50
+
+function parseCodexImportJobsLimit(value: string | undefined): number | undefined {
+    if (!value) return undefined
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+    return Math.min(parsed, CODEX_IMPORT_JOBS_PAGE_MAX)
+}
 
 function resolveLocalPath(pathValue: string): string {
     return isAbsolute(pathValue) ? pathValue : resolve(process.cwd(), pathValue)
@@ -2861,6 +2871,36 @@ class CodexImportQueue {
             .map(cloneCodexImportJob)
     }
 
+    listJobsPage(
+        namespace: string,
+        userId: number | undefined,
+        options: { limit: number; cursor?: string }
+    ): { jobs: CodexImportJob[]; hasMore: boolean; nextCursor?: string } {
+        const allJobs = this.listJobs(namespace, userId)
+        let startIndex = 0
+
+        if (options.cursor) {
+            const separatorIndex = options.cursor.indexOf(':')
+            const createdAt = Number.parseInt(options.cursor.slice(0, separatorIndex), 10)
+            const id = separatorIndex >= 0 ? options.cursor.slice(separatorIndex + 1) : ''
+            const cursorIndex = Number.isFinite(createdAt) && id
+                ? allJobs.findIndex((job) => job.createdAt === createdAt && job.id === id)
+                : -1
+            if (cursorIndex >= 0) {
+                startIndex = cursorIndex + 1
+            }
+        }
+
+        const jobs = allJobs.slice(startIndex, startIndex + options.limit)
+        const hasMore = startIndex + jobs.length < allJobs.length
+        const lastJob = jobs[jobs.length - 1]
+        return {
+            jobs,
+            hasMore,
+            ...(hasMore && lastJob ? { nextCursor: `${lastJob.createdAt}:${lastJob.id}` } : {})
+        }
+    }
+
     getJob(jobId: string, namespace: string, userId?: number): CodexImportJob | null {
         const job = this.jobs.get(jobId)
         if (!job || !isVisibleImportJob(job, namespace, userId)) {
@@ -3206,9 +3246,18 @@ export function createCodexDesktopRoutes(options: {
     })
 
     app.get('/codex/import-jobs', async (c) => {
+        const limit = parseCodexImportJobsLimit(c.req.query('limit'))
+        const cursor = c.req.query('cursor')?.trim() || undefined
+        const userScope = await codexImportJobUserScope(c, options.store)
+        if (limit) {
+            return c.json({
+                success: true,
+                ...importQueue.listJobsPage(c.get('namespace'), userScope, { limit, cursor })
+            } satisfies CodexImportJobsResponse)
+        }
         return c.json({
             success: true,
-            jobs: importQueue.listJobs(c.get('namespace'), await codexImportJobUserScope(c, options.store))
+            jobs: importQueue.listJobs(c.get('namespace'), userScope)
         } satisfies CodexImportJobsResponse)
     })
 

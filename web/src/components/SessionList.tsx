@@ -195,6 +195,15 @@ export function getGroupDisplayName(directory: string): string {
     return `${parent}/${leaf}`
 }
 
+function getGroupParentDirectory(directory: string): string {
+    if (directory === 'Other') return ''
+    const parts = directory.split(/[\\/]+/).filter(Boolean)
+    if (parts.length <= 1) return ''
+    const separator = directory.includes('\\') ? '\\' : '/'
+    const parent = parts.slice(0, -1).join(separator)
+    return directory.startsWith('/') ? `/${parent}` : parent
+}
+
 export const UNKNOWN_MACHINE_ID = '__unknown__'
 export const GROUP_SESSION_PREVIEW_LIMIT = DEFAULT_SESSION_PREVIEW_LIMIT
 
@@ -1163,6 +1172,27 @@ function ChevronIcon(props: { className?: string; collapsed?: boolean }) {
             className={`${props.className ?? ''} transition-transform duration-200 ${props.collapsed ? '' : 'rotate-90'}`}
         >
             <polyline points="9 18 15 12 9 6" />
+        </svg>
+    )
+}
+
+function FolderIcon(props: { className?: string }) {
+    return (
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={props.className}
+            aria-hidden="true"
+        >
+            <path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />
+            <path d="M3.5 9h17" />
         </svg>
     )
 }
@@ -2401,7 +2431,7 @@ export function SessionList(props: {
 
     return (
         <div className="flex min-h-0 w-full flex-1 flex-col">
-            <div className="session-list-scrollbar-offset w-full shrink-0 border-b border-[var(--app-divider)] bg-[var(--session-list-bg)]">
+            <div className="session-list-scrollbar-offset w-full shrink-0 border-b border-[var(--app-divider)] bg-[var(--session-list-bg)] pt-[var(--app-page-safe-area-top)]">
             {showHeaderRow ? (
                 <div className="flex items-center gap-1 px-2 py-2">
                     {showSearch ? (
@@ -2433,21 +2463,22 @@ export function SessionList(props: {
                                     className="flex-1"
                                 />
                             ) : <div className="flex-1" />}
-                            {showGroupLayoutControls ? (
-                                <SidebarLayoutMenu
-                                    onExpandActive={expandActiveGroups}
-                                    onCollapseAll={collapseAllGroups}
-                                />
-                            ) : null}
                             {renderHeader ? (
                                 <button
                                     type="button"
                                     onClick={props.onNewSession}
                                     className="session-list-new-button flex h-8 w-8 items-center justify-center rounded-[7px] text-[var(--primary)] transition-colors"
                                     title={t('sessions.new')}
+                                    aria-label={t('sessions.new')}
                                 >
                                     <PlusIcon className="h-5 w-5" />
                                 </button>
+                            ) : null}
+                            {showGroupLayoutControls ? (
+                                <SidebarLayoutMenu
+                                    onExpandActive={expandActiveGroups}
+                                    onCollapseAll={collapseAllGroups}
+                                />
                             ) : null}
                             {props.headerActions}
                         </>
@@ -2517,6 +2548,7 @@ export function SessionList(props: {
                     const groupTitle = groupMachineSuffix
                         ? `${groupDisplayName} · ${groupMachineSuffix}`
                         : groupDisplayName
+                    const groupParentDirectory = getGroupParentDirectory(group.directory)
                     const activeGroupEdit = editingGroup?.key === group.key ? editingGroup : null
                     const primaryProjectId = getPrimaryProjectId(group)
                     const workspaceMatch = findWorkspaceForGroup(group, projects, machinesById)
@@ -2543,9 +2575,12 @@ export function SessionList(props: {
                     const groupStatusCounts = getSessionGroupStatusCounts(group)
                     const groupCountLabel = getSessionGroupCountLabel(group, groupStatusCounts)
                     return (
-                        <div key={group.key}>
+                        <div
+                            key={group.key}
+                            className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)]"
+                        >
                             <div
-                                className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 rounded-lg border border-[var(--app-divider)] bg-[var(--app-bg)] py-2 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
+                                className="group/project sticky top-0 z-10 flex min-w-0 w-full cursor-pointer select-none items-center gap-2 border-b border-[var(--app-divider)] bg-[var(--app-bg)] py-2 pl-2 pr-2 text-left transition-colors hover:bg-[var(--secondary)]"
                                 onClick={() => {
                                     if (activeGroupEdit) return
                                     toggleGroup(group.key, isCollapsed)
@@ -2553,6 +2588,12 @@ export function SessionList(props: {
                                 title={group.directory}
                             >
                                 <ChevronIcon className="h-3.5 w-3.5 text-[var(--app-hint)] shrink-0" collapsed={isCollapsed} />
+                                <span
+                                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--app-hint)]"
+                                    aria-hidden="true"
+                                >
+                                    <FolderIcon className="h-3.5 w-3.5" />
+                                </span>
                                 {activeGroupEdit ? (
                                     <>
                                         <input
@@ -2589,9 +2630,16 @@ export function SessionList(props: {
                                         ) : null}
                                     </>
                                 ) : (
-                                    <span className="font-medium text-sm truncate flex-1">
-                                        {groupTitle}
-                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="truncate text-sm font-semibold text-[var(--app-fg)]">
+                                            {groupTitle}
+                                        </div>
+                                        {groupParentDirectory ? (
+                                            <div className="mt-0.5 truncate font-mono text-[10px] leading-tight text-[var(--app-hint)]">
+                                                {groupParentDirectory}
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 )}
                                 {!activeGroupEdit && groupStatusCounts.pending > 0 ? (
                                     <span
@@ -2687,7 +2735,7 @@ export function SessionList(props: {
                             {/* Sessions */}
                             <div className="collapsible-panel" data-open={!isCollapsed || undefined}>
                                 <div className="collapsible-inner">
-                                <div className="ml-2 flex flex-col gap-1 pt-1.5">
+                                <div className="ml-2 flex flex-col gap-1 px-1 pb-1.5 pt-1.5">
                                     {visibleGroupSessions.map((s) => (
                                         <SessionItem
                                             key={s.id}

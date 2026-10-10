@@ -27,9 +27,16 @@ export function CheckIcon(props: { className?: string }) {
     )
 }
 
-export function SettingsPageContent(props: { title?: string; description?: string; actions?: ReactNode; children: ReactNode }) {
+export function SettingsPageContent(props: {
+    title?: string
+    description?: string
+    actions?: ReactNode
+    className?: string
+    contentClassName?: string
+    children: ReactNode
+}) {
     return (
-        <div className="settings-page-content mx-auto w-full max-w-[1120px] px-3 py-4 pb-8 sm:px-5 lg:px-0 lg:py-1 xl:max-w-[1180px]">
+        <div className={`settings-page-content mx-auto w-full max-w-[1120px] px-3 py-4 pb-8 sm:px-5 lg:px-0 lg:py-1 xl:max-w-[1180px] ${props.className ?? ''}`}>
             {(props.title || props.description || props.actions) ? (
                 <div className="mb-5 flex min-w-0 flex-col gap-4 border-b border-[var(--app-divider)] pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
@@ -47,23 +54,23 @@ export function SettingsPageContent(props: { title?: string; description?: strin
                     {props.actions ? <div className="flex shrink-0 items-center gap-2">{props.actions}</div> : null}
                 </div>
             ) : null}
-            <div className="space-y-5">
+            <div className={`space-y-5 ${props.contentClassName ?? ''}`}>
                 {props.children}
             </div>
         </div>
     )
 }
 
-export function SettingsSection(props: { title?: string; description?: string; children: ReactNode }) {
+export function SettingsSection(props: { title?: string; description?: string; className?: string; cardClassName?: string; children: ReactNode }) {
     return (
-        <section className="settings-section min-w-0">
+        <section className={`settings-section min-w-0 ${props.className ?? ''}`}>
             {(props.title || props.description) ? (
                 <div className="mb-2.5 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6">
                     {props.title ? <h2 className="text-[0.95rem] font-semibold leading-5 text-[var(--app-fg)]">{props.title}</h2> : <div />}
                     {props.description ? <p className="max-w-2xl text-xs leading-5 text-[var(--app-hint)] sm:text-right">{props.description}</p> : null}
                 </div>
             ) : null}
-            <div className="settings-section-card overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)] shadow-[0_1px_2px_rgb(15_23_42/0.03)] divide-y divide-[var(--app-divider)]">
+            <div className={`settings-section-card overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-dialog-bg)] shadow-[0_1px_2px_rgb(15_23_42/0.03)] divide-y divide-[var(--app-divider)] ${props.cardClassName ?? ''}`}>
                 {props.children}
             </div>
         </section>

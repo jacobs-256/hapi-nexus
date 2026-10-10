@@ -330,6 +330,14 @@ export const MachineHealthSchema = z.object({
 
 export type MachineHealth = z.infer<typeof MachineHealthSchema>
 
+export const MachineConnectionSchema = z.object({
+    localIp: z.string().optional(),
+    publicIp: z.string().optional(),
+    connectedAt: z.number().optional()
+})
+
+export type MachineConnection = z.infer<typeof MachineConnectionSchema>
+
 export const MachineSchema = z.object({
     id: z.string(),
     namespace: z.string(),
@@ -344,7 +352,10 @@ export const MachineSchema = z.object({
     metadataVersion: z.number(),
     runnerState: RunnerStateSchema.nullable(),
     runnerStateVersion: z.number(),
-    health: MachineHealthSchema.nullable().optional()
+    health: MachineHealthSchema.nullable().optional(),
+    // Runtime-only connection details. These are intentionally not persisted
+    // with the machine row because the peer address can change between runs.
+    connection: MachineConnectionSchema.optional()
 })
 
 export type Machine = z.infer<typeof MachineSchema>

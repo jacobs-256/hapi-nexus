@@ -1327,6 +1327,25 @@ describe('Codex Desktop import routes', () => {
             expect(store.sessions.getSessionsByNamespace('default')).toHaveLength(1)
             expect(store.messages.getAllMessages(imported[0].id)).toHaveLength(2)
 
+            const firstPageResponse = await app.request('/api/codex/import-jobs?limit=1')
+            const firstPage = await firstPageResponse.json() as {
+                success: true
+                jobs: Array<{ id: string }>
+                hasMore?: boolean
+                nextCursor?: string
+            }
+            expect(firstPageResponse.status).toBe(200)
+            expect(firstPage.jobs).toHaveLength(1)
+            expect(firstPage.hasMore).toBe(true)
+            expect(firstPage.nextCursor).toBeTruthy()
+
+            const secondPageResponse = await app.request(`/api/codex/import-jobs?limit=1&cursor=${encodeURIComponent(firstPage.nextCursor!)}`)
+            const secondPage = await secondPageResponse.json() as { success: true; jobs: Array<{ id: string }>; hasMore?: boolean }
+            expect(secondPageResponse.status).toBe(200)
+            expect(secondPage.jobs).toHaveLength(1)
+            expect(secondPage.jobs[0]?.id).not.toBe(firstPage.jobs[0]?.id)
+            expect(secondPage.hasMore).toBe(false)
+
             const toastEvents = realtimeEvents.filter((event) => event.type === 'toast')
             expect(toastEvents).toHaveLength(4)
             expect(realtimeEvents.some((event) => event.type === 'message-received')).toBe(false)

@@ -547,6 +547,20 @@ export class SyncEngine {
         return this.machineCache.getMachineByNamespace(machineId, namespace)
     }
 
+    handleMachineConnected(payload: {
+        machineId: string
+        localIp?: string
+        publicIp?: string
+        connectedAt: number
+        socketId: string
+    }): Promise<void> {
+        return this.machineCache.handleMachineConnected(payload)
+    }
+
+    handleMachineDisconnected(payload: { machineId: string; socketId: string }): void {
+        this.machineCache.handleMachineDisconnected(payload)
+    }
+
     getOnlineMachines(): Machine[] {
         return this.machineCache.getOnlineMachines()
     }

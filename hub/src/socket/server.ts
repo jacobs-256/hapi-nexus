@@ -40,6 +40,8 @@ export type SocketServerDeps = {
     onSessionReady?: (payload: { sid: string; time: number }) => void | Promise<void>
     onSessionEnd?: (payload: { sid: string; time: number }) => void | Promise<void>
     onMachineAlive?: (payload: { machineId: string; time: number; health?: unknown }) => void
+    onMachineConnected?: (payload: { machineId: string; localIp?: string; publicIp?: string; connectedAt: number; socketId: string }) => void | Promise<void>
+    onMachineDisconnected?: (payload: { machineId: string; socketId: string }) => void
     onBackgroundTaskDelta?: (sessionId: string, delta: { started: number; completed: number }) => void
     onSessionActivity?: (sessionId: string, updatedAt: number) => unknown | Promise<unknown>
     onSweepImmediateQueued?: (sessionId: string, now: number) => void | Promise<void>
@@ -125,6 +127,8 @@ export function createSocketServer(deps: SocketServerDeps): {
         onSessionReady: deps.onSessionReady,
         onSessionEnd: deps.onSessionEnd,
         onMachineAlive: deps.onMachineAlive,
+        onMachineConnected: deps.onMachineConnected,
+        onMachineDisconnected: deps.onMachineDisconnected,
         onWebappEvent: deps.onWebappEvent,
         onBackgroundTaskDelta: deps.onBackgroundTaskDelta,
         onSessionActivity: deps.onSessionActivity,

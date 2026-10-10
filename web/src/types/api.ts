@@ -310,6 +310,8 @@ export type CodexImportJobResponse = {
 export type CodexImportJobsResponse = {
     success: true
     jobs: CodexImportJob[]
+    hasMore?: boolean
+    nextCursor?: string
 } | {
     success: false
     error: string

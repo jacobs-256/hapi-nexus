@@ -6,6 +6,7 @@ export type {
     DecryptedMessage,
     Metadata,
     Machine,
+    MachineConnection,
     MachineHealth,
     MachineMetadata,
     MachinePatch,

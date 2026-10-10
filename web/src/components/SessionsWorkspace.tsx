@@ -6,7 +6,6 @@ export function SessionsWorkspace(props: {
     isIndex: boolean
     sidebar: ReactNode
     children: ReactNode
-    onNewSession: () => void
 }) {
     const { t } = useTranslation()
     const sidebar = useSidebarResize()
@@ -18,25 +17,6 @@ export function SessionsWorkspace(props: {
                 className={`sessions-sidebar ${props.isIndex ? 'flex' : 'hidden split:flex'} min-h-0 w-full shrink-0 flex-col bg-[var(--session-list-bg)] text-[var(--session-list-fg)] split:overflow-hidden split:rounded-2xl split:border split:border-[var(--app-border)] split:shadow-sm`}
                 style={{ '--sidebar-w': `${sidebar.width}px` } as CSSProperties}
             >
-                <div className="shrink-0 pt-[var(--app-page-safe-area-top)]">
-                    <div className="flex items-center gap-3 px-4 pb-3 pt-4">
-                        <div className="min-w-0 flex-1">
-                            <h2 className="text-base font-semibold tracking-tight">{t('sessions.title')}</h2>
-                            <p className="mt-1 text-xs leading-5 text-[var(--app-hint)]">{t('sessions.description')}</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={props.onNewSession}
-                            aria-label={t('sessions.new')}
-                            title={t('sessions.new')}
-                            className="session-list-new-button flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--app-border)] text-[var(--app-link)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-link)]"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="h-5 w-5" aria-hidden="true">
-                                <path d="M12 5v14M5 12h14" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
                 {props.sidebar}
             </aside>
 

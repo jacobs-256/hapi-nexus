@@ -147,7 +147,6 @@ function SessionsPage() {
     return (
         <SessionsWorkspace
             isIndex={isSessionsIndex}
-            onNewSession={() => navigate({ to: '/sessions/new' })}
             sidebar={(
                 <>
                     {error ? (
@@ -167,7 +166,7 @@ function SessionsPage() {
                         onBrowse={() => navigate({ to: '/browse' })}
                         onRefresh={handleRefresh}
                         isLoading={isLoading}
-                        renderHeader={false}
+                        renderHeader={true}
                         api={api}
                         currentUser={user}
                         machineLabelsById={machineLabelsById}

@@ -43,7 +43,7 @@ import { archiveLocalCodexSession, getLocalCodexSessionMessagePage, listLocalCod
 import { buildSocketIoExtraHeaderOptions } from './hubExtraHeaders'
 import { collectMachineHealth } from '@/utils/machineHealth'
 import { inspectCursorChatStore } from '@/cursor/cursorChatStoreStatus'
-import { homedir } from 'node:os'
+import { homedir, networkInterfaces } from 'node:os'
 import type { CursorChatStoreStatus } from '@hapi/protocol/apiTypes'
 
 type MachineRpcHandlers = {
@@ -102,6 +102,22 @@ function workspaceRootsEqual(left?: string[], right?: string[]): boolean {
 
 function formatWorkspaceRoots(paths?: string[]): string {
     return paths?.length ? paths.join(', ') : '(none)'
+}
+
+/** Prefer a private IPv4 address so the hub can show the runner's LAN address. */
+export function getLocalIp(): string | undefined {
+    const candidates = Object.values(networkInterfaces())
+        .flatMap((entries) => entries ?? [])
+        .filter((entry) => entry.family === 'IPv4' && !entry.internal)
+        .map((entry) => entry.address)
+
+    const isPrivate = (address: string): boolean => (
+        /^10\./.test(address)
+        || /^192\.168\./.test(address)
+        || /^172\.(1[6-9]|2\d|3[01])\./.test(address)
+    )
+
+    return candidates.sort((left, right) => Number(isPrivate(right)) - Number(isPrivate(left)))[0]
 }
 
 export class ApiMachineClient {
@@ -509,7 +525,8 @@ export class ApiMachineClient {
             auth: {
                 token: this.token,
                 clientType: 'machine-scoped' as const,
-                machineId: this.machine.id
+                machineId: this.machine.id,
+                localIp: getLocalIp()
             },
             path: '/socket.io/',
             reconnection: true,
