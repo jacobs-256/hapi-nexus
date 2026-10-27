@@ -1,7 +1,9 @@
 import type { StorageConfig } from '@hapi/protocol/storage'
+import { MysqlBackoff } from './backoff'
 import {
-    createConnection,
-    type Connection,
+    createPool,
+    type Pool,
+    type PoolConnection,
     type ConnectionOptions,
     type QueryValues,
     type QueryResult
@@ -11,6 +13,71 @@ export type MysqlTarget = Extract<StorageConfig['core'], { backend: 'mysql' }>['
 
 const SECRET_REDACTION = '********'
 const MYSQL_UNSUPPORTED_PROTOCOL_VERSION = 'ERR_MYSQL_UNSUPPORTED_PROTOCOL_VERSION'
+const pools = new Map<string, Pool>()
+const backoffs = new WeakMap<Pool, MysqlBackoff>()
+
+function poolBackoff(pool: Pool): MysqlBackoff {
+    let backoff = backoffs.get(pool)
+    if (!backoff) {
+        backoff = new MysqlBackoff()
+        backoffs.set(pool, backoff)
+    }
+    return backoff
+}
+
+async function acquireWithBackoff(pool: Pool): Promise<PoolConnection> {
+    const backoff = poolBackoff(pool)
+    const generation = backoff.enter()
+    try {
+        const connection = await acquireMysqlConnection(pool)
+        backoff.success(generation)
+        return connection
+    } catch (error) {
+        backoff.failure(error)
+        throw error
+    }
+}
+
+function sharedPool(target: MysqlTarget): Pool {
+    const options = mysqlOptionsFromTarget(target)
+    const key = JSON.stringify(options)
+    let pool = pools.get(key)
+    if (!pool) {
+        pool = createPool({
+            ...options,
+            connectionLimit: 8,
+            waitForConnections: true,
+            queueLimit: 100,
+            maxIdle: 2,
+            idleTimeout: 60_000,
+            connectTimeout: 10_000,
+            resetOnRelease: true
+        })
+        pools.set(key, pool)
+    }
+    return pool
+}
+
+export function acquireMysqlConnection(pool: Pick<Pool, 'getConnection'>, timeoutMs = 10_000): Promise<PoolConnection> {
+    return new Promise((resolve, reject) => {
+        let expired = false
+        const timer = setTimeout(() => {
+            expired = true
+            reject(Object.assign(new Error('Timed out waiting for a MySQL pool connection'), {
+                code: 'MYSQL_POOL_ACQUIRE_TIMEOUT'
+            }))
+        }, timeoutMs)
+        // mysql2 cannot cancel queued acquisition: return late connections immediately.
+        pool.getConnection().then((connection) => {
+            clearTimeout(timer)
+            if (expired) connection.release()
+            else resolve(connection)
+        }, (error: unknown) => {
+            clearTimeout(timer)
+            reject(error)
+        })
+    })
+}
 
 interface MysqlClientLike {
     connect(): Promise<void>
@@ -76,45 +143,60 @@ function mysqlOptionsFromTarget(target: MysqlTarget): ConnectionOptions {
 }
 
 class Mysql2Client implements MysqlClientLike {
-    private connection: Connection | null = null
+    private connection: PoolConnection | null = null
+    private connecting: Promise<void> | null = null
 
     constructor(private readonly target: MysqlTarget) {}
 
     async connect(): Promise<void> {
-        if (this.connection) {
-            await this.connection.ping()
-            return
+        if (this.connection) return
+        if (!this.connecting) {
+            this.connecting = acquireWithBackoff(sharedPool(this.target)).then((connection) => {
+                this.connection = connection
+            }).finally(() => {
+                this.connecting = null
+            })
         }
-        this.connection = await createConnection(mysqlOptionsFromTarget(this.target))
+        await this.connecting
     }
 
     async unsafe<T = QueryResult>(query: string, values?: QueryValues): Promise<T> {
         await this.connect()
         const connection = this.connection
         if (!connection) throw new Error('MySQL connection is not initialized')
-        const [rows] = await connection.query(query, values)
-        return rows as T
+        try {
+            const [rows] = await connection.query(query, values)
+            return rows as T
+        } catch (error) {
+            poolBackoff(sharedPool(this.target)).failure(error)
+            throw error
+        }
     }
 
     async begin<T>(fn: (tx: Bun.SQL) => Promise<T>): Promise<T> {
         await this.connect()
         const connection = this.connection
         if (!connection) throw new Error('MySQL connection is not initialized')
-        await connection.beginTransaction()
         try {
+            await connection.beginTransaction()
             const result = await fn(this as unknown as Bun.SQL)
             await connection.commit()
             return result
         } catch (error) {
-            await connection.rollback().catch(() => undefined)
+            poolBackoff(sharedPool(this.target)).failure(error)
+            await connection.rollback().catch(() => {
+                connection.destroy()
+                this.connection = null
+            })
             throw error
         }
     }
 
     async close(): Promise<void> {
+        await this.connecting?.catch(() => undefined)
         const connection = this.connection
         this.connection = null
-        await connection?.end()
+        connection?.release()
     }
 }
 

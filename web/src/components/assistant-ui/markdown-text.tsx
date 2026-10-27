@@ -27,7 +27,7 @@ import { CopyIcon, CheckIcon, WrapIcon } from '@/components/icons'
 import { useTranslation } from '@/lib/use-translation'
 import { useOptionalHappyChatContext } from '@/components/AssistantChat/context'
 import { decodeFilePathHref, remarkFilePathLinks } from '@/lib/remark-file-path-links'
-import { resolveSessionFilePath } from '@/lib/session-file-path'
+import { isBareSessionFileName, resolveSessionFilePath } from '@/lib/session-file-path'
 import { remarkSessionPathLinks } from '@/lib/remark-session-path-links'
 import { buildSessionReferencePath, parseSessionPathHref } from '@/lib/sessionReference'
 import { UriConfirmDialog } from '@/components/UriConfirmDialog'
@@ -502,8 +502,18 @@ function FilePathAnchor(props: ComponentPropsWithoutRef<'a'> & {
 }) {
     const navigate = useNavigate()
     const rel = props.target === '_blank' ? (props.rel ?? 'noreferrer') : props.rel
-    const search = new URLSearchParams({ path: encodeBase64(props.filePath) }).toString()
-    const href = `/sessions/${encodeURIComponent(props.sessionId)}/file?${search}`
+    const isBareFileName = isBareSessionFileName(props.filePath)
+    const fileSearch = new URLSearchParams({ path: encodeBase64(props.filePath) }).toString()
+    const filesSearch = new URLSearchParams({ tab: 'directories', query: props.filePath }).toString()
+    const base = import.meta.env.BASE_URL ?? '/'
+    const normalizedBase = base.endsWith('/') ? base : `${base}/`
+    const routeBase = `${normalizedBase}sessions/${encodeURIComponent(props.sessionId)}`
+    // A bare filename cannot be opened safely without workspace lookup. The
+    // fallback href is a searchable file list, which also keeps middle-click
+    // and open-in-new-tab from producing a dead file URL.
+    const href = isBareFileName
+        ? `${routeBase}/files?${filesSearch}`
+        : `${routeBase}/file?${fileSearch}`
 
     const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
         props.onClick?.(event)
@@ -512,6 +522,13 @@ function FilePathAnchor(props: ComponentPropsWithoutRef<'a'> & {
 
         event.preventDefault()
         void resolveSessionFilePath(props.api, props.sessionId, props.filePath).then((filePath) => {
+            if (!filePath) {
+                return navigate({
+                    to: '/sessions/$sessionId/files',
+                    params: { sessionId: props.sessionId },
+                    search: { tab: 'directories', query: props.filePath }
+                })
+            }
             return navigate({
                 to: '/sessions/$sessionId/file',
                 params: { sessionId: props.sessionId },

@@ -27,7 +27,22 @@ describe('session file path resolution', () => {
         expect(api.searchSessionFiles).toHaveBeenCalledWith('session-1', 'DatabaseConnectionPanel.tsx', 200)
     })
 
-    it('keeps ambiguous and failed lookups unchanged', async () => {
+    it('resolves a bare modified-file citation such as runner.ts', async () => {
+        const api = {
+            searchSessionFiles: vi.fn().mockResolvedValue({
+                success: true,
+                files: [{
+                    fileName: 'runner.ts',
+                    fullPath: 'cli/src/commands/runner.ts',
+                }],
+            }),
+        } as unknown as ApiClient
+
+        await expect(resolveSessionFilePath(api, 'session-1', 'runner.ts'))
+            .resolves.toBe('cli/src/commands/runner.ts')
+    })
+
+    it('returns null for ambiguous and failed lookups', async () => {
         const ambiguous = {
             searchSessionFiles: vi.fn().mockResolvedValue({
                 success: true,
@@ -41,7 +56,7 @@ describe('session file path resolution', () => {
             searchSessionFiles: vi.fn().mockRejectedValue(new Error('offline')),
         } as unknown as ApiClient
 
-        await expect(resolveSessionFilePath(ambiguous, 'session-1', 'README.md')).resolves.toBe('README.md')
-        await expect(resolveSessionFilePath(failed, 'session-1', 'README.md')).resolves.toBe('README.md')
+        await expect(resolveSessionFilePath(ambiguous, 'session-1', 'README.md')).resolves.toBeNull()
+        await expect(resolveSessionFilePath(failed, 'session-1', 'README.md')).resolves.toBeNull()
     })
 })

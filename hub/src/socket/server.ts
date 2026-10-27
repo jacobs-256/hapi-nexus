@@ -12,6 +12,7 @@ import { SOCKET_MAX_HTTP_BUFFER_SIZE } from './socketLimits'
 import type { SyncEvent } from '../sync/syncEngine'
 import { TerminalRegistry } from './terminalRegistry'
 import type { CliSocketWithData, SocketData, SocketServer } from './socketTypes'
+import { isSocketOriginAllowed } from './corsOrigin'
 
 const jwtPayloadSchema = z.object({
     uid: z.number(),
@@ -74,7 +75,7 @@ export function createSocketServer(deps: SocketServerDeps): {
         maxHttpBufferSize: SOCKET_MAX_HTTP_BUFFER_SIZE,
         allowRequest: async (req) => {
             const origin = req.headers.get('origin')
-            if (!origin || allowAllOrigins || corsOrigins.includes(origin)) {
+            if (isSocketOriginAllowed(req, origin, corsOrigins)) {
                 return
             }
             throw 'Origin not allowed'

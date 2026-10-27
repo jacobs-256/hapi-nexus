@@ -18,7 +18,13 @@ export function isProcessAlive(pid: number): boolean {
 
 // ponytail: ps -p is cheap and avoids PID-reuse false positives after OS upgrades/reboots
 function isRunnerCommand(commandLine: string): boolean {
-  return /(?:^|\s)runner(?:\s|$)/.test(commandLine) && /(?:^|\s)start-sync(?:\s|$)/.test(commandLine);
+  // `runner start --foreground` was used by older HAPI releases. Keep it in
+  // the ownership check so an upgrade can still find and stop that runner.
+  // The standalone `runner start` process is short lived, but accepting it
+  // here is safe because this function is only used with a persisted runner
+  // PID (never with the caller's own PID).
+  return /(?:^|\s)runner(?:\s|$)/.test(commandLine)
+    && /(?:^|\s)(?:start-sync|start)(?:\s|$)/.test(commandLine);
 }
 
 export function isHapiRunnerProcess(pid: number): boolean {

@@ -203,6 +203,27 @@ export async function readRunnerState(): Promise<RunnerLocallyPersistedState | n
 }
 
 /**
+ * Read the PID recorded in the runner lock file.
+ *
+ * The state file is removed during a graceful shutdown before every caller
+ * has necessarily observed the process exit. During that short handoff window
+ * (and after an interrupted upgrade) the lock file is the remaining ownership
+ * signal, so callers can still find and stop the old runner.
+ */
+export async function readRunnerLockPid(): Promise<number | null> {
+  try {
+    if (!existsSync(configuration.runnerLockFile)) {
+      return null
+    }
+    const raw = (await readFile(configuration.runnerLockFile, 'utf8')).trim()
+    const pid = Number(raw)
+    return Number.isInteger(pid) && pid > 0 ? pid : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Write runner state to local file (synchronously for atomic operation)
  */
 export function writeRunnerState(state: RunnerLocallyPersistedState): void {

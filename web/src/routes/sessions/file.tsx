@@ -201,6 +201,9 @@ export default function FilePage() {
     const imageMimeType = useMemo(() => resolveImageMimeType(resolvedFilePath), [resolvedFilePath])
     const markdownFile = useMemo(() => isMarkdownFile(resolvedFilePath), [resolvedFilePath])
     const pathResolutionPending = isBareSessionFileName(filePath) && pathResolutionQuery.isLoading
+    const pathResolutionFailed = isBareSessionFileName(filePath)
+        && !pathResolutionPending
+        && !resolvedFilePath
 
     const diffQuery = useQuery({
         queryKey: queryKeys.gitFileDiff(sessionId, resolvedFilePath, staged),
@@ -384,6 +387,8 @@ export default function FilePage() {
                     ) : null}
                     {missingPath ? (
                         <div className="text-sm text-[var(--app-hint)]">{t('file.page.missingPath')}</div>
+                    ) : pathResolutionFailed ? (
+                        <div className="text-sm text-[var(--app-hint)]">{t('file.page.notFound')}</div>
                     ) : loading ? (
                         <FileContentSkeleton label={t('loading.file')} />
                     ) : fileErrorMessage ? (

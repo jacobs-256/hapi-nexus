@@ -35,37 +35,40 @@ export function createAuthMiddleware(jwtSecret: Uint8Array, store?: Store): Midd
             return c.json({ error: 'Missing authorization token' }, 401)
         }
 
+        let payload: unknown
         try {
             const verified = await jwtVerify(token, jwtSecret, { algorithms: ['HS256'] })
-            const parsed = jwtPayloadSchema.safeParse(verified.payload)
-            if (!parsed.success) {
-                return c.json({ error: 'Invalid token payload' }, 401)
-            }
-
-            let authPlatform = parsed.data.plt
-            if (store) {
-                const ownerId = await getOrCreateOwnerId()
-                const isLegacyOwnerToken = parsed.data.plt === undefined && parsed.data.uid === ownerId
-                const isOwnerToken = (parsed.data.plt === 'owner' && parsed.data.uid === ownerId) || isLegacyOwnerToken
-                if (parsed.data.plt === 'owner' && !isOwnerToken) {
-                    return c.json({ error: 'Invalid token payload' }, 401)
-                }
-                authPlatform = parsed.data.plt ?? (isLegacyOwnerToken ? 'owner' : 'local')
-                if (!isOwnerToken) {
-                    const user = await store.users.getUserById(parsed.data.uid, parsed.data.ns)
-                    if (!user || user.disabledAt !== null) {
-                        return c.json({ error: 'Account disabled' }, 401)
-                    }
-                }
-            }
-
-            c.set('userId', parsed.data.uid)
-            c.set('namespace', parsed.data.ns)
-            c.set('authPlatform', authPlatform ?? 'local')
-            await next()
-            return
+            payload = verified.payload
         } catch {
             return c.json({ error: 'Invalid token' }, 401)
         }
+
+        const parsed = jwtPayloadSchema.safeParse(payload)
+        if (!parsed.success) {
+            return c.json({ error: 'Invalid token payload' }, 401)
+        }
+
+        let authPlatform = parsed.data.plt
+        if (store) {
+            const ownerId = await getOrCreateOwnerId()
+            const isLegacyOwnerToken = parsed.data.plt === undefined && parsed.data.uid === ownerId
+            const isOwnerToken = (parsed.data.plt === 'owner' && parsed.data.uid === ownerId) || isLegacyOwnerToken
+            if (parsed.data.plt === 'owner' && !isOwnerToken) {
+                return c.json({ error: 'Invalid token payload' }, 401)
+            }
+            authPlatform = parsed.data.plt ?? (isLegacyOwnerToken ? 'owner' : 'local')
+            if (!isOwnerToken) {
+                const user = await store.users.getUserById(parsed.data.uid, parsed.data.ns)
+                if (!user || user.disabledAt !== null) {
+                    return c.json({ error: 'Account disabled' }, 401)
+                }
+            }
+        }
+
+        c.set('userId', parsed.data.uid)
+        c.set('namespace', parsed.data.ns)
+        c.set('authPlatform', authPlatform ?? 'local')
+        await next()
+        return
     }
 }

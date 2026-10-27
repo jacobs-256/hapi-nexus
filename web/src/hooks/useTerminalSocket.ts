@@ -52,6 +52,7 @@ export function useTerminalSocket(options: UseTerminalSocketOptions): {
     const tokenRef = useRef(options.token)
     const baseUrlRef = useRef(options.baseUrl)
     const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null)
+    const lastConnectErrorRef = useRef<string | null>(null)
 
     useEffect(() => {
         sessionIdRef.current = options.sessionId
@@ -133,6 +134,7 @@ export function useTerminalSocket(options: UseTerminalSocketOptions): {
         setState({ status: 'connecting' })
 
         socket.on('connect', () => {
+            lastConnectErrorRef.current = null
             const size = lastSizeRef.current ?? { cols, rows }
             setState({ status: 'connecting' })
             emitCreate(socket, size)
@@ -169,12 +171,16 @@ export function useTerminalSocket(options: UseTerminalSocketOptions): {
 
         socket.on('connect_error', (error) => {
             const message = error instanceof Error ? error.message : 'Connection error'
+            lastConnectErrorRef.current = message
             setErrorState(message)
         })
 
         socket.on('disconnect', (reason) => {
             if (reason === 'io client disconnect') {
                 setState({ status: 'idle' })
+                return
+            }
+            if (lastConnectErrorRef.current) {
                 return
             }
             setErrorState(`Disconnected: ${reason}`)

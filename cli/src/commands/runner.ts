@@ -147,9 +147,16 @@ export const runnerCommand: CommandDefinition = {
         }
 
         if (runnerSubcommand === 'start') {
-            if (await checkIfRunnerRunningAndCleanupStaleState()) {
+            // Keep the state snapshot from before the stale-state check. A
+            // runner from an older release can still be alive while its
+            // command line is not recognised by the current process probe;
+            // the check may clean the state before we get to stop it. Calling
+            // stopRunner with that snapshot lets it validate the PID and use
+            // the HTTP/force-kill path instead of starting alongside it.
+            const existingRunnerState = await readRunnerState()
+            if (await checkIfRunnerRunningAndCleanupStaleState() || existingRunnerState) {
                 console.log('Existing runner detected, stopping it before starting a new one...')
-                await stopRunner()
+                await stopRunner(existingRunnerState ?? undefined)
 
                 if (!(await waitForRunnerToStop())) {
                     console.error('Failed to stop existing runner')

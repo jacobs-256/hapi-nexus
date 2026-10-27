@@ -140,10 +140,11 @@ export async function startRunner(options: { workspaceRoots?: string[] } = {}): 
   if (!isAuthorizedHandoff) {
     // Check if already running
     // Check if running runner version matches current CLI version
+    const existingRunnerState = await readRunnerState();
     const runningRunnerVersionMatches = await isRunnerRunningCurrentlyInstalledHappyVersion();
     if (!runningRunnerVersionMatches) {
       logger.debug('[RUNNER RUN] Runner version mismatch detected, restarting runner with current CLI version');
-      await stopRunner();
+      await stopRunner(existingRunnerState ?? undefined);
     } else {
       logger.debug('[RUNNER RUN] Runner version matches, keeping existing runner');
       console.log('Runner already running with matching version');

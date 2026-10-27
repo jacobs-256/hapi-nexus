@@ -94,13 +94,15 @@ describe('runnerCommand start', () => {
             .mockResolvedValueOnce(true)
             .mockResolvedValueOnce(false)
             .mockResolvedValueOnce(true)
-        readRunnerStateMock.mockResolvedValue({
-            pid: 123,
-            httpPort: 456,
-            startTime: 'now',
-            startedWithCliVersion: '2.0.4',
-            machineRegisteredAt: 'now'
-        })
+        readRunnerStateMock
+            .mockResolvedValueOnce(null)
+            .mockResolvedValue({
+                pid: 123,
+                httpPort: 456,
+                startTime: 'now',
+                startedWithCliVersion: '2.0.4',
+                machineRegisteredAt: 'now'
+            })
 
         try {
             await expect(runnerCommand.run(createContext(['start', '--workspace-root', '/workspace']))).rejects.toThrow('process.exit:0')
@@ -128,13 +130,15 @@ describe('runnerCommand start', () => {
         checkIfRunnerRunningAndCleanupStaleStateMock
             .mockResolvedValueOnce(false)
             .mockResolvedValueOnce(true)
-        readRunnerStateMock.mockResolvedValue({
-            pid: 123,
-            httpPort: 456,
-            startTime: 'now',
-            startedWithCliVersion: '2.0.4',
-            machineRegisteredAt: 'now'
-        })
+        readRunnerStateMock
+            .mockResolvedValueOnce(null)
+            .mockResolvedValue({
+                pid: 123,
+                httpPort: 456,
+                startTime: 'now',
+                startedWithCliVersion: '2.0.4',
+                machineRegisteredAt: 'now'
+            })
 
         try {
             await expect(runnerCommand.run(createContext(['start']))).rejects.toThrow('process.exit:0')
@@ -142,6 +146,41 @@ describe('runnerCommand start', () => {
             expect(stopRunnerMock).not.toHaveBeenCalled()
             expect(spawnHappyCLIMock).toHaveBeenCalledOnce()
             expect(consoleLogSpy).toHaveBeenCalledWith('Runner started successfully')
+        } finally {
+            consoleLogSpy.mockRestore()
+            exitSpy.mockRestore()
+        }
+    })
+
+    it('stops a persisted runner even when the process probe reports it as stale', async () => {
+        const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+            throw new Error(`process.exit:${code ?? 'undefined'}`)
+        }) as never)
+        checkIfRunnerRunningAndCleanupStaleStateMock
+            .mockResolvedValueOnce(false)
+            .mockResolvedValueOnce(false)
+            .mockResolvedValueOnce(true)
+        readRunnerStateMock
+            .mockResolvedValueOnce({
+                pid: 123,
+                httpPort: 456,
+                startTime: 'old',
+                startedWithCliVersion: '2.0.2'
+            })
+            .mockResolvedValue({
+                pid: 456,
+                httpPort: 789,
+                startTime: 'new',
+                startedWithCliVersion: '2.1.0',
+                machineRegisteredAt: 'now'
+            })
+
+        try {
+            await expect(runnerCommand.run(createContext(['start']))).rejects.toThrow('process.exit:0')
+
+            expect(stopRunnerMock).toHaveBeenCalledOnce()
+            expect(consoleLogSpy).toHaveBeenCalledWith('Existing runner detected, stopping it before starting a new one...')
         } finally {
             consoleLogSpy.mockRestore()
             exitSpy.mockRestore()
@@ -156,14 +195,16 @@ describe('runnerCommand start', () => {
         checkIfRunnerRunningAndCleanupStaleStateMock
             .mockResolvedValueOnce(false)
             .mockResolvedValue(false)
-        readRunnerStateMock.mockResolvedValue({
-            pid: 123,
-            httpPort: 456,
-            startTime: 'now',
-            startedWithCliVersion: '2.0.4',
-            lastMachineRegistrationError: 'ECONNREFUSED',
-            runnerLogPath: '/tmp/runner.log'
-        })
+        readRunnerStateMock
+            .mockResolvedValueOnce(null)
+            .mockResolvedValue({
+                pid: 123,
+                httpPort: 456,
+                startTime: 'now',
+                startedWithCliVersion: '2.0.4',
+                lastMachineRegistrationError: 'ECONNREFUSED',
+                runnerLogPath: '/tmp/runner.log'
+            })
 
         try {
             await expect(runnerCommand.run(createContext(['start']))).rejects.toThrow('process.exit:1')

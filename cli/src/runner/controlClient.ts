@@ -4,7 +4,7 @@
  */
 
 import { logger } from '@/ui/logger';
-import { clearRunnerState, readRunnerState, readSettings } from '@/persistence';
+import { clearRunnerState, readRunnerLockPid, readRunnerState, readSettings } from '@/persistence';
 import { Metadata } from '@/api/types';
 import packageJson from '../../package.json';
 import { existsSync, statSync } from 'node:fs';
@@ -139,12 +139,28 @@ export async function stopRunnerHttp(): Promise<void> {
  */
 export async function checkIfRunnerRunningAndCleanupStaleState(): Promise<boolean> {
   const state = await readRunnerState();
+  const lockPid = await readRunnerLockPid();
   if (!state) {
+    // A runner can be between state-file replacement and its next heartbeat.
+    // The lock still identifies the owner during that handoff.
+    if (lockPid && isProcessAlive(lockPid)) {
+      logger.debug('[RUNNER RUN] Runner state is missing but the lock owner is still alive');
+      return true;
+    }
     return false;
   }
 
   // Verify PID is alive AND belongs to hapi (not a reused PID from another process)
   if (isHapiRunnerProcess(state.pid)) {
+    return true;
+  }
+
+  // Older runner builds may use a command line shape that cannot be matched by
+  // the process probe. If the live PID still owns the lock, treat it as the
+  // runner rather than deleting the lock while it is running. This prevents a
+  // new version from starting alongside the old one during upgrades.
+  if (lockPid === state.pid && isProcessAlive(state.pid)) {
+    logger.debug('[RUNNER RUN] Runner PID is the live lock owner; keeping it active during upgrade');
     return true;
   }
 
@@ -276,30 +292,50 @@ export async function cleanupRunnerState(): Promise<void> {
   }
 }
 
-export async function stopRunner() {
+export async function stopRunner(stateOverride?: Awaited<ReturnType<typeof readRunnerState>>) {
   try {
-    const state = await readRunnerState();
-    if (!state) {
-      logger.debug('No runner state found');
+    // Callers replacing a runner capture the state before the stale-state
+    // probe runs. That snapshot lets us stop an old process even if the probe
+    // has already removed its state file because its command line is from an
+    // older release.
+    const state = stateOverride ?? await readRunnerState();
+    const lockPid = await readRunnerLockPid();
+    const candidatePid = state?.pid ?? lockPid;
+    if (!candidatePid) {
+      logger.debug('No runner state or lock owner found');
       return;
     }
 
-    logger.debug(`Stopping runner with PID ${state.pid}`);
+    // A state PID can be stale and reused by an unrelated process. Prefer a
+    // process that is recognisably a runner; the lock-owner fallback handles
+    // the upgrade window where the state file has already disappeared.
+    const isKnownRunner = isHapiRunnerProcess(candidatePid);
+    const isLiveLockOwner = lockPid === candidatePid && isProcessAlive(candidatePid);
+    const isTrustedStateOverride = stateOverride !== undefined && isProcessAlive(candidatePid);
+    if (!isKnownRunner && !isLiveLockOwner && !isTrustedStateOverride) {
+      logger.debug(`Runner PID ${candidatePid} is not an active HAPI runner; cleaning stale state`);
+      await cleanupRunnerState();
+      return;
+    }
+
+    logger.debug(`Stopping runner with PID ${candidatePid}`);
 
     // Try HTTP graceful stop
-    try {
-      await stopRunnerHttp();
+    if (state?.pid === candidatePid) {
+      try {
+        await stopRunnerHttp();
 
-      // Wait for runner to die
-      await waitForProcessDeath(state.pid, 2000);
-      logger.debug('Runner stopped gracefully via HTTP');
-      return;
-    } catch (error) {
-      logger.debug('HTTP stop failed, will force kill', error);
+        // Wait for runner to die
+        await waitForProcessDeath(candidatePid, 2000);
+        logger.debug('Runner stopped gracefully via HTTP');
+        return;
+      } catch (error) {
+        logger.debug('HTTP stop failed, will force kill', error);
+      }
     }
 
     // Force kill
-    const killed = await killProcess(state.pid, true);
+    const killed = await killProcess(candidatePid, true);
     if (killed) {
       logger.debug('Force killed runner');
     } else {
