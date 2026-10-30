@@ -585,6 +585,12 @@ body {
  * made Chromium replace rough intrinsic heights as older messages entered view,
  * which could change scrollTop and bounce the chat away from the user's target.
  */
+.happy-thread-viewport {
+    /* History prepends are anchored by HappyThread, not by the browser. */
+    overflow-anchor: none;
+    scrollbar-gutter: stable;
+}
+
 .happy-thread-messages > * {
     overflow-anchor: none;
 }

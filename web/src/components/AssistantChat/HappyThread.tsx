@@ -1432,7 +1432,7 @@ export function HappyThread(props: {
                 >
                     <div
                         ref={viewportRef}
-                        className="app-scroll-y min-h-0 flex-1 overflow-x-hidden"
+                        className="happy-thread-viewport app-scroll-y min-h-0 flex-1 overflow-x-hidden"
                         tabIndex={0}
                     >
                         <div ref={contentRef} className="mx-auto w-full max-w-none min-w-0 p-3">
